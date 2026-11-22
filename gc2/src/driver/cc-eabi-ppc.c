@@ -42,7 +42,7 @@ CWPLUGIN_ENTRY(CWPlugin_GetDisplayName)(const char** displayName) {
 
 CWPLUGIN_ENTRY(CWPlugin_GetDefaultMappingList)(const CWExtMapList** defaultMappingList) {
     // clang-format off
-    static CWExtensionMapping sExtension[10] = {
+    static CWExtensionMapping sExtension[] = {
         {'TEXT', ".c", 0},
         {'TEXT', ".c++", 0},
         {'TEXT', ".cc", 0},
@@ -52,10 +52,15 @@ CWPLUGIN_ENTRY(CWPlugin_GetDefaultMappingList)(const CWExtMapList** defaultMappi
         {'TEXT', ".h++", kIgnored},
         {'TEXT', ".hpp", kIgnored},
         {'TEXT', ".pch", kPrecompile},
-        {'TEXT', ".pch++", kPrecompile}
+        {'TEXT', ".pch++", kPrecompile},
+#if VERSION == VERSION_WII_1_0RC1
+        {'IROb', ".irobj", 0},
+#endif
     };
     // clang-format on
-    static CWExtMapList sExtensionMapList = {kCurrentCWExtMapListVersion, 10, sExtension};
+    static CWExtMapList sExtensionMapList = {
+        kCurrentCWExtMapListVersion, sizeof(sExtension) / sizeof(sExtension[0]), sExtension
+    };
 
     *defaultMappingList = &sExtensionMapList;
     return 0;
@@ -81,12 +86,15 @@ static CWPLUGIN_ENTRY(CWPlugin_GetVersionInfo)(const VersionInfo** versionInfo) 
 
 static CWPLUGIN_ENTRY(CWPlugin_GetFileTypeMappings)(const OSFileTypeMappingList** mappings) {
     // clang-format off
-    static const OSFileTypeMapping ftmes[2] = {
+    static const OSFileTypeMapping ftmes[] = {
         {'MMCH', "\xBE\xEF\xFA\xCE", 4, 0, NULL},
-        {'MMCH', "\xCE\xFA\xEF\xBE", 4, 0, NULL}
+        {'MMCH', "\xCE\xFA\xEF\xBE", 4, 0, NULL},
+#if VERSION == VERSION_WII_1_0RC1
+        {'IROb', "\xAB\xEC\xCE\xBA", 4, 0, NULL},
+#endif
     };
     // clang-format on
-    static const OSFileTypeMappingList ftml = {2, ftmes};
+    static const OSFileTypeMappingList ftml = {sizeof(ftmes) / sizeof(ftmes[0]), ftmes};
 
     *mappings = &ftml;
     return 0;

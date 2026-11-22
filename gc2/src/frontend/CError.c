@@ -432,6 +432,15 @@ static void CError_BufferAppendType(CErrorBuffer* eb, Type* ty, UInt32 qual) {
                 case STRUCT_VECTOR_BINT:
                 case STRUCT_VECTOR_FLOAT:
                 case STRUCT_VECTOR_PIXEL:
+#if VERSION == VERSION_WII_1_0RC1
+                case STRUCT_SPE_U16:
+                case STRUCT_SPE_S16:
+                case STRUCT_SPE_U32:
+                case STRUCT_SPE_S32:
+                case STRUCT_SPE_U64:
+                case STRUCT_SPE_S64:
+                case STRUCT_SPE_FS:
+#endif
                     break;
                 default:
                     CError_FATAL(618);
@@ -756,7 +765,11 @@ void CError_ErrorMessage(int errTable, char* str, Boolean isTerminal, Boolean is
         } else {
             token = NULL;
         }
-        if ((SInt32)token == -1) {
+        if ((SInt32)token == -1
+#if VERSION == VERSION_WII_1_0RC1
+            || (!token && !prep_file)
+#endif
+        ) {
             ref = NULL;
         } else {
             CPrep_GetTokenContext(

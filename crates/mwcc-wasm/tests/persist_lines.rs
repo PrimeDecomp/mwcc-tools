@@ -1,12 +1,13 @@
 //! Line numbers in a persistent compile: a candidate's lines are numbered as in a normal compile of the context followed
-//! by the candidate, so `-sym on` and `-g` objects and the messages are the same. Uses this checkout's GC 2.7 and 2.6 modules (each
-//! skipped when it is not built).
+//! by the candidate, so `-sym on` and `-g` objects and the messages are the same. Skips a compiler if its module has
+//! not been built.
 use mwcc_wasm::{Overlay, Run};
 use std::{fs, path::PathBuf, time::Duration};
 
 fn module(version: &str) -> Option<PathBuf> {
+    let name = if version == "Wii_1_0RC1" { "persist" } else { "mwcc" };
     let module = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(format!("../../build/{version}/wasm/mwcc.wasm"));
+        .join(format!("../../build/{version}/wasm/{name}.wasm"));
     if module.is_file() {
         Some(module)
     } else {
@@ -146,6 +147,11 @@ fn g_objects_equal_a_normal_compile() {
     for version in ["GC_2_7", "GC_2_6"] {
         lines_match(version, CONTEXT, &["-g"]);
     }
+}
+
+#[test]
+fn wii_file_ipa_restores_the_context_graph() {
+    lines_match("Wii_1_0RC1", CONTEXT, &["-ipa", "file", "-g"]);
 }
 
 #[test]

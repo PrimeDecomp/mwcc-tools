@@ -52,6 +52,9 @@ extern ENode* CTemplTool_DeduceDefaultArg(Object* func, ENode* expr);
 extern Type* CTemplTool_DeduceTypeCopy(TypeDeduce* deduce, Type* type, UInt32* resultQual);
 extern Type* CTemplTool_ResolveMemberSelfRefs(TemplClass* templ, Type* type, UInt32* resultQual);
 extern Boolean CTemplTool_IsSameTemplateType(Type* a, Type* b);
+#if VERSION == VERSION_WII_1_0RC1
+extern UInt32 CTTool_Alignment2Quals(UInt32 alignment);
+#endif
 
 #ifdef __cplusplus
 }

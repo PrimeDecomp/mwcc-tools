@@ -79,7 +79,15 @@ Option optlstProject_064 = {"8240", 0x401C0, (PARAM_T *)&optlstProject_063, 0, &
 SET_T optlstProject_065 = {11, 0x01, 0, 0, 2, 0x13, (void *)&pBackEnd.processor};
 Option optlstProject_066 = {"8260", 0x401C0, (PARAM_T *)&optlstProject_065, 0, &optlstProject_075, ""};
 SET_T optlstProject_067 = {11, 0x01, 0, 0, 2, 0x17, (void *)&pBackEnd.processor};
+#if VERSION == VERSION_WII_1_0RC1
+Option optlstProject_068 = {"e500|e500v1|85xx", 0x401C0, (PARAM_T *)&optlstProject_067, 0, &optlstProject_075, ""};
+static SET_T setProcE500v2 = {11, 0x01, 0, 0, 2, 0x26, (void *)&pBackEnd.processor};
+static SET_T setProcZen = {11, 0x01, 0, 0, 2, 0x1c, (void *)&pBackEnd.processor};
+static Option optProcE500v2 = {"e500v2", 0x401C0, (PARAM_T *)&setProcE500v2, 0, &optlstProject_075, ""};
+static Option optProcZen = {"Zen|5565", 0x401C0, (PARAM_T *)&setProcZen, 0, &optlstProject_075, ""};
+#else
 Option optlstProject_068 = {"e500", 0x401C0, (PARAM_T *)&optlstProject_067, 0, &optlstProject_075, ""};
+#endif
 SET_T optlstProject_069 = {11, 0x01, 0, 0, 2, 0x16, (void *)&pBackEnd.processor};
 Option optlstProject_070 = {"gekko||gecko", 0x401C0, (PARAM_T *)&optlstProject_069, 0, &optlstProject_075, ""};
 SET_T optlstProject_071 = {11, 0x01, 0, 0, 2, 0x14, (void *)&pBackEnd.processor};
@@ -108,6 +116,10 @@ Option *optlstProject_073[] = {
     &optlstProject_064,
     &optlstProject_066,
     &optlstProject_068,
+#if VERSION == VERSION_WII_1_0RC1
+    &optProcE500v2,
+    &optProcZen,
+#endif
     &optlstProject_070,
     &optlstProject_072,
     0
@@ -121,12 +133,25 @@ SET_T optlstProject_079 = {11, 0x01, 0, 0, 1, 0x1, (void *)&pBackEnd.floatingpoi
 Option optlstProject_080 = {"soft|software", 0x401C0, (PARAM_T *)&optlstProject_079, 0, &optlstProject_087, "software FP emulation"};
 SET_T optlstProject_081 = {11, 0x01, 0, 0, 1, 0x2, (void *)&pBackEnd.floatingpoint};
 Option optlstProject_082 = {"hard|hardware", 0x401C0, (PARAM_T *)&optlstProject_081, 0, &optlstProject_087, "hardware FP codegen"};
+#if VERSION == VERSION_WII_1_0RC1
+static SET_T setSPFP = {11, 0x01, 0, 0, 1, PPCFloatingPointSPFP, (void *)&pBackEnd.floatingpoint};
+static Option optSPFP = {"efpu|spfp", 0x401C0, (PARAM_T *)&setSPFP, 0, &optlstProject_087, "e500 single-precision FP codegen"};
+static SET_T setDPFP = {11, 0x01, 0, 0, 1, PPCFloatingPointDPFP, (void *)&pBackEnd.floatingpoint};
+static Option optDPFP = {"dpfp", 0x401C0, (PARAM_T *)&setDPFP, 0, &optlstProject_087, "e500v2 double-precision FP codegen"};
+static SET_T setFPContract = {11, 0x01, 0, 0, 1, 1, (void *)&pBackEnd.fp_contract};
+SET_T optlstProject_083 = {11, 0x01, 0, (PARAM_T *)&setFPContract, 1, PPCFloatingPointHardware, (void *)&pBackEnd.floatingpoint};
+#else
 SET_T optlstProject_083 = {11, 0x01, 0, 0, 1, 0x3, (void *)&pBackEnd.floatingpoint};
+#endif
 Option optlstProject_084 = {"fmadd", 0x401C0, (PARAM_T *)&optlstProject_083, 0, &optlstProject_087, "same as '~~fp hard' and '~~fp_contract'"};
 Option *optlstProject_085[] = {
     &optlstProject_078,
     &optlstProject_080,
     &optlstProject_082,
+#if VERSION == VERSION_WII_1_0RC1
+    &optSPFP,
+    &optDPFP,
+#endif
     &optlstProject_084,
     0
 };

@@ -140,7 +140,8 @@ void computelivevariables(Object* proc) {
         }
     }
 
-    if (coloring_class == RegClass_GPR && TYPE_FITS_IN_REGISTER(returnType)) {
+    if (coloring_class == RegClass_GPR &&
+        (TYPE_FITS_IN_REGISTER(returnType) || IS_TYPE_SPE(returnType))) {
         bitvectorsetbit(3, liveinfo[epilogue->blockIndex].use);
         if (TYPE_IS_8BYTES(returnType)) {
             bitvectorsetbit(4, liveinfo[pclastblock->blockIndex].use);

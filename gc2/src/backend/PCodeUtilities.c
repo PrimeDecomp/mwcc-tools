@@ -283,7 +283,50 @@ void branch_subroutine_ctr(UInt32* masks) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+void add_immediate_before(
+    PCode* before, short dest_reg, short base_reg, Object* obj, SInt16 offset
+) {
+    PCode* pc;
+
+    if (obj && (base_reg == 2 || base_reg == 13)) {
+        CError_ASSERT(662, obj->datatype != DLOCAL);
+        base_reg = 0;
+    } else if (obj && obj->datatype != DLOCAL && offset) {
+        short address = ALLOC_GPR();
+        pc = makepcode(PC_ADDI, address, base_reg, obj, 0);
+        if (before) {
+            insertpcodebefore(before, pc);
+        } else {
+            appendpcode(pclastblock, pc);
+        }
+        base_reg = address;
+        obj = NULL;
+    }
+
+    if (!obj && !offset) {
+        pc = makepcode(PC_MR, dest_reg, base_reg);
+    } else {
+        pc = makepcode(PC_ADDI, dest_reg, base_reg, obj, offset);
+        if (!base_reg) {
+            pc->flags = (pc->flags & ~opcodeinfo[pc->op].flags) | opcodeinfo[PC_LI].flags;
+            pc->op = PC_LI;
+            pc->args[1] = pc->args[2];
+            change_num_operands(pc, 2);
+        }
+    }
+    if (before) {
+        insertpcodebefore(before, pc);
+    } else {
+        appendpcode(pclastblock, pc);
+    }
+}
+#endif
+
 void add_immediate(short dest_reg, short base_reg, Object* obj, SInt16 offset) {
+#if VERSION == VERSION_WII_1_0RC1
+    add_immediate_before(NULL, dest_reg, base_reg, obj, offset);
+#else
     short addr_reg = base_reg;
     PCode* pc;
 
@@ -309,6 +352,7 @@ void add_immediate(short dest_reg, short base_reg, Object* obj, SInt16 offset) {
     } else {
         CError_ASSERT(557, base_reg != 0);
     }
+#endif
 }
 
 PCode* add_immediate_lo(

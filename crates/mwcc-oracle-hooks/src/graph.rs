@@ -46,7 +46,7 @@ struct Globals {
     count: *const i32,
     graph: *const *mut OracleNode,
 }
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", feature = "source-probes"))]
 unsafe extern "C" {
     // (gc2's names: the WebAssembly module has no x86 code to find them in)
     static coloring_class: i8;
@@ -56,7 +56,7 @@ unsafe extern "C" {
     static first_fe_temporary_register: [i16; 5];
     static first_temporary_register: [i32; 5];
 }
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", feature = "source-probes"))]
 unsafe fn globals() -> Option<Globals> {
     unsafe {
         Some(Globals {
@@ -67,7 +67,7 @@ unsafe fn globals() -> Option<Globals> {
         })
     }
 }
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", feature = "source-probes")))]
 unsafe fn globals() -> Option<Globals> {
     unsafe {
         let code = fn_00507070__retail as *const () as *const u8;
@@ -192,10 +192,13 @@ unsafe fn capture(g: &Globals, class: i8, start: i32, count: i32) {
 // object (0: a temporary of the code generator), whether that is an argument of the function, and whether the value
 // can be rematerialized. ra.temporaries: the class's first front-end temporary and first temporary of the code
 // generator (gc2's names, so only in the WebAssembly module).
-#[cfg_attr(not(target_arch = "wasm32"), allow(unused_variables))]
+#[cfg_attr(
+    not(any(target_arch = "wasm32", feature = "source-probes")),
+    allow(unused_variables)
+)]
 unsafe fn values(g: &Globals, class: i8, start: i32, count: i32) {
     unsafe {
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(any(target_arch = "wasm32", feature = "source-probes"))]
         OracleTrace_Printf(
             c"ra.temporaries cls=%d fe=%d first=%ld\n".as_ptr(),
             i32::from(class),

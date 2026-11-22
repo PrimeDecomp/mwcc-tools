@@ -16,10 +16,7 @@ fn main() -> Result<()> {
     // (BENCH_VERSION: another version than GC_2_7)
     let version =
         Version::parse(&std::env::var("BENCH_VERSION").unwrap_or_else(|_| "GC_2_7".into()))?;
-    let program = root.join(format!(
-        "build/compilers/GC/{}/mwcceppc.exe",
-        version.compiler_directory()
-    ));
+    let program = mwcc_project::compilers::stock_executable(&root, version);
     let output = compiler_args
         .iter()
         .position(|a| a == "-o")

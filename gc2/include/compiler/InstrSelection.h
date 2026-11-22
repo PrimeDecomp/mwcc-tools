@@ -91,6 +91,9 @@ extern void I8_gen_condition(ENode* cond, Operand* output, int write_to_gpr);
 extern void I8_gen_SHL_SHR(ENode* expr, short outputReg, short outputRegHi, Operand* output);
 extern void I8_gen_DIV_MOD(ENode* expr, short outputReg, short outputRegHi, Operand* output);
 extern void I8_gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* output);
+#if VERSION == VERSION_WII_1_0RC1
+#define gen_VECTOR128CONST gen_VECTORCONST
+#endif
 extern void gen_VECTOR128CONST(ENode* expr, short outputReg, short outputRegHi, Operand* output);
 
 #define GEN_NODE(node, opnd) cgdispatch[(node)->type]((node), 0, 0, (opnd))

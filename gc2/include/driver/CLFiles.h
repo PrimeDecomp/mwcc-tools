@@ -57,6 +57,9 @@ struct File {
     char browseoptions[32];
     OSType filetype;
     OSType filecreator;
+#if VERSION == VERSION_WII_1_0RC1
+    Handle programIR;
+#endif
 };
 struct Files {
     File* fileList;

@@ -213,7 +213,7 @@ static ArgInfo* analyze_arguments(
 
             arg_size = 8;
             gpr_counter += 2;
-        } else if (TYPE_FITS_IN_REGISTER(type)) {
+        } else if (TYPE_FITS_IN_REGISTER(type) || IS_TYPE_SPE(type)) {
             if ((!arg || arg == &elipsis || arg == &oldstyle) && type->size < 4) {
                 info->flags |= AIF_ExtendTo32Bits;
             }
@@ -227,7 +227,7 @@ static ArgInfo* analyze_arguments(
             }
 
             gpr_counter++;
-            arg_size = 4;
+            arg_size = IS_TYPE_SPE(type) ? 8 : 4;
         } else if (IS_TYPE_VEC2X32FLOAT(type) && copts.processor == CPU_PPCGEKKO) {
             if (fpr_counter <= 8) {
                 info->flags |= AIF_PassInFPR;
@@ -287,6 +287,20 @@ static void pass_in_memory(ArgInfo* info) {
 
     type = info->expr->rtype;
     memclrw(&opnd, sizeof(Operand));
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_TYPE_SPE(type) || TYPE_IS_DPFP(type)) {
+        if (!info->evaluated) {
+            GEN_NODE(info->expr, &info->opnd);
+        }
+        Coerce_to_spe_register(&info->opnd, type, 0);
+        opnd.optype = OpndType_IndirectGPR_ImmOffset;
+        opnd.reg = 1;
+        opnd.immOffset = out_param_displ_to_offset(info->offset);
+        store_spe(info->opnd.reg, &opnd, type);
+        return;
+    }
+#endif
 
     if (TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type)) {
         if (TYPE_IS_8BYTES(type) || (TYPE_IS_SOFT_FLOAT(type) && type->size != 4)) {
@@ -373,6 +387,19 @@ static void pass_in_register(ArgInfo* info) {
     Type* type;
 
     type = info->expr->rtype;
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_TYPE_SPE(type)) {
+        if (!info->evaluated) {
+            GEN_NODE_TO_REG(info->expr, info->gpr, 0, &info->opnd);
+        }
+        Coerce_to_spe_register(&info->opnd, type, info->gpr);
+        if (info->opnd.reg != info->gpr) {
+            emitpcode(PC_EVMR, info->gpr, info->opnd.reg);
+        }
+        return;
+    }
+#endif
 
     if ((info->flags & AIF_PassMask) == AIF_PassInFPR && !IS_TYPE_VEC2X32FLOAT(type)) {
         if (!info->evaluated) {
@@ -725,6 +752,14 @@ void call_function(ENode* expr, Operand* output) {
     }
 
     ORACLE_PROBE(OracleProbe_Binding(expr, output, resultType));
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_TYPE_SPE(resultType)) {
+        output->optype = OpndType_GPR;
+        output->reg = ALLOC_GPR();
+        emitpcode(PC_EVMR, output->reg, 3);
+        return;
+    }
+#endif
     if (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(resultType) && !TYPE_IS_SOFT_FLOAT(resultType)) {
         output->optype = OpndType_FPR;
         output->reg = ALLOC_FPR();
@@ -741,6 +776,14 @@ void call_function(ENode* expr, Operand* output) {
                 !Type_RequiresMemoryReturn(resultType)) ||
                TYPE_FITS_IN_REGISTER(resultType) ||
                TYPE_IS_SOFT_FLOAT(resultType)) {
+#if VERSION == VERSION_WII_1_0RC1
+        if (TYPE_IS_DPFP(resultType)) {
+            output->optype = OpndType_GPR;
+            output->reg = ALLOC_GPR();
+            emitpcode(PC_EVMERGELO, output->reg, high_reg, low_reg);
+            return;
+        }
+#endif
         if (resultType->size > 4) {
             output->optype = OpndType_GPRPair;
             output->reg = ALLOC_GPR();

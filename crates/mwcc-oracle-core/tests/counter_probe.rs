@@ -6,6 +6,92 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
 };
+
+#[path = "../../mwcc-oracle-hooks/src/wii_rc1_register_sites.rs"]
+mod wii_rc1_register_sites;
+
+#[test]
+fn rc1_counter_sites_still_name_source_allocations_and_native_writes() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let stock = root.join("build/compilers/Wii/1.0RC1/mwcceppc.exe");
+    let original = stock
+        .is_file()
+        .then(|| executable::Original::read(&root, "Wii_1_0RC1").unwrap());
+    let pe = original.as_ref().map(|original| original.pe().unwrap());
+    let check_write = |address, class, context: &dyn std::fmt::Debug| {
+        if let Some(pe) = &pe {
+            let mut expected = vec![0x83];
+            if class == u8::MAX {
+                expected.extend([0x04, 0x8d]);
+            } else {
+                expected.push(0x05);
+            }
+            let counter = 0x758278u32
+                + if class == u8::MAX {
+                    0
+                } else {
+                    u32::from(class) * 4
+                };
+            expected.extend(counter.to_le_bytes());
+            expected.push(1);
+            assert_eq!(
+                pe.read(address, expected.len()).unwrap(),
+                expected,
+                "{context:?}"
+            );
+        }
+    };
+    let mut previous = None;
+    let mut addresses = std::collections::BTreeSet::new();
+    for &(unit, line, inlined, address, class, _) in wii_rc1_register_sites::WRITES {
+        let key = (unit, line, inlined);
+        assert!(previous.is_none_or(|prior| prior < key), "{key:?}");
+        assert!(
+            addresses.insert(address),
+            "duplicate native site {address:#x}"
+        );
+        previous = Some(key);
+        let source = fs::read_to_string(root.join("gc2").join(unit)).unwrap();
+        let source: Vec<_> = source.lines().collect();
+        assert!(source[usize::from(line) - 1].contains("ALLOC_"), "{key:?}");
+        if inlined != 0 {
+            assert!(source[usize::from(inlined) - 1].contains(')'), "{key:?}");
+        }
+        check_write(address, class, &key);
+    }
+    let unit = wii_rc1_register_sites::CALL_RESULT_UNIT;
+    let source = fs::read_to_string(root.join("gc2").join(unit)).unwrap();
+    let source: Vec<_> = source.lines().collect();
+    for &(line, class, binding, address, aggregate) in wii_rc1_register_sites::CALL_RESULT_WRITES {
+        use mwcc_oracle_core::birth_origin::{ResultPart, call_role};
+        let part = match binding {
+            2 => ResultPart::Single,
+            3 => ResultPart::FirstWord,
+            4 => ResultPart::SecondWord,
+            _ => panic!("invalid call result binding"),
+        };
+        assert!(source[usize::from(line) - 1].contains("ALLOC_"));
+        for address in std::iter::once(address).chain(aggregate) {
+            assert!(addresses.insert(address) || (line == 773 && address == 0x5fcd3e));
+            assert_eq!(call_role(address), Some((class, part)));
+            check_write(address, class, &(unit, line));
+        }
+    }
+    if let Some(pe) = pe {
+        let sites = wii_rc1_register_sites::STRUCTURAL;
+        for &address in &sites[..4] {
+            let write = pe.read(address, 7).unwrap();
+            assert_eq!(write[0], 0x89);
+            assert_eq!(&write[3..], &0x758278u32.to_le_bytes());
+        }
+        assert_eq!(pe.read(sites[4], 5).unwrap(), [0xa3, 0x74, 0x1d, 0x75, 0]);
+        assert_eq!(
+            pe.read(sites[5], 8).unwrap(),
+            [0x83, 0xc4, 0x50, 0x5d, 0x5f, 0x5e, 0x5b, 0xc3]
+        );
+    }
+}
+
 #[test]
 #[ignore = "requires split originals and a counter-instrumented producer in MWCC_ORACLE_TEST_ROOT"]
 fn counter_islands_preserve_all_unpatched_bytes_symbols_sizes_and_guard_sites() {

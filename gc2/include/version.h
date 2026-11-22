@@ -7,6 +7,7 @@
 #define VERSION_GC_2_5 3
 #define VERSION_GC_2_6 4
 #define VERSION_GC_2_7 5
+#define VERSION_WII_1_0RC1 6
 
 #ifndef VERSION
 #define VERSION VERSION_GC_2_6

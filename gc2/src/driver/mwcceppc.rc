@@ -13,6 +13,10 @@
 #elif VERSION == VERSION_GC_2_6
 #define BUILD 107
 #define BUILD_STRING L"2.4.7.107\0"
+#elif VERSION == VERSION_WII_1_0RC1
+#define PATCH 0
+#define BUILD 140
+#define BUILD_STRING L"4.0.0\0"
 #else
 #define BUILD 108
 #define BUILD_STRING L"2.4.7.108\0"
@@ -22,8 +26,13 @@
 #endif
 
 1 VERSIONINFO MOVEABLE PURE DISCARDABLE
+#if VERSION == VERSION_WII_1_0RC1
+FILEVERSION 4,2,PATCH,BUILD
+PRODUCTVERSION 4,2,PATCH,BUILD
+#else
 FILEVERSION 2,4,PATCH,BUILD
 PRODUCTVERSION 2,4,PATCH,BUILD
+#endif
 FILEFLAGSMASK 0x3f
 FILEFLAGS 0
 FILEOS 0x40004
@@ -34,11 +43,19 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
+#if VERSION == VERSION_WII_1_0RC1
+            VALUE "CompanyName", L"Freescale Semiconductor, Inc.\0"
+            VALUE "FileDescription", L"CodeWarrior PPC EABI C/C++ Compiler\0"
+            VALUE "FileVersion", BUILD_STRING
+            VALUE "LegalCopyright", L"Copyright \251 2007\0"
+            VALUE "ProductName", L"Freescale CodeWarrior\0"
+#else
             VALUE "CompanyName", L"Metrowerks Corporation\0"
             VALUE "FileDescription", L"CodeWarrior GAMECUBE C/C++ Compiler\0"
             VALUE "FileVersion", BUILD_STRING
             VALUE "LegalCopyright", L"Copyright \251 2002\0"
             VALUE "ProductName", L"Metrowerks CodeWarrior\0"
+#endif
             VALUE "ProductVersion", BUILD_STRING
         END
     END

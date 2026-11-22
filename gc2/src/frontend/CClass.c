@@ -1,4 +1,7 @@
 #include "compiler/CClass.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CMiddleLayer.h"
+#endif
 #include "compiler/CABI.h"
 #include "compiler/CDecl.h"
 #include "compiler/CError.h"
@@ -21,6 +24,9 @@
 #include "compiler/scopes.h"
 #include "compiler/tokens.h"
 #include "compiler/types.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/templates.h"
+#endif
 
 #pragma pack(2)
 typedef struct OVClassBase {
@@ -84,7 +90,20 @@ void CClass_GenThunks(void) {
     ThunkList* list;
 
     for (list = cclass_thunklist; list; list = list->next) {
+#if VERSION == VERSION_WII_1_0RC1
+        if (CMid_InIPA() && (list->thunkobj->flags & OBJECT_DEFINED)) {
+            continue;
+        }
+#endif
         list->thunkobj->flags |= OBJECT_DEFINED;
+#if VERSION == VERSION_WII_1_0RC1
+        if (CMid_InIPA()) {
+            CMid_DefineThunkObject(
+                list->thunkobj, list->obj, list->this_delta, list->return_delta, list->ctoroffset
+            );
+            continue;
+        }
+#endif
         CodeGen_GenVDispatchThunk(
             list->thunkobj, list->obj, list->this_delta, list->return_delta, list->ctoroffset
         );
@@ -582,6 +601,11 @@ Boolean CClass_IsTrivialCopyClass(TypeClass* tclass) {
     ObjMemberVar* ivar;
     Type* type;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (tclass->irCopyKind != ClassCopyFromDeclaration) {
+        return tclass->irCopyKind == ClassCopyTrivial;
+    }
+#endif
     if (tclass->vtable || tclass->vbases || CClass_Destructor(tclass)) {
         return FALSE;
     }
@@ -2056,6 +2080,33 @@ static AccessType CClass_BaseMemberAccess(BClassList* path, AccessType access) {
     return access;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean CClass_HasFriend(TypeClass* owner) {
+    TypeClass* caller = cscope_currentclass;
+    TemplClass* callerTemplate = NULL;
+    ClassFriend* entry;
+
+    if (caller && IS_TEMPL_CLASS_INST(caller)) {
+        callerTemplate = TEMPL_CLASS_INST(caller)->templ;
+        if (callerTemplate->pspec_owner) {
+            callerTemplate = callerTemplate->pspec_owner;
+        }
+    }
+
+    for (entry = owner->friends; entry; entry = entry->next) {
+        if (entry->isclass) {
+            if (entry->u.theclass == caller ||
+                (callerTemplate && entry->u.theclass == TYPE_CLASS(callerTemplate))) {
+                return TRUE;
+            }
+        } else if (entry->u.obj == cscope_currentfunc) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+#endif
+
 static Boolean CClass_CanAccess(BClassList* path, AccessType access) {
     AccessType access2;
     BClassList* scan;
@@ -2063,7 +2114,9 @@ static Boolean CClass_CanAccess(BClassList* path, AccessType access) {
     TypeClass* prevclass;
     TypeClass* tclass;
     ClassList* base;
+#if VERSION != VERSION_WII_1_0RC1
     ClassFriend* cfriend;
+#endif
 
     tclass = TYPE_CLASS(path->type);
     access2 = access;
@@ -2121,6 +2174,11 @@ static Boolean CClass_CanAccess(BClassList* path, AccessType access) {
             return TRUE;
         }
 
+#if VERSION == VERSION_WII_1_0RC1
+        if (CClass_HasFriend(tclass)) {
+            return TRUE;
+        }
+#else
         for (cfriend = tclass->friends; cfriend; cfriend = cfriend->next) {
             if (cfriend->isclass) {
                 if (cfriend->u.theclass == cscope_currentclass) {
@@ -2132,6 +2190,7 @@ static Boolean CClass_CanAccess(BClassList* path, AccessType access) {
                 }
             }
         }
+#endif
     }
 
     for (scan = path; scan->next; scan = scan->next) {
@@ -2193,7 +2252,9 @@ static BClassList* CClass_PathCleanup(BClassList* path, TypeClass* tclass) {
 }
 
 void CClass_CheckStaticAccess(BClassList* path, TypeClass* tclass, AccessType access) {
+#if VERSION != VERSION_WII_1_0RC1
     ClassFriend* cfriend;
+#endif
 
     if (path) {
         path = CClass_PathCleanup(path, tclass);
@@ -2214,6 +2275,11 @@ void CClass_CheckStaticAccess(BClassList* path, TypeClass* tclass, AccessType ac
                 return;
             }
 
+#if VERSION == VERSION_WII_1_0RC1
+            if (CClass_HasFriend(tclass)) {
+                return;
+            }
+#else
             for (cfriend = tclass->friends; cfriend; cfriend = cfriend->next) {
                 if (cfriend->isclass) {
                     if (cfriend->u.theclass == cscope_currentclass) {
@@ -2225,6 +2291,7 @@ void CClass_CheckStaticAccess(BClassList* path, TypeClass* tclass, AccessType ac
                     }
                 }
             }
+#endif
         case ACCESSNONE:
             CError_Warning(ERR_ILLEGAL_ACCESS_PROTECTED_PRIVATE_MEMBER);
             return;

@@ -472,7 +472,7 @@ Object* GetDataPoolRoot(Object* obj) {
     ObjGenSymbolLink* pool;
 
     node = MakeSymbolTableEntry(obj);
-    if ((obj->qual & Q_TENTATIVE) && node->elf.st_size == 0) {
+    if (OBJECT_IS_TENTATIVE(obj) && node->elf.st_size == 0) {
         ObjGen_DeclareData(obj, NULL, NULL, obj->type->size);
     }
     pool = link = node->section->symbolLink;

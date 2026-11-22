@@ -29,6 +29,9 @@ extern Boolean SendParserRequest(
     const ToolVersionInfo* build_tool
 );
 extern Boolean SendCompilerRequest(Plugin* plugin, File* file, SInt16 stage);
+#if VERSION == VERSION_WII_1_0RC1
+extern Boolean SendProgramIPARequest(File* output, const CWProgramInput* inputs, UInt32 count);
+#endif
 extern Boolean SendTargetInfoRequest(Target* targ, Plugin* linker, SInt32 dropinflags);
 extern Boolean SendLinkerRequest(Plugin* plugin, SInt32 dropinflags, CWTargetInfo* targetInfo);
 extern Boolean SendDisassemblerRequest(Plugin* linker, File* file);

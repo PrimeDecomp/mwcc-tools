@@ -5,6 +5,11 @@
 #include "driver/CCompiler.h"
 #include "driver/CWSecretPluginCallbacks.h"
 #include "driver/pref_structs.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "driver/CWPluginsPrivate.h"
+#include "driver/Memory.h"
+#include <string.h>
+#endif
 
 static short pref_versions;
 
@@ -21,7 +26,17 @@ void CodeGen_InitBackEndOptions(void) {
     Handle handle;
 
     CWSecretGetNamedPreferences(cparams.context, "PPC EABI CodeGen", &handle);
+#if VERSION == VERSION_WII_1_0RC1
+    {
+        SInt32 size = GetHandleSize(handle);
+        memset(&pb, 0, sizeof(pb));
+        if (size > 0) {
+            memcpy(&pb, *handle, (UInt32)size < sizeof(pb) ? (UInt32)size : sizeof(pb));
+        }
+    }
+#else
     pb = *((PBackEnd*)*handle);
+#endif
     pref_versions = pb.version;
 
     CWSecretGetNamedPreferences(cparams.context, "PPC EABI Project", &handle);
@@ -392,6 +407,15 @@ void CodeGen_InitBackEndOptions(void) {
     copts.use_fp = FALSE;
     copts.soft_float = FALSE;
     copts.fp_contract = FALSE;
+#if VERSION == VERSION_WII_1_0RC1
+    copts.e500_floatingpoint = pb.floatingpoint == PPCFloatingPointSPFP && copts.processor != CPU_PPCGEKKO;
+    copts.e500v2_floatingpoint = pb.floatingpoint == PPCFloatingPointDPFP && copts.processor != CPU_PPCGEKKO;
+    if (pb.floatingpoint) {
+        copts.use_fp = TRUE;
+        copts.soft_float = pb.floatingpoint != PPCFloatingPointHardware;
+        copts.fp_contract = pb.fp_contract;
+    }
+#else
     if (pb.floatingpoint) {
         copts.use_fp = TRUE;
         if (pb.floatingpoint == 1) {
@@ -400,6 +424,7 @@ void CodeGen_InitBackEndOptions(void) {
             copts.fp_contract = pb.fp_contract;
         }
     }
+#endif
     if (copts.processor == CPU_PPCGEKKO) {
         copts.ibm_stackframe = TRUE;
         copts.gecko_float_typecons = FALSE;
@@ -410,6 +435,42 @@ void CodeGen_InitBackEndOptions(void) {
         copts.ibm_stackframe = FALSE;
     }
     copts.altivec_model = pb.altivec;
+#if VERSION == VERSION_WII_1_0RC1
+    copts.spe_vector = copts.processor != CPU_PPCGEKKO && (pb.spe == 2 || pb.spe == 3);
+    copts.spe_addl_vector = copts.spe_vector && pb.spe == 3;
+    if ((copts.e500_floatingpoint || copts.e500v2_floatingpoint) && !copts.spe_vector) {
+        CWReportMessage(
+            cparams.context, NULL,
+            "SPFP and DPFP require support from the SPE vector unit. SPE vector generation is automatically enabled.\n"
+            "To eliminate this message, set vector support to SPE",
+            NULL, messagetypeWarning, 10168
+        );
+        copts.spe_vector = TRUE;
+    }
+    if (copts.e500_floatingpoint && !CPU_IS_SPE(copts.processor)) {
+        CWReportMessage(
+            cparams.context, NULL,
+            "Use of SPFP or #pragma e500_floatingpoint with the current processor will result in undefined behavior.",
+            NULL, messagetypeWarning, 10166
+        );
+    }
+    if (copts.e500v2_floatingpoint && copts.processor != CPU_PPCe500v2) {
+        CWReportMessage(
+            cparams.context, NULL,
+            "Use of DPFP or #pragma e500v2_floatingpoint with the current processor will result in undefined behavior.",
+            NULL, messagetypeWarning, 10167
+        );
+    }
+    if (copts.spe_addl_vector && copts.processor != CPU_PPCZen) {
+        CWReportMessage(
+            cparams.context, NULL,
+            "Additional SPE instructions are not supported in this processor.\n"
+            "Vector generation option is set to SPE.",
+            NULL, messagetypeWarning, 10179
+        );
+        copts.spe_addl_vector = FALSE;
+    }
+#endif
     if (pb.vrsave) {
         copts.altivec_vrsave = TRUE;
     } else {
@@ -424,6 +485,9 @@ void CodeGen_InitBackEndOptions(void) {
     copts.strengthreductionstrict = TRUE;
     copts.bc_range = 0x10000;
     copts.gprfloatcopy = FALSE;
+#if VERSION == VERSION_WII_1_0RC1
+    copts.ppc_no_fp_blockmove = TRUE;
+#endif
 }
 
 void Test_Version_Numbers(void) {}

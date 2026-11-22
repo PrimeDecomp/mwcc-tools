@@ -83,6 +83,9 @@ extern IROLinear* IRO_AssignToTemp(IROExpr* expr);
 extern IROLinear* IRO_FindStart(IROLinear* linear);
 extern IROAddrRecord* IRO_InitAddrRecordPointer(IROLinear* linear);
 extern IROLinear* IRO_HasSideEffect(IROLinear* linear);
+#if VERSION == VERSION_WII_1_0RC1
+extern Boolean IRO_ExprHasFloatingPointEffects(IROLinear* linear);
+#endif
 extern IROLinear* IRO_CheckSideEffect(IROLinear* linear);
 typedef void (*WalkObjFunc)(Object* obj);
 extern void IRO_WalkExcActions(ExceptionAction* action, WalkObjFunc func);

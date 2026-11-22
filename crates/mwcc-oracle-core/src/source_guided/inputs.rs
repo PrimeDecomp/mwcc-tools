@@ -103,10 +103,7 @@ pub fn runtime(request: &CompileRequest) -> Result<Vec<FileInput>> {
             "build/{}/oracle/mwcceppc.exe",
             request.version.name()
         )),
-        root.join(format!(
-            "build/compilers/GC/{}/mwcceppc.exe",
-            request.version.compiler_directory()
-        )),
+        mwcc_project::compilers::stock_executable(&root, request.version),
     ];
     let mut files = BTreeSet::new();
     for path in &paths {
@@ -208,10 +205,7 @@ pub fn capture(
         ),
         (
             "stock",
-            format!(
-                "build/compilers/GC/{}/mwcceppc.exe",
-                request.version.compiler_directory()
-            ),
+            format!("{}/mwcceppc.exe", request.version.stock_directory()),
         ),
     ];
     let mut dependencies = BTreeSet::new();

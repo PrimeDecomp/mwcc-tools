@@ -189,7 +189,38 @@ static void FuncAsm_AddEntryPoint(Statement* stmt, PCodeBlock* block) {
     block->flags |= fEntryPoint;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void FuncAsm_ApplyFrameDirective(const Statement* stmt) {
+    const InlineAsm* directive;
+
+    for (; stmt; stmt = stmt->next) {
+        if (stmt->type != ST_ASM || !stmt->expr) {
+            continue;
+        }
+        directive = (const InlineAsm*)stmt->expr;
+        if (!(directive->flags & IAFlag_Directive)) {
+            return;
+        }
+        if (directive->opcode == IADirective_NoFrAlloc) {
+            asm_alloc_flags[1] = TRUE;
+            user_responsible_for_frame = TRUE;
+            return;
+        }
+        if (directive->opcode == IADirective_FrAlloc) {
+            asm_alloc_flags[0] = TRUE;
+            requires_frame = TRUE;
+            if (directive->argcount) {
+                fralloc_parameter_area_size = directive->args[0].u.imm.value;
+            }
+            return;
+        }
+    }
+}
+
+static void assemble_function(Object* func, Boolean fromIR) {
+#else
 void Assembler(Object* func) {
+#endif
     PCodeBlock* block;
     Statement* stmt;
     Statement* scan;
@@ -248,7 +279,14 @@ void Assembler(Object* func) {
 
     reset_anchor_varinfo();
     InlineAsm_InitializePPC();
-    FuncAsm_PreScanDirectives();
+#if VERSION == VERSION_WII_1_0RC1
+    if (fromIR) {
+        FuncAsm_ApplyFrameDirective(stmt->next);
+    } else
+#endif
+    {
+        FuncAsm_PreScanDirectives();
+    }
 
     disable_optimizer = 1;
 
@@ -268,7 +306,14 @@ void Assembler(Object* func) {
     copts.warn_unusedvar = FALSE;
     copts.warn_unusedarg = FALSE;
 
-    InlineAsm_ScanFunction('}');
+#if VERSION == VERSION_WII_1_0RC1
+    if (fromIR) {
+        InlineAsm_Initialize(AssemblerType_Function);
+    } else
+#endif
+    {
+        InlineAsm_ScanFunction('}');
+    }
 
     expandTOCreferences(&stmt->next);
 
@@ -356,6 +401,10 @@ void Assembler(Object* func) {
                     branch_label(scan->label->pclabel);
                 }
                 break;
+#if VERSION == VERSION_WII_1_0RC1
+            case ST_NOP:
+                break;
+#endif
             default:
                 CError_FATAL(530);
         }
@@ -422,7 +471,11 @@ void Assembler(Object* func) {
                 if (!asm_alloc_flags[7]) {
                     PCodeBlock* save = pclastblock;
                     pclastblock = epilogue;
+#if VERSION == VERSION_WII_1_0RC1
+                    emitpcode(interrupt_return_opcode());
+#else
                     emitpcode(PC_RFI);
+#endif
                     setpcodeflags(fIsVolatile);
                     pclastblock = save;
                     if (asm_alloc_flags[5]) {
@@ -460,6 +513,18 @@ void Assembler(Object* func) {
     CFunc_WarnUnused();
     InlineAsm_setjmp_valid = FALSE;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+void Assembler(Object* func) {
+    assemble_function(func, FALSE);
+}
+
+void Assembler_GenerateIR(Object* func) {
+    AssemblerType savedType = assembler_type;
+    assemble_function(func, TRUE);
+    assembler_type = savedType;
+}
+#endif
 
 void SetupAssembler(void) {
     InlineAsm_setjmp_valid = FALSE;

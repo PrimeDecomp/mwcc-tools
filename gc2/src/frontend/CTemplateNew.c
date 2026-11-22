@@ -981,9 +981,11 @@ static TemplateFunction* CTempl_DeclareTemplateFunction(
     TYPE_FUNC(object->type)->flags |= FUNC_IS_TEMPL;
     object->u.func.u.templ = templ;
 
+#if VERSION != VERSION_WII_1_0RC1
     if (di->qual & Q_INLINE) {
         object->sclass = TK_STATIC;
     }
+#endif
 
     templ->tfunc = object;
     CScope_AddObject(cscope_current, di->name, OBJ_BASE(object));
@@ -1004,7 +1006,9 @@ static void CTempl_ParseTemplateFunction(
     if (tk == '{' || tk == ':' || tk == TK_TRY) {
         if (tclass) {
             object->qual |= Q_INLINE;
+#if VERSION != VERSION_WII_1_0RC1
             object->sclass = TK_STATIC;
+#endif
         }
 
         if (TYPE_FUNC(object->type)->flags & FUNC_DEFINED) {
@@ -1601,6 +1605,9 @@ void CTempl_Parse(TemplClass* templ, AccessType access) {
     UInt8 i;
     short mode;
     Boolean isPartial;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean isFriend = FALSE;
+#endif
     CScopeSave savedScope;
     TemplateScopeState templateScope;
     SInt32 startOffset;
@@ -1657,6 +1664,12 @@ void CTempl_Parse(TemplClass* templ, AccessType access) {
         i++;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (tk == TK_FRIEND && templ) {
+        isFriend = TRUE;
+        tk = lex();
+    }
+#endif
     switch (tk) {
         case TK_CLASS:
             mode = CLASS_MODE_CLASS;
@@ -1671,13 +1684,27 @@ void CTempl_Parse(TemplClass* templ, AccessType access) {
             mode = -1;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (isFriend) {
+        if (mode >= 0) {
+            CTemplClass_ParseFriendClass(templateScope.scope, params, mode);
+        } else {
+            CError_Error(ERR_ILLEGAL_FRIEND_DECLARATION);
+        }
+        goto done;
+    }
+#endif
     if (mode >= 0) {
         classDeclSpec = 0;
         isPartial = FALSE;
 
         CPrep_TokenStreamGetState(&savedState);
         if ((tk = lex()) == TK_UU_DECLSPEC) {
+#if VERSION == VERSION_WII_1_0RC1
+            CDecl_ParseClassDeclSpec(&classDeclSpec, TRUE);
+#else
             CDecl_ParseClassDeclSpec(&classDeclSpec);
+#endif
         }
 
         if (tk == TK_IDENTIFIER) {

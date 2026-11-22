@@ -1,4 +1,7 @@
 #include "driver/CLPluginRequests.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CMiddleLayer.h"
+#endif
 #include "driver/CLDropinCallbacks_V10.h"
 #include "driver/CLErrors.h"
 #include "driver/CLFiles.h"
@@ -194,6 +197,13 @@ Boolean SendCompilerRequest(Plugin* plugin, File* file, SInt16 stage) {
     }
 
     cc->whichfile = file->filenum;
+#if VERSION == VERSION_WII_1_0RC1
+    cc->programInputs = NULL;
+    cc->programInputCount = 0;
+    cc->deferProgramIPA = optsCmdLine.state == OptsCmdLineState_CompileAndLink &&
+                          (stage & CmdLineStageMask_Cg) && !precompiling &&
+                          pGlobalOptimizer.ipa_mode == IPAProgram;
+#endif
     cc->debuginfo = optsCmdLine.debugInfo;
     cc->recordbrowseinfo = file->recordbrowseinfo;
     cc->fileID = file->browseFileID;
@@ -232,6 +242,39 @@ Boolean SendCompilerRequest(Plugin* plugin, File* file, SInt16 stage) {
 
     return (result == cwNoErr);
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+Boolean SendProgramIPARequest(File* output, const CWProgramInput* inputs, UInt32 count) {
+    Plugin* plugin = output->compiler;
+    CWResult result;
+    CWCompilerLinkerContext* cc;
+
+    if (!Plugin_VerifyPanels(plugin)) {
+        return FALSE;
+    }
+    SetupPluginContext(plugin, reqCompile);
+    cc = static_cast<CWCompilerLinkerContext*>(plugin->context);
+    *cc->targetinfo = *gTarg->targetinfo;
+    cc->sourcefile = inputs[0].spec;
+    cc->whichfile = output->filenum;
+    cc->sourcetext = NULL;
+    cc->sourcetextsize = 0;
+    cc->preprocess = FALSE;
+    cc->precompile = FALSE;
+    cc->autoprecompile = FALSE;
+    cc->debuginfo = FALSE;
+    cc->recordbrowseinfo = FALSE;
+    cc->fileID = 0;
+    memset(&cc->browseoptions, 0, sizeof(cc->browseoptions));
+    cc->programInputs = inputs;
+    cc->programInputCount = count;
+    cc->deferProgramIPA = FALSE;
+    result = CallPlugin(plugin);
+    cc->programInputs = NULL;
+    cc->programInputCount = 0;
+    return result == cwNoErr;
+}
+#endif
 
 Boolean SendTargetInfoRequest(Target* targ, Plugin* linker, SInt32 dropinflags) {
     CWResult result;

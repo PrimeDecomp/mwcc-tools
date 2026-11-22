@@ -81,6 +81,9 @@ extern Object* rt_sfpe_f_ulltof;
 
 extern VarInfo* CodeGen_GetNewVarInfo(void);
 extern Object* maketemporary(Type* type);
+#if VERSION == VERSION_WII_1_0RC1
+extern Object* maketemporarynoreuse(Type* type);
+#endif
 typedef void (*ArgumentProcessor)(Object* obj, short reg);
 extern void process_arguments(ArgumentProcessor func, Boolean hasVarargs);
 extern void move_assigned_argument(Object* obj, short reg);

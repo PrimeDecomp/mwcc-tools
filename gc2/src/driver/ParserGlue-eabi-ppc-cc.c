@@ -16,13 +16,21 @@
 #include "driver/ToolHelpers.h"
 #include "driver/ToolHelpers-cc.h"
 #include "driver/WarningHelpers.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CParser.h"
+#include "compiler/CPrepTokenizer.h"
+#endif
 
 PCmdLine pCmdLine = {
     0x1002, 0, 0, 0, 0, FALSE, FALSE, 0, FALSE, FALSE, FALSE, FALSE, 0, 0, 0, FALSE, 2
 };
 PCmdLineCompiler pCmdLineCompiler = {0x1005};
 PCmdLineLinker pCmdLineLinker = {0x1000};
+#if VERSION == VERSION_WII_1_0RC1
+PBackEnd pBackEnd = {0xd, 2, FALSE, TRUE, 0, FALSE, 0, FALSE, {0}, FALSE, 0, FALSE, 1, FALSE, 0x14};
+#else
 PBackEnd pBackEnd = {0xb, 2, FALSE, TRUE, 0, FALSE, 0, FALSE, {0}, FALSE, 0, FALSE, 1, FALSE, 0x14};
+#endif
 // clang-format off
 PLinker pLinker = {5,          FALSE,         0,          FALSE,          FALSE,          FALSE,      FALSE,     FALSE, FALSE, FALSE, FALSE, 0, FALSE, FALSE, FALSE,
                    0x10000,    0x3000,    0,          0,          0x3dfff0,   0x2800000, 0xffe00000, 0x1a, 1, 0,
@@ -82,7 +90,11 @@ static PrefDataPanel stPrefPanels[] = {
 PFrontEndC pFrontEndC = {0xc,  FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, "",    FALSE, FALSE,
                          TRUE, TRUE,  FALSE, FALSE, FALSE, TRUE,  FALSE, FALSE, FALSE, TRUE};
 PWarningC pWarningC = {4};
+#if VERSION == VERSION_WII_1_0RC1
+PGlobalOptimizer pGlobalOptimizer = {1, 0, 0};
+#else
 PGlobalOptimizer pGlobalOptimizer = {1, 0, 1};
+#endif
 
 static int PreParse(void) {
     pLinker.sreceol = TRUE;
@@ -127,6 +139,24 @@ static int PostParse(void) {
     if (!ValidateToolState(TRUE)) {
         return FALSE;
     }
+#if VERSION == VERSION_WII_1_0RC1
+    if (pBackEnd.floatingpoint == PPCFloatingPointSPFP) {
+        if (pBackEnd.processor == CPU_Generic) {
+            pBackEnd.processor = CPU_PPCELF;
+        } else if (!CPU_IS_SPE(pBackEnd.processor)) {
+            CLPReport(CLPStr28_WarningText, "'-fp spfp|efpu' only applies to '-proc e500', '-proc Zen' and '-proc e500v2'");
+        }
+    } else if (pBackEnd.floatingpoint == PPCFloatingPointDPFP) {
+        if (pBackEnd.processor == CPU_Generic) {
+            pBackEnd.processor = CPU_PPCe500v2;
+        } else if (pBackEnd.processor != CPU_PPCe500v2) {
+            CLPReport(CLPStr28_WarningText, "'-fp dpfp' only applies to '-proc e500v2'");
+        }
+    }
+    if (pBackEnd.processor == CPU_PPCGEKKO && pBackEnd.floatingpoint >= PPCFloatingPointSPFP) {
+        pBackEnd.floatingpoint = PPCFloatingPointSoftware;
+    }
+#endif
     if (pBackEnd.use_lmw_stmw && !pProject.endian) {
         CLPReport(
             CLPStr28_WarningText,
@@ -146,8 +176,13 @@ static int PostParse(void) {
 }
 
 // clang-format off
+#if VERSION == VERSION_WII_1_0RC1
+static ParserTool parser = {'Comp', 'c++ ', 'ePPC', 'EABI', 11, prefs, "Freescale C/C++ Compiler for Embedded PowerPC",
+                            "2007", 12, optLists, 11, stPrefPanels, PreParse, MidParse, PostParse};
+#else
 static ParserTool parser = {'Comp', 'c++ ', 'ePPC', 'EABI', 11, prefs, "Metrowerks C/C++ Compiler for Embedded PowerPC",
                             "1998-2000", 12, optLists, 11, stPrefPanels, PreParse, MidParse, PostParse};
+#endif
 // clang-format on
 
 int RegisterStaticParserToolInfo(void) {

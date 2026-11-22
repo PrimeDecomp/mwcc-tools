@@ -560,7 +560,7 @@ impl Validator {
                 );
                 let version = r.number("version")?;
                 ensure!(
-                    (1..=4).contains(&version),
+                    crate::source_arena_probe::supports_source_version(version),
                     "unsupported source compiler version"
                 );
                 self.history.version = Some(version);

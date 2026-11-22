@@ -101,6 +101,9 @@ struct TypeDeduce {
     Boolean processingClassTypes;
     Boolean processingArgument;
     Boolean suppressErrors;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean substitutionFailed;
+#endif
     Boolean hasNewVBases;
     UInt8 nindex;
 };

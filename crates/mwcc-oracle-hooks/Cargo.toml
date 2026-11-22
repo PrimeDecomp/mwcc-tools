@@ -8,11 +8,13 @@ description = "32-bit no_std observation hooks linked into the historical compil
 
 [features]
 trace-output = []
+source-probes = []
 frontend = []
 frontend-gc13 = ["frontend"]
 frontend-gc132 = ["frontend"]
 frontend-gc26 = ["frontend"]
 frontend-gc27 = ["frontend"]
+frontend-wii-rc1 = ["frontend"]
 
 [lib]
 test = false

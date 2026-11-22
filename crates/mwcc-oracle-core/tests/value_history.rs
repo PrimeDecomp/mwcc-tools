@@ -342,6 +342,24 @@ fn missing_ends_counter_discontinuities_and_orphans_are_not_complete() {
         EvaluationState::Indeterminate
     );
 }
+
+#[test]
+fn unavailable_counter_categories_leave_a_complete_counter_history_intact() {
+    let trace = format!(
+        "{BEGIN}pv.gap reason=counter_category_unavailable function=1 role=8\n{}{}",
+        birth(1, 32),
+        end(1, 33).replace(" c0=", " ranges=0 c0=")
+    );
+    let history = value_history::parse(&trace).unwrap();
+    assert_eq!(
+        history.counter_observations.state,
+        EvaluationState::Satisfied
+    );
+    assert_eq!(
+        history.functions[0].range_observations.state,
+        EvaluationState::Indeterminate
+    );
+}
 #[test]
 fn partial_expression_origins_are_retained_as_bytes_with_explicit_scope() {
     let expression = "pv.expression.begin function=1 expression=1 node=123 kind=56 line=9 scope=statement_root complete=0 tree_hex=6e616d653d78\npv.expression.end function=1 expression=1\n";

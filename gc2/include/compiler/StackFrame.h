@@ -14,7 +14,13 @@ extern Boolean dynamic_stack;
 extern Boolean StackFrame_has_vectors;
 extern Object* dummyvaparam;
 extern Object* dummyvalocal;
+#if VERSION == VERSION_WII_1_0RC1
+extern UInt16 interrupt_routine_flags;
+#define CURRENT_INTERRUPT_FLAGS (interrupt_routine_flags)
+#else
 extern struct InterruptGenerationRecord* interrupt_routine_flags;
+#define CURRENT_INTERRUPT_FLAGS (interrupt_routine_flags->flags)
+#endif
 
 extern void init_stack_globals(Object* funcobj);
 extern void init_frame_sizes(Boolean has_varargs);
@@ -23,6 +29,9 @@ extern void assign_locals_to_memory(ObjectList* first);
 extern void compute_frame_sizes(void);
 extern void generate_prologue(PCodeBlock* block, Boolean has_varargs);
 extern void generate_epilogue(PCodeBlock* block, Boolean add_blr);
+#if VERSION == VERSION_WII_1_0RC1
+extern short interrupt_return_opcode(void);
+#endif
 extern void allocate_dynamic_stack_space(
     Boolean isConstantSize, int resultReg, int backChainReg, SInt32 size
 );

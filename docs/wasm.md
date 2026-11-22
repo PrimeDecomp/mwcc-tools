@@ -59,6 +59,42 @@ release (`mwcc-wasm-GC_2_7-VERSION.zip`, `mwcc-wasm-GC_1_3_2-VERSION.zip`, `mwcc
 comparison with the original compiler (the `corpus` commands above, on `tests/fixtures/oracle/sources`) is run
 locally.
 
+## Wii 1.0RC1
+
+From the repository root, build the [Wii 1.0RC1 source port](../gc2/README.md#wii-10rc1-source-port)
+for WebAssembly with Clang, wasm-ld, binaryen and Ninja.
+
+```sh
+mwcc-tools configure --version Wii_1_0RC1
+ninja
+```
+
+This produces `build/Wii_1_0RC1/wasm/mwcceppc.wasm` and `persist.wasm` with their
+version resources. Explicit module consumers such as mwdec can load these paths.
+The regular module can emit program IPA sidecars from source and compile an individual
+`.irobj` sidecar to a PowerPC object using `-ipa program -c`.
+Run `mwcc-tools configure --version Wii_1_0RC1 --oracle` and `ninja` to build
+`oracle.wasm` and the combined, persistent `mwcc.wasm`. Both modules link the
+shared source hooks. Explicit oracle runs for this version use the combined
+module through the logical executable path `build/Wii_1_0RC1/oracle/mwcceppc.exe`.
+The modules emit frontend inlining, backend stage, arena allocation and
+expression-statement traces. The arena and statement validators use RC1's native
+instruction addresses. The persistent module can switch tracing between
+candidates while reusing the parsed context.
+
+`mwcc-tools corpus --version Wii_1_0RC1 --canaries DIR --all-traces --source-nodes`
+compares the traced compiler's objects and diagnostics with stock RC1. A focused
+set of eight C and C++ inputs produced identical results with and without
+instrumentation. Six of those inputs differed from stock RC1 in object sections.
+Set `MWCC_IN_PROCESS=0` to use the source-built Windows oracle at the same logical
+path after building it in `gc2/`. Point `MWCC_ORACLE_ROOT` at the checkout if it
+is set to a different location. The native executable can also be passed to
+`corpus --trace-reference` for a direct trace comparison. Full register provenance
+requires additional native instruction mappings. Both oracles report function
+boundaries, resets, rewinds and register births at the RC1 instructions recovered
+so far. The trace marks unmapped writes and unavailable category ranges explicitly. See the
+[native build instructions](../gc2/README.md#wii-10rc1-source-port).
+
 ## Status
 
 * Canaries (2313), GC 2.7 and 1.3.2: the stock modules give identical objects, messages and exit codes to the

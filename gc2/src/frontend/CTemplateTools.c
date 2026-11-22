@@ -1616,6 +1616,11 @@ static Type* CTemplTool_DeduceArrayCopy(
         if (!deduce->suppressErrors) {
             CError_Error(ERR_ILLEGAL_CONSTANT_EXPRESSION);
         }
+#if VERSION == VERSION_WII_1_0RC1
+        else {
+            deduce->substitutionFailed = TRUE;
+        }
+#endif
     }
 
     return type;
@@ -1719,6 +1724,12 @@ static Type* CTemplTool_DeduceTemplDepType(
                             ))) {
                     return type;
                 } else {
+#if VERSION == VERSION_WII_1_0RC1
+                    if (deduce->suppressErrors) {
+                        deduce->substitutionFailed = TRUE;
+                        return TYPE(&stsignedint);
+                    }
+#endif
                     CError_Error(ERR_NOT_STRUCT_UNION_CLASS_MEMBER, tdt->u.qual.name->name);
                     return TYPE(tdt);
                 }
@@ -1788,6 +1799,12 @@ static Type* CTemplTool_DeduceTemplDepType(
                          ))) {
                         return type;
                     } else {
+#if VERSION == VERSION_WII_1_0RC1
+                        if (deduce->suppressErrors) {
+                            deduce->substitutionFailed = TRUE;
+                            return TYPE(&stsignedint);
+                        }
+#endif
                         CError_Error(ERR_NOT_STRUCT_UNION_CLASS_MEMBER, tdt->u.qual.name->name);
                     }
                 } else {
@@ -1797,6 +1814,12 @@ static Type* CTemplTool_DeduceTemplDepType(
                         tdtCopy->u.qual.type = TYPE_TEMPLATE(type);
                         return TYPE(tdtCopy);
                     } else {
+#if VERSION == VERSION_WII_1_0RC1
+                        if (deduce->suppressErrors) {
+                            deduce->substitutionFailed = TRUE;
+                            return TYPE(&stsignedint);
+                        }
+#endif
                         CError_Error(
                             ERR_ILLEGAL_USE_TEMPLATE_ARGUMENT_DEPENDENT_TYPE, tdt->u.qual.name->name
                         );
@@ -2113,3 +2136,19 @@ Type* CTemplTool_ResolveMemberSelfRefs(TemplClass* templ, Type* type, UInt32* re
 Boolean CTemplTool_IsSameTemplateType(Type* a, Type* b) {
     return CTemplTool_GetSelfRefTemplate(b) == a;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+UInt32 CTTool_Alignment2Quals(UInt32 alignment) {
+    UInt32 qualifiers = Q_ALIGNED_1;
+
+    if (!alignment || alignment > 8192 || (alignment & (alignment - 1))) {
+        CError_Error(ERR_ILLEGAL_CONSTANT_EXPRESSION);
+        return 0;
+    }
+    while (alignment > 1) {
+        alignment >>= 1;
+        qualifiers += Q_ALIGNED_1;
+    }
+    return qualifiers;
+}
+#endif

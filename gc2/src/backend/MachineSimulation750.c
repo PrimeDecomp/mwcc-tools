@@ -1,6 +1,10 @@
 #include "compiler/PCode.h"
 #include "compiler/PCodeInfo.h"
 #include "compiler/Scheduler.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CParser.h"
+#include <string.h>
+#endif
 
 #define latency m750_latency
 #define initialize m750_initialize
@@ -76,7 +80,7 @@ MachineInfo machine750 = {
 };
 // clang-format on
 
-static struct {
+struct InstructionTiming {
     Stage stage;
 
     char latency;
@@ -84,8 +88,15 @@ static struct {
     char cycles[3];
 
     char serializes;
-    // clang-format off
-} instruction_timing[OPCODE_MAX] = {
+};
+
+// clang-format off
+#if VERSION == VERSION_WII_1_0RC1
+static struct InstructionTiming instruction_timing[OPCODE_MAX];
+static const struct InstructionTiming instruction_timing_defaults[OPCODE_MAX] = {
+#else
+static struct InstructionTiming instruction_timing[OPCODE_MAX] = {
+#endif
     BPU,   0,   0,   0,  0,  1,
     BPU,   0,   0,   0,  0,  1,
     BPU,   0,   0,   0,  0,  1,
@@ -557,6 +568,30 @@ static struct {
     BPU,   0,   0,   0,  0,  0,
 };
 // clang-format on
+
+#if VERSION == VERSION_WII_1_0RC1
+void m750_initialize_timing(void) {
+    static Boolean initialized;
+    static const struct InstructionTiming default_timing = {IU1, 1, {1, 0, 0}, 1};
+    int opcode;
+
+    if (initialized) {
+        return;
+    }
+    initialized = TRUE;
+    for (opcode = 0; opcode < OPCODE_MAX; opcode++) {
+        instruction_timing[opcode] = default_timing;
+    }
+    memcpy(instruction_timing, instruction_timing_defaults, PC_DCCCI * sizeof(default_timing));
+    if (copts.processor == CPU_PPCGEKKO) {
+        memcpy(
+            &instruction_timing[PC_PSQ_L],
+            &instruction_timing_defaults[PC_PSQ_L],
+            (PC_PS_MADDS1 - PC_PSQ_L + 1) * sizeof(default_timing)
+        );
+    }
+}
+#endif
 
 static void advance(int firstStage, int oldStage, int newStage) {
     PCode* instr = pipeline[oldStage].instr;

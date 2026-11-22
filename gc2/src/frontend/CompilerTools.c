@@ -42,6 +42,12 @@ static HeapMem bheap;
 static heaperror_t heaperror;
 static short lheaplockcount;
 
+#if VERSION == VERSION_WII_1_0RC1
+#define ROUND_HEAP_REQUEST(size) (((size) + 7) & ~7)
+#else
+#define ROUND_HEAP_REQUEST(size) (((size) & ~7) + 8)
+#endif
+
 #ifdef ORACLE_PROBES
 // (what the arena probes read: a heap, lheap's lock and the original's version)
 struct {
@@ -49,6 +55,7 @@ struct {
     short* lock;
     UInt32 version;
 } OracleRust_ArenaGlobals = {&bheap, &lheaplockcount,
+                             VERSION == VERSION_WII_1_0RC1 ? 6 :
                              VERSION == VERSION_GC_2_7 ? 3 : VERSION == VERSION_GC_1_3_2 ? 2 : 4};
 
 static void MoreHeapSpace(HeapMem* heapp, SInt32 size);
@@ -58,7 +65,7 @@ static void* galloc_at(SInt32 s, UInt32 pair) {
     char* cp;
 
     OracleProbe_ArenaRequest(pair, s, &cp);
-    s = (s & ~7) + 8;
+    s = ROUND_HEAP_REQUEST(s);
     if (gheap.curfree < s) {
         MoreHeapSpace(&gheap, s);
     }
@@ -846,7 +853,7 @@ void* galloc(SInt32 size) {
     char* cp;
 
     ORACLE_PROBE(OracleProbe_ArenaRequest(1, size, &cp));
-    size = (size & ~7) + 8;
+    size = ROUND_HEAP_REQUEST(size);
     if (gheap.curfree < size) {
         MoreHeapSpace(&gheap, size);
     }
@@ -862,7 +869,7 @@ void* lalloc(SInt32 size) {
     char* cp;
 
     ORACLE_PROBE(OracleProbe_ArenaRequest(2, size, &cp));
-    size = (size & ~7) + 8;
+    size = ROUND_HEAP_REQUEST(size);
     if (lheap.curfree < size) {
         MoreHeapSpace(&lheap, size);
     }
@@ -878,7 +885,7 @@ void* aalloc(SInt32 size) {
     char* cp;
 
     ORACLE_PROBE(OracleProbe_ArenaRequest(3, size, &cp));
-    size = (size & ~7) + 8;
+    size = ROUND_HEAP_REQUEST(size);
     if (aheap.curfree < size) {
         MoreHeapSpace(&aheap, size);
     }
@@ -894,7 +901,7 @@ void* oalloc(SInt32 size) {
     char* cp;
 
     ORACLE_PROBE(OracleProbe_ArenaRequest(4, size, &cp));
-    size = (size & ~7) + 8;
+    size = ROUND_HEAP_REQUEST(size);
     if (oheap.curfree < size) {
         MoreHeapSpace(&oheap, size);
     }

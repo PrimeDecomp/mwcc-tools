@@ -26,6 +26,7 @@ class Version:
     index: int
     base: str | None = None
     defines: tuple[str, ...] = ()
+    clang_only: bool = False
 
     @property
     def config(self) -> Path:
@@ -46,9 +47,12 @@ def _read_versions() -> tuple[Version, ...]:
     for name, index in re.findall(r"^#define VERSION_(\w+) (\d+)$", header, re.MULTILINE):
         if name.upper() not in directories:
             raise Error(f"include/version.h defines VERSION_{name}, but config/ has no directory for it")
-        raw = (ROOT / "config" / directories[name.upper()] / "config.json").read_text()
-        base = re.search(r'"derived_from": "(\w+)"', raw)
-        versions.append(Version(directories[name.upper()], int(index), base[1] if base else None))
+        raw = json.loads((ROOT / "config" / directories[name.upper()] / "config.json").read_text())
+        versions.append(
+            Version(
+                directories[name.upper()], int(index), raw.get("derived_from"), clang_only=raw.get("clang_only", False)
+            )
+        )
     if sorted(v.index for v in versions) != list(range(len(versions))):
         raise Error("include/version.h: the VERSION_* indices are not 0, 1, 2, ...")
     indices = {v.name: v.index for v in versions}
@@ -64,15 +68,18 @@ def _read_versions() -> tuple[Version, ...]:
     return tuple(sorted(versions, key=lambda v: (v.index, bool(v.defines))))
 
 
-ALL_VERSIONS = _read_versions()
+CLANG_VERSIONS = _read_versions()
+ALL_VERSIONS = tuple(v for v in CLANG_VERSIONS if not v.clang_only)
 VERSIONS = tuple(v for v in ALL_VERSIONS if v.base is None)
 DERIVED = tuple(v for v in ALL_VERSIONS if v.base is not None)
 
 
 def version(name: str | Version | None = None, *, original: bool = False) -> Version:
-    found = name if isinstance(name, Version) else next((v for v in ALL_VERSIONS if v.name == (name or PRIMARY)), None)
+    found = (
+        name if isinstance(name, Version) else next((v for v in CLANG_VERSIONS if v.name == (name or PRIMARY)), None)
+    )
     if found is None:
-        raise Error(f"unknown version {name!r} (one of {', '.join(v.name for v in ALL_VERSIONS)})")
+        raise Error(f"unknown version {name!r} (one of {', '.join(v.name for v in CLANG_VERSIONS)})")
     if original and found.base:
         raise Error(
             f"{found} is derived from {found.base} and has no original executable: only its compiler from the sources "

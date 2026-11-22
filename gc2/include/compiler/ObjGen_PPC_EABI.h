@@ -40,7 +40,11 @@ struct InterruptGenerationRecord {
     UInt16 constSection;
     UInt16 sconstSection;
     UInt16 sdataSection;
+#if VERSION == VERSION_WII_1_0RC1
+    UInt16 flags;
+#else
     UInt8 flags;
+#endif
 };
 enum {
     InterruptRecord_Interrupt = 1,
@@ -55,7 +59,15 @@ enum {
     Interrupt_DSISR = 0x10,
     Interrupt_FPRs = 0x20,
     Interrupt_VRs = 0x40,
-    Interrupt_NoWarn = 0x80
+    Interrupt_NoWarn = 0x80,
+#if VERSION == VERSION_WII_1_0RC1
+    Interrupt_Noncritical = 0x100,
+    Interrupt_Critical = 0x200,
+    Interrupt_Machine = 0x400,
+    Interrupt_Debug = 0x800,
+    Interrupt_Mode = 0xf00,
+    Interrupt_SPE = 0x1000
+#endif
 };
 #pragma pack(pop)
 enum {
@@ -160,6 +172,19 @@ extern UInt8 ok_to_compress;
 extern void ELF_Setup(void);
 extern void ObjGen_Setup(void);
 extern void ObjGen_Finish(void);
+#if VERSION == VERSION_WII_1_0RC1
+typedef struct PrecompilerSectionMap {
+    UInt32 attributeCount;
+    UInt32 selectorCount;
+    UInt16* attributes;
+    UInt16* selectors;
+} PrecompilerSectionMap;
+
+extern void CodeGen_WritePrecompilerData(GList* output);
+extern Boolean CodeGen_ReadPrecompilerData(
+    const UInt8* data, UInt32 size, PrecompilerSectionMap* remap
+);
+#endif
 extern void ObjGen_Cleanup(void);
 extern void ObjGen_CodeCleanup(void);
 extern void ObjGen_SetupSym(void);
@@ -199,7 +224,11 @@ extern void PPC_EABI_SetSection(Object* object, SInt32 size, Boolean isConst, Bo
 extern short GetCurrentSection(short kind);
 extern short pseudo_section_index(short key);
 extern SInt16 update_section(Object* func);
+#if VERSION == VERSION_WII_1_0RC1
+extern UInt16 GetInterruptRoutineFlags(Object* obj);
+#else
 extern InterruptGenerationRecord* GetInterruptRoutineFlags(Object* obj);
+#endif
 extern InterruptGenerationRecord* get_current_pseudo_section_info(void);
 extern void Finish_Pragma_Section(SectionRec* section);
 extern Boolean is_illegal_abs_section_name(char* name);

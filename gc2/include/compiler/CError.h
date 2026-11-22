@@ -322,6 +322,7 @@ extern TStreamElement* cerror_locktoken;
 
 extern void CError_Init(void);
 extern void CError_SetErrorToken(TStreamElement* token);
+extern void CError_SetNullErrorToken(void);
 extern void CError_LockErrorPos(TStreamElement* token, TStreamElement** saved);
 extern void CError_UnlockErrorPos(TStreamElement** saved);
 extern void CError_ResetErrorSkip(void);

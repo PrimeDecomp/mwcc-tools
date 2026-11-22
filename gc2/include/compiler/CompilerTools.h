@@ -39,6 +39,7 @@ extern void (*GListErrorProc)(void);
 extern short InitGList(GList* gl, SInt32 size);
 extern void FreeGList(GList* gl);
 extern void LockGList(GList* gl);
+extern void UnlockGList(GList* gl);
 extern void ShrinkGList(GList* gl);
 extern void AppendGListData(GList* gl, const void* data, SInt32 size);
 extern void AppendGListNoData(GList* gl, SInt32 size);

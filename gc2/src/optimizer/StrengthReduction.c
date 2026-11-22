@@ -3,6 +3,9 @@
 #include "compiler/CError.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/LoopDetection.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/Operands.h"
+#endif
 #include "compiler/PCode.h"
 #include "compiler/PCodeInfo.h"
 #include "compiler/Registers.h"
@@ -354,6 +357,9 @@ static void initializeinductionvariable(InductionVar* iv) {
         insertpcodebefore(preheader->lastPCode, instr);
     } else {
         value = biv->initializer->args[1].data.imm.value * iv->step;
+#if VERSION == VERSION_WII_1_0RC1
+        insert_load_immediate_after(biv->initializer, iv->destination_register, value);
+#else
         if (!FITS_IN_SHORT(value)) {
             instr = makepcode(PC_LIS, iv->destination_register, 0, HIGH_PART(value));
             insertpcodeafter(biv->initializer, instr);
@@ -373,18 +379,26 @@ static void initializeinductionvariable(InductionVar* iv) {
             instr = makepcode(PC_LI, iv->destination_register, value);
             insertpcodeafter(biv->initializer, instr);
         }
+#endif
     }
 }
 
 static void incrementinductionvariable(InductionVar* iv) {
     SInt32 value;
     BasicInductionVar* biv;
+#if VERSION != VERSION_WII_1_0RC1
     PCode* instr;
+#endif
     InstrList* list;
 
     biv = iv->basicVar;
     value = iv->step * biv->step;
     for (list = biv->instrs; list; list = list->next) {
+#if VERSION == VERSION_WII_1_0RC1
+        insert_add_immediate_after(
+            list->instr, iv->destination_register, iv->destination_register, value
+        );
+#else
         if (!FITS_IN_SHORT(value)) {
             instr = makepcode(
                 PC_ADDIS, iv->destination_register, iv->destination_register, 0, HIGH_PART(value)
@@ -402,6 +416,7 @@ static void incrementinductionvariable(InductionVar* iv) {
                 makepcode(PC_ADDI, iv->destination_register, iv->destination_register, 0, value);
             insertpcodeafter(list->instr, instr);
         }
+#endif
     }
 }
 

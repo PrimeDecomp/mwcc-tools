@@ -44,7 +44,7 @@ static inline void LoadFloatArg(int reg) {
     } u;
 
     u.f = one_point_zero.data.value;
-    insert_load_immediate_after(reg, u.l);
+    load_immediate_SFPE(reg, u.l);
 }
 
 static inline void LoadFloatArgGPR(int reg) {
@@ -58,8 +58,8 @@ static inline void LoadDoubleArg(int reg1, int reg2) {
     } v;
 
     v.f = one_point_zero;
-    insert_load_immediate_after(reg2, v.i.lo);
-    insert_load_immediate_after(reg1, v.i.hi);
+    load_immediate_SFPE(reg2, v.i.lo);
+    load_immediate_SFPE(reg1, v.i.hi);
     if (reg2 != high_reg2) {
         emitpcode(PC_MR, high_reg2, reg2);
     }
@@ -67,6 +67,125 @@ static inline void LoadDoubleArg(int reg1, int reg2) {
         emitpcode(PC_MR, low_reg2, reg1);
     }
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static void SFPE_increment_double(short packedReg, Boolean decrement, short outputReg) {
+    static const UInt32 one[] = {0x3FF00000, 0};
+    short literal = ALLOC_GPR();
+    load_imm_vector(literal, one);
+    emitpcode(decrement ? PC_EFDSUB : PC_EFDADD, outputReg, packedReg, literal);
+}
+
+static short SFPE_spe_opcode(ENodeType operation, Boolean wide) {
+    switch (operation) {
+        case EADD: return wide ? PC_EFDADD : PC_EFSADD;
+        case ESUB: return wide ? PC_EFDSUB : PC_EFSSUB;
+        case EMUL: return wide ? PC_EFDMUL : PC_EFSMUL;
+        case EDIV: return wide ? PC_EFDDIV : PC_EFSDIV;
+        default:
+            CError_FATAL(97);
+            return PC_INVALID;
+    }
+}
+
+static void SFPE_multiply_add(short opcode, ENode* mul, ENode* addend, short outputReg, Operand* output) {
+    ENode* left = mul->data.diadic.left;
+    ENode* right = mul->data.diadic.right;
+    Operand productLeft, productRight, accumulator;
+    short reg;
+
+    memclrw(&productLeft, sizeof(productLeft));
+    memclrw(&productRight, sizeof(productRight));
+    memclrw(&accumulator, sizeof(accumulator));
+    if (addend->hascall) {
+        GEN_NODE(addend, &accumulator);
+        ENSURE_GPR(&accumulator, addend->rtype, 0);
+    }
+    GEN_NODE(left, &productLeft);
+    ENSURE_GPR(&productLeft, left->rtype, 0);
+    GEN_NODE(right, &productRight);
+    ENSURE_GPR(&productRight, right->rtype, 0);
+    if (!addend->hascall) {
+        GEN_NODE(addend, &accumulator);
+        ENSURE_GPR(&accumulator, addend->rtype, 0);
+    }
+    reg = ALLOC_GPR();
+    emitpcode(PC_MR, reg, accumulator.reg);
+    emitpcode(opcode, reg, productLeft.reg, productRight.reg);
+    output->optype = OpndType_GPR;
+    output->reg = outputReg ? outputReg : reg;
+    if (output->reg != reg) {
+        emitpcode(PC_MR, output->reg, reg);
+    }
+}
+
+static Boolean SFPE_try_fused(ENode* expr, Boolean negate, short outputReg, Operand* output) {
+    ENode* left;
+    ENode* right;
+
+    if (!copts.spe_addl_vector || !USE_SPE_FLOAT(4) || expr->rtype->size != 4 ||
+        !ENODE_IS2(expr, EADD, ESUB)) {
+        return FALSE;
+    }
+    left = expr->data.diadic.left;
+    right = expr->data.diadic.right;
+    if (ENODE_IS(expr, EADD) && ENODE_IS(right, EMUL)) {
+        SFPE_multiply_add(negate ? PC_EFSNMADD : PC_EFSMADD, right, left, outputReg, output);
+    } else if (ENODE_IS(left, EMUL)) {
+        short opcode = ENODE_IS(expr, EADD) ? (negate ? PC_EFSNMADD : PC_EFSMADD)
+                                          : (negate ? PC_EFSNMSUB : PC_EFSMSUB);
+        SFPE_multiply_add(opcode, left, right, outputReg, output);
+    } else if (!negate && ENODE_IS(expr, ESUB) && ENODE_IS(right, EMUL)) {
+        SFPE_multiply_add(PC_EFSNMSUB, right, left, outputReg, output);
+    } else {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static void SFPE_compare_spe(ENodeType operation, Boolean wide, short left, short right, Operand* output, int branch) {
+    short opcode;
+    Boolean invert;
+
+    switch (operation) {
+        case EEQU:
+        case ENOTEQU:
+            opcode = wide ? PC_EFDTSTEQ : PC_EFSTSTEQ;
+            break;
+        case ELESS:
+        case EGREATEREQU:
+            opcode = wide ? PC_EFDTSTLT : PC_EFSTSTLT;
+            break;
+        case EGREATER:
+        case ELESSEQU:
+            opcode = wide ? PC_EFDTSTGT : PC_EFSTSTGT;
+            break;
+        default:
+            CError_FATAL(120);
+            return;
+    }
+    invert = operation == ENOTEQU || operation == ELESSEQU || operation == EGREATEREQU;
+    emitpcode(opcode, 0, left, right);
+    if (branch) {
+        short flags;
+        output->optype = OpndType_GPR;
+        output->reg = ALLOC_GPR();
+        flags = ALLOC_GPR();
+        emitpcode(PC_MFCR, flags);
+        emitpcode(PC_RLWINM, invert ? flags : output->reg, flags, 2, 30, 31);
+        if (invert) {
+            emitpcode(PC_XORI, output->reg, flags, 1);
+        }
+    } else {
+        if (invert) {
+            emitpcode(PC_CRNOR, 0, 1, 0, 1, 0, 1);
+        }
+        output->optype = OpndType_CRField;
+        output->reg = 0;
+        output->regOffset = EGREATER;
+    }
+}
+#endif
 
 void SFPE_gen_OP(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* left;
@@ -77,8 +196,27 @@ void SFPE_gen_OP(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
     left = expr->data.diadic.left;
     right = expr->data.diadic.right;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (SFPE_try_fused(expr, FALSE, outputReg, output)) {
+        return;
+    }
+#endif
+
     memclrw(&leftOperand, sizeof(leftOperand));
     memclrw(&rightOperand, sizeof(rightOperand));
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (TYPE_IS_DPFP(expr->rtype)) {
+        GEN_NODE(right, &rightOperand);
+        Coerce_to_spe_register(&rightOperand, right->rtype, 0);
+        GEN_NODE(left, &leftOperand);
+        Coerce_to_spe_register(&leftOperand, left->rtype, 0);
+        output->optype = OpndType_GPR;
+        output->reg = outputReg ? outputReg : ALLOC_GPR();
+        emitpcode(SFPE_spe_opcode(expr->type, TRUE), output->reg, leftOperand.reg, rightOperand.reg);
+        return;
+    }
+#endif
 
     if (expr->rtype->size == 4) {
         GEN_NODE(right, &rightOperand);
@@ -92,6 +230,15 @@ void SFPE_gen_OP(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
             Coerce_to_register(&leftOperand, left->rtype, 0);
         }
         CError_ASSERT(161, leftOperand.optype == OpndType_GPR);
+
+#if VERSION == VERSION_WII_1_0RC1
+        if (USE_SPE_FLOAT(4)) {
+            output->optype = OpndType_GPR;
+            output->reg = outputReg ? outputReg : ALLOC_GPR();
+            emitpcode(SFPE_spe_opcode(expr->type, FALSE), output->reg, leftOperand.reg, rightOperand.reg);
+            return;
+        }
+#endif
 
         {
             SInt32 reg = leftOperand.reg;
@@ -174,6 +321,16 @@ void SFPE_gen_OP(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
 }
 
 void SFPE_gen_FLOATCONST(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (TYPE_IS_DPFP(expr->rtype)) {
+        const CInt64 bits = expr->data.intval;
+        const UInt32 words[] = {bits.lo, bits.hi};
+        output->optype = OpndType_GPR;
+        output->reg = outputReg ? outputReg : ALLOC_GPR();
+        load_imm_vector(output->reg, words);
+        return;
+    }
+#endif
     if (expr->rtype->size == 4) {
         union {
             float f;
@@ -182,7 +339,7 @@ void SFPE_gen_FLOATCONST(ENode* expr, short outputReg, short outputRegHi, Operan
         int reg;
         reg = outputReg ? outputReg : ALLOC_GPR();
         u.f = expr->data.floatval.data.value;
-        insert_load_immediate_after(reg, u.l);
+        load_immediate_SFPE(reg, u.l);
         output->optype = OpndType_GPR;
         output->reg = reg;
     } else {
@@ -192,8 +349,8 @@ void SFPE_gen_FLOATCONST(ENode* expr, short outputReg, short outputRegHi, Operan
         reg = outputReg ? outputReg : ALLOC_GPR();
         regHi = outputRegHi ? outputRegHi : ALLOC_GPR();
         v = expr->data.intval;
-        insert_load_immediate_after(regHi, v.lo);
-        insert_load_immediate_after(reg, v.hi);
+        load_immediate_SFPE(regHi, v.lo);
+        load_immediate_SFPE(reg, v.hi);
         output->optype = OpndType_GPRPair;
         output->reg = reg;
         output->regHi = regHi;
@@ -205,6 +362,11 @@ void SFPE_gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* o
     ENode* subexpr;
 
     subexpr = expr->data.monadic;
+#if VERSION == VERSION_WII_1_0RC1
+    if (SFPE_try_fused(subexpr, TRUE, outputReg, output)) {
+        return;
+    }
+#endif
     memclrw(&operand, sizeof(operand));
     if (expr->rtype->size == 4) {
         SInt32 resultReg;
@@ -219,6 +381,15 @@ void SFPE_gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* o
     } else {
         SInt32 resultLowReg, resultHighReg;
         GEN_NODE(subexpr, &operand);
+#if VERSION == VERSION_WII_1_0RC1
+        if (TYPE_IS_DPFP(expr->rtype)) {
+            Coerce_to_spe_register(&operand, subexpr->rtype, 0);
+            output->optype = OpndType_GPR;
+            output->reg = outputReg ? outputReg : ALLOC_GPR();
+            emitpcode(PC_EFDNEG, output->reg, operand.reg);
+            return;
+        }
+#endif
         coerce_to_register_pair(&operand, subexpr->rtype, 0, 0);
         resultHighReg = outputRegHi ? outputRegHi : ALLOC_GPR();
         emitpcode(PC_XORIS, resultHighReg, operand.regHi, 0x8000);
@@ -263,6 +434,17 @@ void SFPE_gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* outp
     if (ENODE_IS(left, EOBJREF) && OBJECT_REG(left->data.objref)) {
         vi = Registers_GetVarInfo(left->data.objref);
         GEN_NODE_TO_REG(right, vi->reg, vi->regHi, &opright);
+#if VERSION == VERSION_WII_1_0RC1
+        if (TYPE_IS_DPFP(type)) {
+            Coerce_to_spe_register(&opright, type, vi->reg);
+            if (opright.reg != vi->reg) {
+                emitpcode(PC_EVMR, vi->reg, opright.reg);
+            }
+            output->optype = OpndType_GPR;
+            output->reg = vi->reg;
+            return;
+        }
+#endif
         if (type->size == 4) {
             ENSURE_GPR(&opright, type, vi->reg);
             if (opright.reg != vi->reg) {
@@ -284,6 +466,25 @@ void SFPE_gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* outp
         }
     } else if (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(type)) {
         GEN_NODE(right, &opright);
+#if VERSION == VERSION_WII_1_0RC1
+        if (TYPE_IS_DPFP(type)) {
+            Boolean postincrement;
+            Coerce_to_spe_register(&opright, type, 0);
+            CError_ASSERT(438, !ENODE_IS(left, EBITFIELD));
+            postincrement = ispostincrementopportunity(left, &opleft, &incval);
+            if (!postincrement) {
+                GEN_NODE(left, &opleft);
+            }
+            indirect(&opleft, left);
+            store_spe(opright.reg, &opleft, type);
+            if (postincrement) {
+                add_register_immediate(opleft.reg, opleft.reg, incval);
+            }
+            output->optype = OpndType_GPR;
+            output->reg = opright.reg;
+            return;
+        }
+#endif
         if (type->size == 4) {
             ENSURE_GPR(&opright, right->rtype, 0);
             if (ispostincrementopportunity(left, &opleft, &incval)) {
@@ -335,6 +536,29 @@ void SFPE_gen_POSTINCDEC(ENode* expr, short outputReg, short outputRegHi, Operan
     memclrw(&operand, sizeof(operand));
     memclrw(&value, sizeof(value));
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (TYPE_IS_DPFP(type)) {
+        output->optype = OpndType_GPR;
+        if (ENODE_IS(inner, EOBJREF) && (sourceReg = OBJECT_REG(inner->data.objref)) != 0) {
+            output->reg = ALLOC_GPR();
+            emitpcode(PC_EVMR, output->reg, sourceReg);
+            SFPE_increment_double(sourceReg, expr->type == EPOSTDEC, sourceReg);
+        } else {
+            short updated;
+            CError_ASSERT(543, !ENODE_IS(inner, EBITFIELD));
+            GEN_NODE(inner, &operand);
+            indirect(&operand, inner);
+            value = operand;
+            Coerce_to_spe_register(&value, type, 0);
+            output->reg = value.reg;
+            updated = ALLOC_GPR();
+            SFPE_increment_double(value.reg, expr->type == EPOSTDEC, updated);
+            store_spe(updated, &operand, type);
+        }
+        return;
+    }
+#endif
+
     if (type->size == 4) {
         if (inner->type == EOBJREF && (sourceReg = OBJECT_REG(inner->data.objref)) != 0) {
             Registers_GetVarInfo(inner->data.objref);
@@ -346,6 +570,12 @@ void SFPE_gen_POSTINCDEC(ENode* expr, short outputReg, short outputRegHi, Operan
             emitpcode(PC_MR, output->reg, sourceReg);
             argumentReg = ALLOC_GPR();
             LoadFloatArg(argumentReg);
+#if VERSION == VERSION_WII_1_0RC1
+            if (USE_SPE_FLOAT(4)) {
+                emitpcode(expr->type == EPOSTINC ? PC_EFSADD : PC_EFSSUB, sourceReg, sourceReg, argumentReg);
+                return;
+            }
+#endif
             if (sourceReg != 3) {
                 emitpcode(PC_MR, 3, sourceReg);
             }
@@ -373,6 +603,14 @@ void SFPE_gen_POSTINCDEC(ENode* expr, short outputReg, short outputRegHi, Operan
             argumentReg = ALLOC_GPR();
             LoadFloatArgGPR(argumentReg);
             emitpcode(PC_MR, output->reg, value.reg);
+#if VERSION == VERSION_WII_1_0RC1
+            if (USE_SPE_FLOAT(4)) {
+                short reg = ALLOC_GPR();
+                emitpcode(expr->type == EPOSTINC ? PC_EFSADD : PC_EFSSUB, reg, value.reg, argumentReg);
+                store(reg, &operand, type);
+                return;
+            }
+#endif
             {
                 SInt32 reg = value.reg;
                 if (reg != 3) {
@@ -465,7 +703,7 @@ void SFPE_gen_INDIRECT(ENode* expr, short outputReg, short outputRegHi, Operand*
     memclrw(&op, sizeof(Operand));
     if (ENODE_IS(inner, EOBJREF) && OBJECT_REG(inner->data.objref)) {
         vi = Registers_GetVarInfo(inner->data.objref);
-        if (type->size == 4) {
+        if (type->size == 4 || TYPE_IS_DPFP(type)) {
             output->optype = OpndType_GPR;
             output->reg = vi->reg;
             output->object = NULL;
@@ -516,6 +754,22 @@ void SFPE_gen_condition(ENode* expr, Operand* output, int branch) {
         CError_FATAL(823);
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (TYPE_IS_DPFP(right->rtype)) {
+        Boolean rightFirst = right->hascall;
+        ENode* first = rightFirst ? right : left;
+        ENode* second = rightFirst ? left : right;
+        Operand* firstOperand = rightFirst ? &rightOperand : &leftOperand;
+        Operand* secondOperand = rightFirst ? &leftOperand : &rightOperand;
+        GEN_NODE(first, firstOperand);
+        Coerce_to_spe_register(firstOperand, first->rtype, 0);
+        GEN_NODE(second, secondOperand);
+        Coerce_to_spe_register(secondOperand, second->rtype, 0);
+        SFPE_compare_spe(expr->type, TRUE, leftOperand.reg, rightOperand.reg, output, branch);
+        return;
+    }
+#endif
+
     if (right->hascall) {
         GEN_NODE(right, &rightOperand);
         ENSURE_GPR(&rightOperand, right->rtype, 0);
@@ -552,6 +806,13 @@ void SFPE_gen_condition(ENode* expr, Operand* output, int branch) {
             861, leftOperand.optype == OpndType_GPR && rightOperand.optype == OpndType_GPR
         );
     }
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (size == 4 && USE_SPE_FLOAT(4)) {
+        SFPE_compare_spe(expr->type, FALSE, leftOperand.reg, rightOperand.reg, output, branch);
+        return;
+    }
+#endif
 
     if (size == 8) {
         masks = used_regs_r3_r6;
@@ -620,6 +881,44 @@ void SFPE_gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* o
     inner = expr->data.monadic;
     srctype = inner->rtype;
     dsttype = expr->rtype;
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_TYPE_INT_OR_ENUM(srctype) && srctype->size <= 4 &&
+        TYPE_IS_SOFT_FLOAT(dsttype) && USE_SPE_FLOAT(dsttype->size)) {
+        Boolean wide = dsttype->size != 4;
+        Boolean isUnsigned = is_unsigned(srctype);
+        short reg = outputReg ? outputReg : ALLOC_GPR();
+        short opcode = wide ? (isUnsigned ? PC_EFDCFUI : PC_EFDCFSI)
+                            : (isUnsigned ? PC_EFSCFUI : PC_EFSCFSI);
+        GEN_NODE(inner, output);
+        if (srctype->size < 4) {
+            extend32(output, srctype, 0);
+        }
+        ENSURE_GPR(output, srctype, 0);
+        emitpcode(opcode, reg, output->reg);
+        output->optype = OpndType_GPR;
+        output->reg = reg;
+        return;
+    }
+    if (IS_TYPE_INT_OR_ENUM(dsttype) && dsttype->size <= 4 &&
+        TYPE_IS_SOFT_FLOAT(srctype) && USE_SPE_FLOAT(srctype->size)) {
+        Boolean wide = srctype->size != 4;
+        Boolean isUnsigned = is_unsigned(dsttype);
+        short reg = outputReg ? outputReg : ALLOC_GPR();
+        short opcode = wide ? (isUnsigned ? PC_EFDCTUIZ : PC_EFDCTSIZ)
+                            : (isUnsigned ? PC_EFSCTUIZ : PC_EFSCTSIZ);
+        GEN_NODE(inner, output);
+        if (wide) {
+            Coerce_to_spe_register(output, srctype, 0);
+        } else {
+            ENSURE_GPR(output, srctype, 0);
+        }
+        emitpcode(opcode, reg, output->reg);
+        output->optype = OpndType_GPR;
+        output->reg = reg;
+        return;
+    }
+#endif
 
     if (IS_TYPE_VOID(dsttype)) {
         PPCError_Error(PPCERR_FLOAT_CHECKED_AT, __FILE__, 1001);
@@ -703,6 +1002,14 @@ void SFPE_gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* o
                 }
             }
             branch_subroutine(rt_sfpe_f_ftod, 0, used_regs_r3);
+#if VERSION == VERSION_WII_1_0RC1
+            if (TYPE_IS_DPFP(dsttype)) {
+                output->optype = OpndType_GPR;
+                output->reg = ALLOC_GPR();
+                emitpcode(PC_EVMERGELO, output->reg, high_reg, low_reg);
+                return;
+            }
+#endif
             lift_result(output, OpndType_GPRPair);
         } else {
             if (dsttype->size != srctype->size) {

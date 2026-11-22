@@ -4,6 +4,9 @@
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CPrepTokenizer.h"
+#endif
 #include "driver/CodeGenOptPPC.h"
 #include "driver/CWPlugins.h"
 #include "driver/CWPluginsPrivate.h"
@@ -108,6 +111,13 @@ static Boolean setup_param_block(CWPluginContext context) {
     if (CWGetTargetName(context, cparams.idetargetname, sizeof(target_name)) != cwNoErr) {
         return FALSE;
     }
+#if VERSION == VERSION_WII_1_0RC1
+    if (CWGetProgramIPAInfo(
+            context, &cparams.programInputs, &cparams.programInputCount, &cparams.deferProgramIPA
+        ) != cwNoErr) {
+        return FALSE;
+    }
+#endif
     return TRUE;
 }
 
@@ -120,6 +130,11 @@ static short store_compile_results(void) {
     if (cparams.browsedata) {
         CWSecretAttachHandle(cparams.context, cparams.browsedata, &cparams.object.browsedata);
     }
+#if VERSION == VERSION_WII_1_0RC1
+    if (cparams.programIR) {
+        CWSecretAttachHandle(cparams.context, cparams.programIR, &cparams.object.programIR);
+    }
+#endif
 
     if (cparams.preprocess) {
         if (cparams.object.objectdata) {
@@ -177,6 +192,11 @@ static void initialize_compiler_options(CompilerLinkerParamBlk* params) {
     copts.RTTI = pFrontEnd.useRTTI;
     copts.oldprefixname = pFrontEnd.oldprefixname;
     copts.multibyteaware = pFrontEnd.multibyteaware;
+#if VERSION == VERSION_WII_1_0RC1
+    copts.source_encoding = pFrontEnd.source_encoding;
+    copts.multibyteaware |= pFrontEnd.source_encoding == SourceEncodingSJIS;
+    copts.inline_bottom_up = !pFrontEnd.inline_top_down;
+#endif
     copts.unsigned_char = pFrontEnd.unsignedchars;
     copts.auto_inline = pFrontEnd.autoinline;
     copts.direct_to_som = pFrontEnd.direct_to_som;
@@ -189,6 +209,10 @@ static void initialize_compiler_options(CompilerLinkerParamBlk* params) {
     copts.defer_codegen = pFrontEnd.defer_codegen;
     copts.inlinemaxsize = 512;
     copts.inlinemaxtotalsize = 7000;
+#if VERSION == VERSION_WII_1_0RC1
+    copts.inlinemaxautosize = 15;
+    copts.inlineforsize = TRUE;
+#endif
 
     CWSecretGetNamedPreferences(cparams.context, "C/C++ Warnings", &prefsdata);
     pWarningC = *((PWarningC*)*prefsdata);
@@ -210,6 +234,9 @@ static void initialize_compiler_options(CompilerLinkerParamBlk* params) {
     pGlobalOptimizer = *((PGlobalOptimizer*)*prefsdata);
 
     copts.optimizationlevel = pGlobalOptimizer.optimizationlevel;
+#if VERSION == VERSION_WII_1_0RC1
+    copts.ipa_mode = pGlobalOptimizer.ipa_mode;
+#endif
     copts.optimizesize = (Boolean)(pGlobalOptimizer.optfor == 1);
 
     copts.crippled = crippled;

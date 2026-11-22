@@ -62,7 +62,8 @@ pub unsafe extern "C" fn instruction(prefix: *const c_char, instruction: *const 
 }
 
 // The opcodes pc.opcode has named (one bit each).
-static mut OPCODES: [u8; 64] = [0; 64];
+const OPCODE_LIMIT: i16 = 1024;
+static mut OPCODES: [u8; OPCODE_LIMIT as usize / 8] = [0; OPCODE_LIMIT as usize / 8];
 
 // What a reader needs to spell an instruction as the compiler's own listings do (MWCC_ORACLE_NAMES): pc.opcode, the
 // first time an opcode is printed, with its name and scheduling rank; pc.object, for each operand that refers to an
@@ -70,7 +71,7 @@ static mut OPCODES: [u8; 64] = [0; 64];
 unsafe fn names(instruction: *const u8, count: i16) {
     unsafe {
         let opcode = read::<i16>(instruction, 32);
-        if (0..512).contains(&opcode) {
+        if (0..OPCODE_LIMIT).contains(&opcode) {
             let seen = ptr::addr_of_mut!(OPCODES)
                 .cast::<u8>()
                 .add(opcode as usize / 8);

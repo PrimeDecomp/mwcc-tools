@@ -1,0 +1,39 @@
+{
+  "original": "../build/compilers/Wii/1.0RC1/mwcceppc.exe",
+  "sha1": "b09e8745e90b88b793cd580576aa1fd11cbdd9ac",
+  "clang_only": true,
+  "extra_sources": {
+    "src/frontend/CPrecTransport.c": {
+      "compiler": "pro6",
+      "flags": []
+    },
+    "src/frontend/CIRStream.c": {
+      "compiler": "pro6",
+      "flags": []
+    },
+    "src/frontend/CIRStreamCallGraph.c": {
+      "compiler": "pro6",
+      "flags": []
+    },
+    "src/frontend/CIRStreamCode.c": {
+      "compiler": "pro6",
+      "flags": []
+    },
+    "src/frontend/CIRStreamTools.c": {
+      "compiler": "pro6",
+      "flags": []
+    },
+    "src/frontend/CIRStreamType.c": {
+      "compiler": "pro6",
+      "flags": []
+    },
+    "src/frontend/CCallGraph.c": {
+      "compiler": "pro6",
+      "flags": []
+    },
+    "src/frontend/CMiddleLayer.c": {
+      "compiler": "pro6",
+      "flags": []
+    }
+  }
+}

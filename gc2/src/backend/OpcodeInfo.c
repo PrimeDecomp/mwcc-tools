@@ -474,7 +474,33 @@ OpcodeInfo opcodeinfo[] = {
     "DOZI",         "=r,r,u5",         3,  2, fOpTypeGPR,                                                                  0x24000000,
     "RLMI",         "+r,r,r,u5,u5",    5,  2, fCanSetRecordBit | fOpTypeGPR,                                               0x58000000,
     "RRIB",         "=r,r,r",          3,  2, fCanSetRecordBit | fOpTypeGPR,                                               0x7C000432,
+#if VERSION == VERSION_WII_1_0RC1
+#define SPE_OPCODE(op, mnemonic, native, format, count, rank, flags, bits, cpus, encoding, width) \
+    #op, format, count, rank, flags, bits,
+#include "compiler/SPEOpcodes.def"
+#undef SPE_OPCODE
+#endif
     "PENTRY",       "",                0,  0, 0,                                                                           0x00000000,
     "PEXIT",        "",                0,  0, 0,                                                                           0x00000000
 };
 // clang-format on
+
+#if VERSION == VERSION_WII_1_0RC1
+const SPEOpcodeInfo spe_opcodeinfo[OPCODE_MAX - PC_EVOR] = {
+#define SPE_OPCODE(op, mnemonic, native, format, count, rank, flags, bits, cpus, encoding, width) \
+    {native, encoding, width},
+#include "compiler/SPEOpcodes.def"
+#undef SPE_OPCODE
+};
+
+Opcode find_spe_opcode(UInt32 nativeOpcode) {
+    switch (nativeOpcode) {
+#define SPE_OPCODE(op, mnemonic, native, format, count, rank, flags, bits, cpus, encoding, width) \
+        case native: return PC_##op;
+#include "compiler/SPEOpcodes.def"
+#undef SPE_OPCODE
+        default:
+            return PC_INVALID;
+    }
+}
+#endif

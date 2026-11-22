@@ -62,7 +62,11 @@ struct DeclInfo {
     CPrepFileInfo* file2;
     SInt32 sourceoffset;
     Boolean firstDeclaration;
+#if VERSION == VERSION_WII_1_0RC1
+    UInt16 interruptflags;
+#else
     UInt8 interruptflags;
+#endif
     ObjRegInfo reginfo;
 };
 
@@ -128,7 +132,11 @@ extern TypeClass* CDecl_DefineClass(
     Boolean asTypeName,
     Boolean addName
 );
+#if VERSION == VERSION_WII_1_0RC1
+extern void CDecl_ParseClassDeclSpec(UInt8* declspec, Boolean templateDeclaration);
+#else
 extern void CDecl_ParseClassDeclSpec(UInt8* declspec);
+#endif
 extern void CDecl_ParseClass(
     DeclInfo* declinfo, short mode, Boolean lexAfterBody, UInt8 class_declspec
 );

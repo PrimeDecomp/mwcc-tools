@@ -282,6 +282,12 @@ struct State {
 }
 
 pub fn parse(text: &str) -> Result<History> {
+    let category_gap = |record: &trace::Record| {
+        record
+            .fields
+            .get("reason")
+            .is_some_and(|v| v == "counter_category_unavailable")
+    };
     let mut history = History {
         format_version: 1,
         functions: vec![],
@@ -305,6 +311,19 @@ pub fn parse(text: &str) -> Result<History> {
             .context("empty provenance record")?;
         r.line = index + 1;
         if r.kind == "pv.gap" {
+            if category_gap(&r) {
+                let function = n(&r, "function")?;
+                ensure!(
+                    stack.last() == Some(&function),
+                    "counter category gap outside its active function"
+                );
+                states
+                    .get_mut(&function)
+                    .context("unknown function observation")?
+                    .ranges_valid = false;
+                history.gaps.push(r);
+                continue;
+            }
             for active in &stack {
                 if let Some(state) = states.get_mut(active) {
                     state.valid = false;
@@ -844,7 +863,7 @@ pub fn parse(text: &str) -> Result<History> {
     if !history.functions.is_empty()
         && stack.is_empty()
         && history.orphans.is_empty()
-        && history.gaps.is_empty()
+        && history.gaps.iter().all(category_gap)
         && history
             .functions
             .iter()

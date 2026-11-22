@@ -16,6 +16,21 @@ use std::{
     sync::OnceLock,
 };
 
+#[path = "../../mwcc-oracle-hooks/src/wii_rc1_arena.rs"]
+mod wii_rc1;
+
+pub(crate) fn supports_source_version(version: u8) -> bool {
+    version_name(version).is_some() || version == wii_rc1::VERSION
+}
+
+pub(crate) fn rounded_request(version: u8, requested: u32) -> Option<u32> {
+    if version == wii_rc1::VERSION {
+        wii_rc1::rounded(requested)
+    } else {
+        (requested & !7).checked_add(8)
+    }
+}
+
 pub const HANDLER: &str = "_OracleRust_ArenaProbeV1";
 pub const GLOBALS: &str = "_OracleRust_ArenaGlobals";
 
@@ -196,6 +211,12 @@ const PAIRS: &[Pair] = &[
 ];
 /// Canonical retail coordinate validation; does not touch the filesystem.
 pub fn valid_site(version: u8, pair: u8, commit: bool, site: u32) -> bool {
+    if version == wii_rc1::VERSION {
+        return pair
+            .checked_sub(1)
+            .and_then(|p| wii_rc1::SITES.get(usize::from(p)))
+            .is_some_and(|&(request, end)| site == if commit { end } else { request });
+    }
     let Some(c) = version_name(version).and_then(|v| catalogs().get(v)) else {
         return false;
     };
@@ -208,6 +229,9 @@ pub fn valid_site(version: u8, pair: u8, commit: bool, site: u32) -> bool {
         .is_some_and(|g| g.address + if commit { p.commit } else { p.request } == site)
 }
 pub fn valid_callback_site(version: u8, site: u32) -> bool {
+    if version == wii_rc1::VERSION {
+        return site == wii_rc1::CALLBACK;
+    }
     version_name(version)
         .and_then(|v| catalogs().get(v))
         .and_then(|c| {

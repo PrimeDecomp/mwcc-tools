@@ -149,14 +149,14 @@ unsafe extern "C" fn CTemplateNew_InstantiateFunction(
     }
 }
 // Read EIP before any Rust prologue, just as the C wrapper's [ebp+4] does.
-#[cfg(target_arch = "x86")]
+#[cfg(all(target_arch = "x86", not(feature = "source-probes")))]
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn fn_0050f240(_object: *const u8) {
     core::arch::naked_asm!("push dword ptr [esp]", "push dword ptr [esp + 8]", "call {handler}", "add esp, 8", "ret", handler = sym emit);
 }
 // (WebAssembly has no return address to read)
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", feature = "source-probes"))]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn fn_0050f240(object: *const u8) {
     unsafe { emit(object, 0) }

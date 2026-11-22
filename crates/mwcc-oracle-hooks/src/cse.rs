@@ -246,14 +246,17 @@ unsafe fn propagation(kind: &CStr, index: i32) {
         );
     }
 }
-#[cfg(target_arch = "x86")]
+#[cfg(all(target_arch = "x86", not(feature = "source-probes")))]
 #[unsafe(naked)]
 #[unsafe(export_name = "IroDump_Print")]
 unsafe extern "C" fn dump_print(_message: *const c_char) {
     core::arch::naked_asm!("lea eax, [esp + 8]", "push eax", "push dword ptr [esp + 8]", "call {handler}", "add esp, 8", "ret", handler = sym dump);
 }
 // (WebAssembly: wasm/src/oracle.c's variadic IroDump_Print passes its va_list, a pointer to the arguments)
-#[cfg_attr(target_arch = "wasm32", unsafe(export_name = "IroDump_PrintArguments"))]
+#[cfg_attr(
+    any(target_arch = "wasm32", feature = "source-probes"),
+    unsafe(export_name = "IroDump_PrintArguments")
+)]
 unsafe extern "C" fn dump(message: *const c_char, args: *const u8) {
     unsafe {
         if strncmp(message, c"Moving common sub".as_ptr(), 17) == 0 {

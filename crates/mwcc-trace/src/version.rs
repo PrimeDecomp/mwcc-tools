@@ -24,6 +24,8 @@ pub enum Version {
     Gc26,
     #[serde(rename = "GC_2_7")]
     Gc27,
+    #[serde(rename = "Wii_1_0RC1")]
+    Wii10Rc1,
 }
 
 impl Version {
@@ -38,6 +40,7 @@ impl Version {
             "GC_1_3_2" | "GC/1.3.2" => Ok(Self::Gc132),
             "GC_2_6" | "GC/2.6" => Ok(Self::Gc26),
             "GC_2_7" | "GC/2.7" => Ok(Self::Gc27),
+            "Wii_1_0RC1" | "Wii/1.0RC1" => Ok(Self::Wii10Rc1),
             _ => bail!("unsupported oracle compiler version {text}"),
         }
     }
@@ -53,6 +56,7 @@ impl Version {
             Self::Gc132 => "GC_1_3_2",
             Self::Gc26 => "GC_2_6",
             Self::Gc27 => "GC_2_7",
+            Self::Wii10Rc1 => "Wii_1_0RC1",
         }
     }
 
@@ -67,7 +71,13 @@ impl Version {
             Self::Gc132 => "1.3.2",
             Self::Gc26 => "2.6",
             Self::Gc27 => "2.7",
+            Self::Wii10Rc1 => "1.0RC1",
         }
+    }
+
+    pub fn stock_directory(self) -> String {
+        let family = if self == Self::Wii10Rc1 { "Wii" } else { "GC" };
+        format!("build/compilers/{family}/{}", self.compiler_directory())
     }
 
     pub fn has_oracle(self) -> bool {
@@ -125,7 +135,23 @@ pub fn opcode_names(version: Version) -> &'static BTreeMap<i32, String> {
     }
     static NEW: LazyLock<BTreeMap<i32, String>> = LazyLock::new(|| names(true));
     static OLD: LazyLock<BTreeMap<i32, String>> = LazyLock::new(|| names(false));
-    if version.has_oracle() { &NEW } else { &OLD }
+    static WII: LazyLock<BTreeMap<i32, String>> = LazyLock::new(|| {
+        include_str!("../../../gc2/include/compiler/PCodeInfo.h")
+            .lines()
+            .filter_map(|line| {
+                let (name, value) = line.trim().trim_end_matches(',').split_once(" = ")?;
+                Some((
+                    value.parse().ok()?,
+                    name.strip_prefix("PC_")?.to_lowercase(),
+                ))
+            })
+            .collect()
+    });
+    match version {
+        Version::Wii10Rc1 => &WII,
+        _ if version.has_oracle() => &NEW,
+        _ => &OLD,
+    }
 }
 
 pub fn function_at(version: Version, address: u32) -> Option<&'static str> {
@@ -157,11 +183,14 @@ pub fn function_at(version: Version, address: u32) -> Option<&'static str> {
         LazyLock::new(|| table(include_str!("../../../config/GC_2_6/symbols.txt")));
     static GC27: LazyLock<Vec<Function>> =
         LazyLock::new(|| table(include_str!("../../../config/GC_2_7/symbols.txt")));
+    static WII_RC1: LazyLock<Vec<Function>> =
+        LazyLock::new(|| table(include_str!("../../../gc2/research/Wii_1_0RC1/symbols.txt")));
     let functions = &match version {
         Version::Gc13 => &*GC13,
         Version::Gc132 => &*GC132,
         Version::Gc26 => &*GC26,
         Version::Gc27 => &*GC27,
+        Version::Wii10Rc1 => &*WII_RC1,
         _ => return None,
     };
     containing(functions, address)
@@ -243,4 +272,21 @@ pub fn enode_names() -> &'static BTreeMap<i64, String> {
             .collect()
     });
     &NAMES
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wii_rc1_uses_its_own_symbols_and_opcode_table() {
+        let version = Version::parse("Wii/1.0RC1").unwrap();
+        assert_eq!(Version::parse(version.name()).unwrap(), version);
+        assert_eq!(version.stock_directory(), "build/compilers/Wii/1.0RC1");
+        assert_eq!(
+            function_at(version, 0x00558904),
+            Some("CInline_CallGraphInlining")
+        );
+        assert_eq!(opcode_names(version)[&440], "ps_madds1");
+    }
 }

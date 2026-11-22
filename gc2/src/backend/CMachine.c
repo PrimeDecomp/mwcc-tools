@@ -136,6 +136,24 @@ TypeStruct stvectorpixel = {TYPESTRUCT, 16, NULL, &stVUS_unsignedshort0, STRUCT_
 TypeStruct stvector = {TYPESTRUCT, 16, NULL, NULL, STRUCT_VECTOR_UINT, 16};
 // clang-format on
 
+#if VERSION == VERSION_WII_1_0RC1
+static StructMember spe_members[SPEBuiltinTypeCount - 1][4];
+TypeStruct stspevector[SPEBuiltinTypeCount] = {
+    {TYPESTRUCT, 8, NULL, spe_members[0], STRUCT_SPE_U16, 8},
+    {TYPESTRUCT, 8, NULL, spe_members[1], STRUCT_SPE_S16, 8},
+    {TYPESTRUCT, 8, NULL, spe_members[2], STRUCT_SPE_U32, 8},
+    {TYPESTRUCT, 8, NULL, spe_members[3], STRUCT_SPE_S32, 8},
+    {TYPESTRUCT, 8, NULL, spe_members[4], STRUCT_SPE_U64, 8},
+    {TYPESTRUCT, 8, NULL, spe_members[5], STRUCT_SPE_S64, 8},
+    {TYPESTRUCT, 8, NULL, spe_members[6], STRUCT_SPE_FS, 8},
+    {TYPESTRUCT, 8, NULL, spe_members[2], STRUCT_SPE_U32, 8}
+};
+const char* const spe_type_names[SPEBuiltinTypeCount] = {
+    "__ev64_u16__", "__ev64_s16__", "__ev64_u32__", "__ev64_s32__",
+    "__ev64_u64__", "__ev64_s64__", "__ev64_fs__", "__ev64_opaque__"
+};
+#endif
+
 static SInt32 cmach_structoffset;
 static UInt8 cmach_structalign;
 static short cmach_curbfsize;
@@ -196,6 +214,15 @@ SInt32 CMach_ArgumentAlignment(Type* type) {
     UInt8 save_oldalignment;
     SInt32 align;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_TYPE_STRUCT(type)) {
+        return TYPE_STRUCT(type)->align;
+    }
+    if (IS_TYPE_CLASS(type)) {
+        return TYPE_CLASS(type)->align;
+    }
+#endif
+
     save_align_mode = copts.structalignment;
     save_oldalignment = copts.oldalignment;
     copts.structalignment = AlignMode2_PPC;
@@ -204,25 +231,39 @@ SInt32 CMach_ArgumentAlignment(Type* type) {
     copts.structalignment = save_align_mode;
     copts.oldalignment = save_oldalignment;
 
+#if VERSION != VERSION_WII_1_0RC1
     if (type->type == TYPESTRUCT && !TYPE_STRUCT(type)->members) {
         return (TYPE_STRUCT(type)->align > align) ? TYPE_STRUCT(type)->align : align;
     }
+#endif
     return align;
 }
 
 SInt32 CMach_AllocationAlignment(Type* type, UInt32 qual) {
     SInt32 align;
     SInt32 tmpalign;
+#if VERSION == VERSION_WII_1_0RC1
+    SInt32 candidate;
+    SInt32 argalign;
+#else
     int argalign;
+#endif
 
     tmpalign = CMach_GetQUALalign(type, qual);
+#if VERSION == VERSION_WII_1_0RC1
+    if (copts.legacy_struct_alignment) {
+        return tmpalign ? tmpalign : CMach_GetQualifiedTypeAlign(type, TRUE);
+    }
+#endif
     align = CMach_GetQualifiedTypeAlign(type, TRUE);
     if (tmpalign > align) {
         align = tmpalign;
     }
+#if VERSION != VERSION_WII_1_0RC1
     if ((argalign = CMach_ArgumentAlignment(type)) > align) {
         align = argalign;
     }
+#endif
 
     switch (type->type) {
         case TYPEVOID:
@@ -237,6 +278,25 @@ SInt32 CMach_AllocationAlignment(Type* type, UInt32 qual) {
         align = tmpalign;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if ((IS_TYPE_STRUCT(type) && !IS_TYPE_VECTOR(type)) || IS_TYPE_CLASS(type) ||
+        IS_TYPE_ARRAY(type) || IS_TYPE_12BYTES_MEMBERPOINTER(type)) {
+        if (copts.min_struct_alignment > align) {
+            align = copts.min_struct_alignment;
+        }
+    }
+    for (candidate = align * 2; candidate <= 8; candidate *= 2) {
+        if ((type->size & (candidate - 1)) == 0) {
+            align = candidate;
+        }
+    }
+    if (align < 8) {
+        argalign = CMach_ArgumentAlignment(type);
+        if (argalign > align) {
+            align = argalign;
+        }
+    }
+#else
     if (copts.optimizationlevel > 0) {
         if (type->type == TYPEARRAY ||
             (type->type == TYPESTRUCT &&
@@ -247,9 +307,30 @@ SInt32 CMach_AllocationAlignment(Type* type, UInt32 qual) {
             return (copts.min_struct_alignment > align) ? copts.min_struct_alignment : align;
         }
     }
+#endif
 
     return align;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+SInt32 CMach_GetObjectAlignment(Object* object) {
+    if (object->datatype == DLOCAL) {
+        VarInfo* info = Registers_GetVarInfo(object);
+        if (info && (info->flags & VarInfoFlag_ParamArea)) {
+            return CMach_ArgumentAlignment(object->type);
+        }
+    }
+    return CMach_AllocationAlignment(object->type, object->qual);
+}
+
+SInt32 CMach_GetCopyAlignment(Type* type, Object* object) {
+    if (object) {
+        return CMach_GetObjectAlignment(object);
+    }
+    return copts.legacy_struct_alignment ? CMach_GetQualifiedTypeAlign(type, FALSE)
+                                         : CMach_AllocationAlignment(type, 0);
+}
+#endif
 
 CInt64 CMach_CalcIntDiadic(Type* type, CInt64 left, short op, CInt64 right) {
     if (is_unsigned(type)) {
@@ -619,6 +700,30 @@ void CMach_InitVectorMem(Type* type, MWVector128 val, void* mem, Boolean endian_
     float f[4];
     int i;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_TYPE_SPE(type)) {
+        int stype = TYPE_STRUCT(type)->stype;
+        UInt8* bytes = mem;
+        for (i = 0; i < 2; i++) {
+            UInt32 word = val.ul[i];
+            if (stype == STRUCT_SPE_U16 || stype == STRUCT_SPE_S16) {
+                us[0] = CTool_EndianConvertWord16((UInt16)word);
+                us[1] = CTool_EndianConvertWord16((UInt16)(word >> 16));
+                memcpy(bytes + 4 * i, us, 4);
+            } else if (stype == STRUCT_SPE_FS) {
+                int byte;
+                for (byte = 0; byte < 4; byte++) {
+                    bytes[4 * i + byte] = (UInt8)(word >> (8 * byte));
+                }
+            } else {
+                word = CTool_EndianConvertWord32(word);
+                memcpy(bytes + 4 * i, &word, sizeof(word));
+            }
+        }
+        return;
+    }
+#endif
+
     switch (type->type) {
         case TYPESTRUCT:
             switch (TYPE_STRUCT(type)->stype) {
@@ -935,6 +1040,9 @@ static SInt16 CMach_GetQualifiedStructAlign(const TypeStruct* tstruct, Boolean q
     if (tstruct->stype >= STRUCT_VECTOR_UCHAR && tstruct->stype <= STRUCT_VECTOR_PIXEL) {
         return 16;
     }
+    if (IS_TYPE_SPE(TYPE(tstruct))) {
+        return 8;
+    }
 
     switch (copts.structalignment) {
         case AlignMode3_1Byte:
@@ -1157,6 +1265,9 @@ static SInt16 CMach_GetQualifiedTypeAlign(Type* type, Boolean qualified) {
         TYPE_STRUCT(type)->stype >= STRUCT_VECTOR_UCHAR &&
         TYPE_STRUCT(type)->stype <= STRUCT_VECTOR_PIXEL) {
         return 16;
+    }
+    if (IS_TYPE_SPE(type)) {
+        return 8;
     }
 
     switch (copts.structalignment) {
@@ -1866,7 +1977,8 @@ Boolean Type_RequiresMemoryReturn(Type* type) {
     switch (type->type) {
         case TYPESTRUCT: {
             stype = TYPE_STRUCT(type)->stype;
-            if (stype >= STRUCT_VECTOR_UCHAR && stype <= STRUCT_VECTOR_PIXEL) {
+            if ((stype >= STRUCT_VECTOR_UCHAR && stype <= STRUCT_VECTOR_PIXEL) ||
+                IS_TYPE_SPE(type)) {
                 return FALSE;
             }
             if (type->size <= 8 && !copts.incompatible_sfpe_double_params) {
@@ -1876,7 +1988,11 @@ Boolean Type_RequiresMemoryReturn(Type* type) {
         }
         case TYPECLASS:
             if (type->size <= 8 &&
+#if VERSION == VERSION_WII_1_0RC1
+                CClass_IsTrivialCopyClass(TYPE_CLASS(type)) &&
+#else
                 (Boolean)(CClass_Constructor(TYPE_CLASS(type)) == NULL) &&
+#endif
                 !copts.incompatible_sfpe_double_params) {
                 return FALSE;
             }
@@ -1891,10 +2007,16 @@ Boolean Type_RequiresMemoryReturn(Type* type) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
 Boolean CMach_PassResultInHiddenArg(Type* type) {
+    return Type_RequiresMemoryReturn(type);
+}
+#endif
+
+Boolean CMach_PassAddressOf(Type* type) {
     switch (type->type) {
         case TYPESTRUCT:
-            if (IS_TYPE_VECTOR(type)) {
+            if (IS_TYPE_VECTOR(type) || IS_TYPE_SPE(type)) {
                 return FALSE;
             }
         case TYPECLASS:
@@ -1963,6 +2085,14 @@ const char* CMach_GetCPU(void) {
             return "__PPCGEKKO__";
         case CPU_PPCELF:
             return "__PPCe500__";
+#if VERSION == VERSION_WII_1_0RC1
+        case CPU_PPCe500v2:
+            return "__PPCe500v2__";
+        case CPU_PPCZen:
+            return "__PPCZen__";
+        case CPU_Generic:
+            return "__PPCGENERIC__";
+#endif
         default:
             return NULL;
     }
@@ -2008,6 +2138,12 @@ Boolean CMach_IsUnsignedType(Type* type) {
 Type* CMach_GetCustomType(short token, short size, short signedness) {
     Type* type;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (CPU_IS_SPE(copts.processor) &&
+        token >= TK_CUSTOM_TYPE_113 && token <= TK_CUSTOM_TYPE_11A) {
+        type = TYPE(&stspevector[token - TK_CUSTOM_TYPE_113]);
+    } else
+#endif
     switch (token) {
         case TK_CUSTOM_TYPE_113:
             type = (Type*)&stcustomtype113;
@@ -2028,6 +2164,13 @@ Type* CMach_GetCustomType(short token, short size, short signedness) {
     }
     return type;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+Boolean CMach_IsSameStructType(Type* a, Type* b) {
+    Type* opaque = TYPE(&stspevector[SPEBuiltinTypeCount - 1]);
+    return a == b || (IS_TYPE_SPE(a) && IS_TYPE_SPE(b) && (a == opaque || b == opaque));
+}
+#endif
 
 #if VERSION < VERSION_GC_2_6
 #if VERSION < VERSION_GC_2_5
@@ -2249,6 +2392,32 @@ void CMach_ReInitRuntimeObjects(void) {
     stVF_float1.name = e1;
     stVF_float2.name = e2;
     stVF_float3.name = e3;
+
+#if VERSION == VERSION_WII_1_0RC1
+    {
+        static Type* const lane_types[] = {
+            TYPE(&stunsignedshort), TYPE(&stsignedshort), TYPE(&stunsignedint),
+            TYPE(&stsignedint), TYPE(&stunsignedlonglong), TYPE(&stsignedlonglong), TYPE(&stfloat)
+        };
+        HashNameNode* indexes[] = {e0, e1, e2, e3};
+        int i;
+        for (i = 0; i < SPEBuiltinTypeCount; i++) {
+            stspevector[i].name = GetHashNameNodeExport(spe_type_names[i]);
+        }
+        for (i = 0; i < SPEBuiltinTypeCount - 1; i++) {
+            Type* lane_type = lane_types[i];
+            int count = 8 / lane_type->size;
+            int lane;
+            for (lane = 0; lane < count; lane++) {
+                StructMember* member = &spe_members[i][lane];
+                member->next = lane + 1 < count ? member + 1 : NULL;
+                member->type = lane_type;
+                member->name = indexes[lane];
+                member->offset = lane * lane_type->size;
+            }
+        }
+    }
+#endif
 }
 
 #define CMACH_SKIP_REGISTER_ARGUMENT() \
@@ -2485,6 +2654,22 @@ void CMach_GetBackEndOptions(struct CInlineBackendOptions* options) {
     options->opt_bcc_lr_ctr = copts.opt_bcc_lr_ctr;
     options->optimizationlevel = copts.optimizationlevel;
     options->optimizesize = copts.optimizesize;
+#if VERSION == VERSION_WII_1_0RC1
+    options->legacy_struct_alignment = copts.legacy_struct_alignment;
+    options->ppc_no_fp_blockmove = copts.ppc_no_fp_blockmove;
+    options->e500_floatingpoint = copts.e500_floatingpoint;
+    options->e500v2_floatingpoint = copts.e500v2_floatingpoint;
+    options->exceptions = copts.exceptions;
+    options->dontinline = copts.dontinline;
+    options->alwaysinline = copts.alwaysinline;
+    options->warn_notinlined = copts.warn_notinlined;
+    options->inline_bottom_up = copts.inline_bottom_up;
+    options->inlinelevel = copts.inlinelevel;
+    options->inlinemaxsize = copts.inlinemaxsize;
+    options->inlinemaxtotalsize = copts.inlinemaxtotalsize;
+    options->gprfloatcopy = copts.gprfloatcopy;
+    options->switch_tables = copts.switch_tables;
+#endif
     options->optimizewithasm = copts.optimizewithasm;
     options->commonsubs = copts.commonsubs;
     options->loopinvariants = copts.loopinvariants;
@@ -2493,6 +2678,9 @@ void CMach_GetBackEndOptions(struct CInlineBackendOptions* options) {
     options->strengthreduction = copts.strengthreduction;
     options->strengthreductionstrict = copts.strengthreductionstrict;
     options->deadcode = copts.deadcode;
+#if VERSION == VERSION_WII_1_0RC1
+    options->removeemptyloops = copts.removeemptyloops;
+#endif
     options->lifetimes = copts.lifetimes;
     options->unrolling = copts.unrolling;
     options->vectorizeloops = copts.vectorizeloops;
@@ -2544,6 +2732,22 @@ void CMach_SetBackEndOptions(struct CInlineBackendOptions* options) {
     copts.opt_bcc_lr_ctr = options->opt_bcc_lr_ctr;
     copts.optimizationlevel = options->optimizationlevel;
     copts.optimizesize = options->optimizesize;
+#if VERSION == VERSION_WII_1_0RC1
+    copts.legacy_struct_alignment = options->legacy_struct_alignment;
+    copts.ppc_no_fp_blockmove = options->ppc_no_fp_blockmove;
+    copts.e500_floatingpoint = options->e500_floatingpoint;
+    copts.e500v2_floatingpoint = options->e500v2_floatingpoint;
+    copts.exceptions = options->exceptions;
+    copts.dontinline = options->dontinline;
+    copts.alwaysinline = options->alwaysinline;
+    copts.warn_notinlined = options->warn_notinlined;
+    copts.inline_bottom_up = options->inline_bottom_up;
+    copts.inlinelevel = options->inlinelevel;
+    copts.inlinemaxsize = options->inlinemaxsize;
+    copts.inlinemaxtotalsize = options->inlinemaxtotalsize;
+    copts.gprfloatcopy = options->gprfloatcopy;
+    copts.switch_tables = options->switch_tables;
+#endif
     copts.optimizewithasm = options->optimizewithasm;
     copts.commonsubs = options->commonsubs;
     copts.loopinvariants = options->loopinvariants;
@@ -2552,6 +2756,9 @@ void CMach_SetBackEndOptions(struct CInlineBackendOptions* options) {
     copts.strengthreduction = options->strengthreduction;
     copts.strengthreductionstrict = options->strengthreductionstrict;
     copts.deadcode = options->deadcode;
+#if VERSION == VERSION_WII_1_0RC1
+    copts.removeemptyloops = options->removeemptyloops;
+#endif
     copts.lifetimes = options->lifetimes;
     copts.unrolling = options->unrolling;
     copts.vectorizeloops = options->vectorizeloops;

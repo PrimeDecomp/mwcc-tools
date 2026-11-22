@@ -1,4 +1,7 @@
 #include "compiler/CParser.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CMiddleLayer.h"
+#endif
 #include "compiler/IroPointerAnalysis.h"
 #include "compiler/IrOptimizer.h"
 #include "compiler/BE_elf.h"
@@ -1450,7 +1453,11 @@ restart:
         case TYPETEMPLATE:
             return CTemplTool_TemplDepTypeCompare(TYPE_TEMPLATE(a), TYPE_TEMPLATE(b));
         case TYPESTRUCT:
+#if VERSION == VERSION_WII_1_0RC1
+            return CMach_IsSameStructType(a, b);
+#else
             return a == b;
+#endif
         case TYPEPOINTER:
             if ((TYPE_POINTER(a)->qual & (Q_RESTRICT | Q_REFERENCE | Q_CONST | Q_VOLATILE)) !=
                 (TYPE_POINTER(b)->qual & (Q_RESTRICT | Q_REFERENCE | Q_CONST | Q_VOLATILE))) {
@@ -2472,6 +2479,36 @@ void CParser_ParseDeclSpec(DeclInfo* declinfo, Boolean unused) {
         declinfo->exportflags |= OBJECT_EXPORT;
         return;
     }
+#if VERSION == VERSION_WII_1_0RC1
+    if (!strcmp("align", tkidentifier->name)) {
+        Type* type = declinfo->thetype;
+        CInt64 alignment;
+        UInt32 quals;
+
+        if ((tk = lex()) != '(') {
+            CError_Error(ERR_LPAREN_EXPECTED);
+            return;
+        }
+        tk = lex();
+        alignment = CExpr_IntegralConstExpr();
+        quals = CTTool_Alignment2Quals(CInt64_GetULong(&alignment));
+        while (type && IS_TYPE_ARRAY(type)) {
+            type = TYPE_POINTER(type)->target;
+        }
+        if (type && IS_TYPE_POINTER_ONLY(type)) {
+            TYPE_POINTER(type)->qual = (TYPE_POINTER(type)->qual & ~Q_ALIGNED_MASK) | quals;
+        } else if (type && IS_TYPE_MEMBERPOINTER(type)) {
+            TYPE_MEMBER_POINTER(type)->qual =
+                (TYPE_MEMBER_POINTER(type)->qual & ~Q_ALIGNED_MASK) | quals;
+        } else {
+            declinfo->qual = (declinfo->qual & ~Q_ALIGNED_MASK) | quals;
+        }
+        if (tk != ')') {
+            CError_Error(ERR_RPAREN_EXPECTED);
+        }
+        return;
+    }
+#endif
     if (!strcmp("internal", tkidentifier->name)) {
         declinfo->exportflags |= OBJECT_INTERNAL;
         return;
@@ -3595,6 +3632,14 @@ static void CParser_GlobalCleanup(Boolean runClassActions) {
     } while (working);
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+void CParser_FlushIPADefinitions(void) {
+    CParser_GlobalCleanup(TRUE);
+    CClass_GenThunks();
+    CInit_DefineTentativeData();
+}
+#endif
+
 Boolean CParser_IsAnonymousUnion(DeclInfo* di, Boolean allowStruct) {
     return IS_TYPE_CLASS(di->thetype) &&
         ((TYPE_CLASS(di->thetype)->mode == CLASS_MODE_UNION ||
@@ -4026,6 +4071,12 @@ void cparser(void) {
 
     CSOM_Cleanup();
     CInit_DefineTentativeData();
+#if VERSION == VERSION_WII_1_0RC1
+    if (CMid_InIPA()) {
+        CMid_Finish();
+        CParser_GlobalCleanup(TRUE);
+    }
+#endif
 }
 
 #ifdef MWCC_PERSIST
@@ -4061,6 +4112,12 @@ void cparser_resume(void) {
 
     CSOM_Cleanup();
     CInit_DefineTentativeData();
+#if VERSION == VERSION_WII_1_0RC1
+    if (CMid_InIPA()) {
+        CMid_Finish();
+        CParser_GlobalCleanup(TRUE);
+    }
+#endif
 }
 
 #undef lex

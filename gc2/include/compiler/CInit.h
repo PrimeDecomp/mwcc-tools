@@ -48,6 +48,10 @@ extern void CInit_InitializeAutoData(
 extern void CInit_InitializeStaticData(Object* obj, InitExprRegisterCB cb);
 extern void CInit_InitializeData(Object* obj);
 extern Object* CInit_DeclareString(char* data, SInt32 size, Boolean ispascal, Boolean iswide);
+#if VERSION == VERSION_WII_1_0RC1
+extern ObjectList* cinit_tentative;
+extern void CInit_RemoveDeadStrings(void);
+#endif
 extern PooledString* CInit_DeclarePooledString(char* data, SInt32 size, Boolean ispascal);
 extern void CInit_RewriteString(ENode* expr, Boolean unused);
 extern void CInit_DeclarePooledStrings(void);

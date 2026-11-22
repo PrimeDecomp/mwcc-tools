@@ -1,5 +1,6 @@
 #include "compiler/IroTransform.h"
 #include "compiler/IroDump.h"
+#include "compiler/IroEval.h"
 #include "compiler/IroLinearForm.h"
 #include "compiler/IroMalloc.h"
 #include "compiler/IroPointerAnalysis.h"
@@ -546,6 +547,22 @@ static void PickCommonsubAtRightRight(IROLinear* expr) {
     ReplaceExprWithLeftChild(expr->u.diadic.right);
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean IsIntegerLimitComparison(IROLinear* constant, ENodeType op) {
+    CInt64 limit;
+
+    if (!IRO_IsIntConstant(constant)) {
+        return FALSE;
+    }
+    if (op == ELESS || op == EGREATEREQU) {
+        limit = IRO_MinValueOfIntegerType(constant->rtype);
+    } else {
+        limit = IRO_MaxValueOfIntegerType(constant->rtype);
+    }
+    return CInt64_Equal(constant->u.node->data.intval, limit);
+}
+#endif
+
 static void DoTransformations11(IROLinear* nd) {
     IROLinear* left;
     IROLinear* right;
@@ -565,6 +582,17 @@ static void DoTransformations11(IROLinear* nd) {
 
         changed = FALSE;
         if (!IRO_HasSideEffect(left) && !IRO_HasSideEffect(right)) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (nd->nodetype >= ELESS && nd->nodetype <= EGREATEREQU &&
+                (IsIntegerLimitComparison(right, nd->nodetype) ||
+                 IsIntegerLimitComparison(left, ComplementaryOp[nd->nodetype])) &&
+                !IRO_ExprHasFloatingPointEffects(left) && !IRO_ExprHasFloatingPointEffects(right)) {
+                ReplaceExprWithConst(nd, (nd->nodetype == ELESSEQU || nd->nodetype == EGREATEREQU)
+                                             ? cint64_one
+                                             : cint64_zero);
+                return;
+            }
+#endif
             if (IRO_IsIntConstant(right) || IRO_IsFloatConstant(right)) {
                 if (IRO_IsConstantZero(right)) {
                     switch (nd->nodetype) {

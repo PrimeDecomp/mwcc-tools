@@ -1,4 +1,8 @@
 #include "compiler/ObjGen_PPC_EABI.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CIRStreamCallGraph.h"
+#include "compiler/CMiddleLayer.h"
+#endif
 #include "compiler/IrOptimizer.h"
 #include "compiler/BE_elf.h"
 #include "compiler/BE_symbol.h"
@@ -233,6 +237,506 @@ void ObjGen_Setup(void) {
     objcodesize = object_storage_size = object_data_size = unused_size = 0;
     IRO_Setup();
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean serializable_section(const ObjGenSection* section) {
+    const ObjGenSection* content =
+        section->kind == SectionKind_Rela ? section->relocations : section;
+    return content && content->kind != SectionKind_Debug && content->kind != SectionKind_Line;
+}
+
+static UInt32 section_record_id(const ObjGenSection* target) {
+    const ObjGenSection* section;
+    UInt32 id = 1;
+
+    if (!target) {
+        return 0;
+    }
+    for (section = ELFfile.section_list; section && section != target; section = section->next) {
+        id += serializable_section(section);
+    }
+    CError_ASSERT(249, section && serializable_section(section));
+    return id;
+}
+
+static UInt8 serialized_addressing_mode(AddressingMode mode) {
+    return mode >= AM_SDA_REL ? mode - 2 : mode;
+}
+
+static void write_record_header(GList* output, UInt32 count, UInt32 stride) {
+    UInt8 header[12];
+
+    CIRStream_WriteWord(header, 1);
+    CIRStream_WriteWord(header + 4, count);
+    CIRStream_WriteWord(header + 8, stride);
+    AppendGListData(output, header, sizeof(header));
+}
+
+static void write_section_record(
+    GList* output, const ObjGenSection* section, UInt32 id, UInt32 name, Boolean builtIn
+) {
+    UInt8 record[CIRStreamBackendSectionSize] = {0};
+    const Elf32_Shdr* shdr = &section->shdr;
+    const ObjGenSection* next = section->next;
+    UInt32 permissions = section->permissions;
+
+    while (next && !serializable_section(next)) {
+        next = next->next;
+    }
+    if (!strcmp(section->name, ".sdata2") || !strcmp(section->name, ".sbss2")) {
+        permissions &= ~1UL;
+    }
+    CIRStream_WriteWord(record, next ? id + 1 : 0);
+    CIRStream_WriteWord(
+        record + 4, section->kind >= SectionKind_Rel ? section->kind + 8 : section->kind
+    );
+    record[5] = section->flags;
+    CIRStream_WriteWord(record + 8, permissions);
+    CIRStream_WriteWord(record + 16, id - 1);
+    record[21] = builtIn &&
+        section->kind != SectionKind_BSS &&
+        section->kind != SectionKind_Rela &&
+        section->kind != SectionKind_Rel;
+    record[23] = (permissions & SHF_EXECINSTR) && section->symbolLink;
+    CIRStream_WriteWord(record + 24, section->symbolLink != NULL);
+    CIRStream_WriteWord(
+        record + 28,
+        section->header ? section->header->index + 1 : section->kind == SectionKind_Null
+    );
+    CIRStream_WriteWord(record + 32, name);
+    CIRStream_WriteWord(record + 36, section->initialSize);
+    CIRStream_WriteWord(record + 48, section->buffer.hndlsize);
+    CIRStream_WriteWord(record + 52, section->buffer.growsize);
+    CIRStream_WriteWord(record + 56, shdr->sh_name);
+    CIRStream_WriteWord(record + 60, shdr->sh_type);
+    CIRStream_WriteWord(record + 64, permissions);
+    CIRStream_WriteWord(record + 68, shdr->sh_addr);
+    CIRStream_WriteWord(record + 72, shdr->sh_offset);
+    CIRStream_WriteWord(record + 76, shdr->sh_size);
+    CIRStream_WriteWord(record + 80, shdr->sh_link);
+    CIRStream_WriteWord(record + 84, shdr->sh_info);
+    CIRStream_WriteWord(record + 88, shdr->sh_addralign);
+    CIRStream_WriteWord(record + 92, shdr->sh_entsize);
+    CIRStream_WriteWord(record + 96, section_record_id(section->relocations));
+    CIRStream_WriteWord(record + 104, section->context);
+    CIRStream_WriteWord(record + 112, section_record_id(section->output));
+    AppendGListData(output, record, sizeof(record));
+}
+
+static void write_section_attributes(GList* output) {
+    const SectionSymbolAttributes* attribute;
+    UInt8 record[CIRStreamBackendSectionAttributeSize] = {0};
+
+    write_record_header(output, ELFfile.section_symbol_attribute_count + 1, sizeof(record));
+    // Index zero represents the null section in the serialized table.
+    CIRStream_WriteWord(record, 2);
+    CIRStream_WriteWord(record + 4, 1);
+    AppendGListData(output, record, sizeof(record));
+    for (attribute = ELFfile.section_symbol_attributes; attribute; attribute = attribute->next) {
+        CIRStream_WriteWord(record, attribute->next ? attribute->next->index + 1 : 0);
+        CIRStream_WriteWord(record + 4, section_record_id(attribute->target));
+        CIRStream_WriteWord(record + 8, attribute->index);
+        record[12] = serialized_addressing_mode(attribute->dataMode);
+        record[13] = serialized_addressing_mode(attribute->codeMode);
+        CIRStream_WriteWord(record + 16, section_record_id(attribute->linkedSymbol));
+        CIRStream_WriteWord(record + 20, section_record_id(attribute->auxiliary));
+        AppendGListData(output, record, sizeof(record));
+    }
+}
+
+static void write_section_sets(GList* output) {
+    SInt32 selector;
+
+    write_record_header(output, -previous_ps_ID, CIRStreamBackendInterruptSize);
+    for (selector = -1; selector >= previous_ps_ID; --selector) {
+        const InterruptGenerationRecord* sectionSet =
+            CodeGen_FindInterruptGenerationRecord(selector);
+        UInt8 record[CIRStreamBackendInterruptSize] = {0};
+
+        CError_ASSERT(330, sectionSet != NULL);
+        CIRStream_WriteWord(record, selector > previous_ps_ID ? -selector * sizeof(record) : 0);
+        CIRStream_WriteWord(record + 4, sectionSet->kind == InterruptRecord_SectionSet ? 2 : 1);
+        CIRStream_WriteWord(record + 8, (SInt16)sectionSet->sectionIndex);
+        CIRStream_WriteWord(record + 12, selector);
+        CIRStream_WriteWord(
+            record + 16,
+            sectionSet->textSection ? sectionSet->textSection : copts.textSection->header->index
+        );
+        CIRStream_WriteWord(
+            record + 20,
+            sectionSet->dataSection ? sectionSet->dataSection : copts.dataSection->header->index
+        );
+        CIRStream_WriteWord(
+            record + 24,
+            sectionSet->constSection ? sectionSet->constSection : copts.constSection->header->index
+        );
+        CIRStream_WriteWord(
+            record + 28,
+            sectionSet->sconstSection ? sectionSet->sconstSection
+                                      : copts.sconstSection->header->index
+        );
+        CIRStream_WriteWord(
+            record + 32,
+            sectionSet->sdataSection ? sectionSet->sdataSection : copts.sdataSection->header->index
+        );
+        CIRStream_WriteWord(record + 36, copts.sdata_threshold);
+        CIRStream_WriteWord(record + 40, copts.sdata2_threshold);
+        AppendGListData(output, record, sizeof(record));
+    }
+}
+
+void CodeGen_WritePrecompilerData(GList* output) {
+    const ObjGenSection* section;
+    const CNameNode* file;
+    UInt32 start = output->size;
+    UInt32 stringSize = 0;
+    UInt32 nameOffset;
+    UInt32 sectionCount = 0;
+    UInt32 fileCount = 0;
+    UInt32 id = 1;
+    UInt32 lastBuiltIn = section_record_id(ELFfile.abs_section);
+    UInt8 header[CIRStreamBackendHeaderSize] = {0};
+    UInt8 defaults[CIRStreamBackendDefaultsSize] = {0};
+    UInt8 strings[8];
+
+    CIRStream_WriteWord(header, 2);
+    CIRStream_WriteWord(header + 4, ELFfile.debug_sections_inited);
+    CIRStream_WriteWord(header + 8, sizeof(header));
+    AppendGListData(output, header, sizeof(header));
+    for (section = ELFfile.section_list; section; section = section->next) {
+        sectionCount += serializable_section(section);
+    }
+    write_record_header(output, sectionCount, CIRStreamBackendSectionSize);
+    for (section = ELFfile.section_list; section; section = section->next) {
+        if (serializable_section(section)) {
+            write_section_record(output, section, id, stringSize, id <= lastBuiltIn);
+            ++id;
+            stringSize += strlen(section->name) + 1;
+        }
+    }
+    nameOffset = stringSize;
+    for (file = AllFiles; file; file = file->next) {
+        stringSize += strlen(file->key->name) + 1;
+        ++fileCount;
+    }
+    CIRStream_WriteWord(header + 12, output->size - start);
+    write_section_attributes(output);
+    CIRStream_WriteWord(header + 16, output->size - start);
+    write_section_sets(output);
+    CIRStream_WriteWord(header + 20, output->size - start);
+
+    CIRStream_WriteWord(defaults, 1);
+    CIRStream_WriteWord(defaults + 4, CIRStreamSectionRoleCount);
+    CIRStream_WriteWord(defaults + 8, copts.textSection->header->index);
+    CIRStream_WriteWord(defaults + 12, copts.dataSection->header->index);
+    CIRStream_WriteWord(defaults + 16, copts.constSection->header->index);
+    CIRStream_WriteWord(defaults + 20, copts.sconstSection->header->index);
+    CIRStream_WriteWord(defaults + 24, copts.sdataSection->header->index);
+    AppendGListData(output, defaults, sizeof(defaults));
+    CIRStream_WriteWord(header + 24, output->size - start);
+
+    CIRStream_WriteWord(strings, 1);
+    CIRStream_WriteWord(strings + 4, stringSize);
+    AppendGListData(output, strings, sizeof(strings));
+    for (section = ELFfile.section_list; section; section = section->next) {
+        if (serializable_section(section)) {
+            AppendGListData(output, section->name, strlen(section->name) + 1);
+        }
+    }
+    for (file = AllFiles; file; file = file->next) {
+        AppendGListData(output, file->key->name, strlen(file->key->name) + 1);
+    }
+    if (stringSize & 3) {
+        const UInt8 zeros[3] = {0};
+        AppendGListData(output, zeros, 4 - (stringSize & 3));
+    }
+    CIRStream_WriteWord(header + 28, output->size - start);
+    write_record_header(output, fileCount, CIRStreamBackendFileSize);
+    for (file = AllFiles; file; file = file->next) {
+        UInt8 record[CIRStreamBackendFileSize];
+
+        CIRStream_WriteWord(record, file->next ? file->next->uid + 1 : 0);
+        CIRStream_WriteWord(record + 4, nameOffset);
+        CIRStream_WriteWord(record + 8, file->uid);
+        CIRStream_WriteWord(record + 12, file->lastLine);
+        AppendGListData(output, record, sizeof(record));
+        nameOffset += strlen(file->key->name) + 1;
+    }
+    CIRStream_WriteWord(header + 32, output->size - start);
+    LockGList(output);
+    memcpy(*output->data + start, header, sizeof(header));
+    UnlockGList(output);
+}
+
+static Boolean read_precompiled_files(const CIRStreamBackendHeader* backend, UInt32* contexts) {
+    UInt32 count = backend->files.size / CIRStreamBackendFileSize;
+    CNameNode* savedFile = CurFile;
+    UInt32 i;
+
+    for (i = 0; i < count; ++i) {
+        const UInt8* record = backend->files.bytes + i * CIRStreamBackendFileSize;
+        const char* name = CIRStream_BackendString(backend, CIRStream_ReadWord(record + 4));
+        UInt32 id = CIRStream_ReadWord(record + 8);
+        if (!name || id >= count || contexts[id]) {
+            CurFile = savedFile;
+            return FALSE;
+        }
+        ObjGen_SrcBreakName(GetHashNameNodeExport(name), 0, FALSE);
+        contexts[id] = CurFile->uid + 1;
+    }
+    CurFile = savedFile;
+    return TRUE;
+}
+
+static ObjGenSection* read_precompiled_section(
+    const CIRStreamBackendHeader* backend,
+    const UInt8* record,
+    ObjGenSection** sections,
+    UInt32 sectionCount,
+    const UInt32* contexts
+) {
+    UInt8 wireKind = record[4];
+    UInt8 kind = wireKind >= 18 ? wireKind - 8 : wireKind;
+    UInt8 flags = record[5];
+    UInt32 permissions = CIRStream_ReadWord(record + 8);
+    UInt32 context = CIRStream_ReadWord(record + 104);
+    UInt32 contextCount = backend->files.size / CIRStreamBackendFileSize;
+    const char* name = CIRStream_BackendString(backend, CIRStream_ReadWord(record + 32));
+    ObjGenSection* section;
+
+    if (!name ||
+        (wireKind >= 10 && wireKind < 18) ||
+        kind > SectionKind_Abs ||
+        (context && (context >= contextCount || !contexts[context]))) {
+        return NULL;
+    }
+    context = context ? contexts[context] - 1 : 0;
+    if (kind == SectionKind_Null) {
+        return ELFfile.null_section;
+    }
+    if (kind == SectionKind_Abs) {
+        return ELFfile.abs_section;
+    }
+    if (kind == SectionKind_Rel || kind == SectionKind_Rela) {
+        UInt32 target = CIRStream_ReadWord(record + 96);
+        if (!target || target > sectionCount || !sections[target]) {
+            return NULL;
+        }
+        section = sections[target]->relocations;
+    } else {
+        section = GetSectionByName(name, context, flags);
+    }
+    if (!section) {
+        UInt32 alignment = CIRStream_ReadWord(record + 88);
+        UInt32 initialSize = CIRStream_ReadWord(record + 36);
+        struct ObjGenSymbolLink* symbols = NULL;
+        char* copy;
+
+        if (alignment > 127 ||
+            initialSize > 0x7fffffff ||
+            (kind != SectionKind_Content &&
+             kind != SectionKind_BSS &&
+             kind != SectionKind_Rel &&
+             kind != SectionKind_Rela &&
+             kind != SectionKind_MWCATS)) {
+            return NULL;
+        }
+        copy = galloc(strlen(name) + 1);
+        strcpy(copy, name);
+        if (CIRStream_ReadWord(record + 24)) {
+            symbols = galloc(sizeof(*symbols));
+            memset(symbols, 0, sizeof(*symbols));
+        }
+        section = InitElfSection(copy, kind, alignment, initialSize, NULL, permissions, symbols);
+        section->context = context;
+        section->flags = flags;
+    }
+    if (section->kind != kind) {
+        return NULL;
+    }
+    // The shared wire writer normalizes these flags to the stock RC1 defaults.
+    if (!strcmp(name, ".sdata2") || !strcmp(name, ".sbss2")) {
+        permissions |= section->permissions & 1;
+    }
+    section->permissions = section->shdr.sh_flags = permissions;
+    return section;
+}
+
+static Boolean read_precompiled_attributes(
+    const CIRStreamBackendHeader* backend,
+    ObjGenSection** sections,
+    UInt32 sectionCount,
+    SectionSymbolAttributes** attributes,
+    PrecompilerSectionMap* remap
+) {
+    UInt32 i;
+
+    for (i = 1; i < remap->attributeCount; ++i) {
+        const UInt8* record =
+            backend->sectionAttributes.bytes + i * CIRStreamBackendSectionAttributeSize;
+        UInt32 target = CIRStream_ReadWord(record + 4);
+        UInt32 linked = CIRStream_ReadWord(record + 16);
+        UInt32 auxiliary = CIRStream_ReadWord(record + 20);
+        UInt8 dataMode = record[12];
+        UInt8 codeMode = record[13];
+
+        if (CIRStream_ReadWord(record + 8) != i ||
+            !target ||
+            target > sectionCount ||
+            linked > sectionCount ||
+            auxiliary > sectionCount ||
+            dataMode > AM_CODE_FAR_ABS - 2 ||
+            codeMode > AM_CODE_FAR_ABS - 2) {
+            return FALSE;
+        }
+        attributes[i] = Initialize_Specific(
+            sections[target],
+            dataMode > AM_NEAR_ABS ? dataMode + 2 : dataMode,
+            codeMode > AM_NEAR_ABS ? codeMode + 2 : codeMode,
+            sections[linked],
+            sections[auxiliary]
+        );
+        remap->attributes[i] = attributes[i]->index;
+    }
+    return TRUE;
+}
+
+static Boolean read_precompiled_selectors(
+    const CIRStreamBackendHeader* backend, PrecompilerSectionMap* remap
+) {
+    InterruptGenerationRecord* entry;
+    UInt32 i;
+
+    if (remap->selectorCount > (UInt32)(0x8000 + previous_ps_ID)) {
+        return FALSE;
+    }
+    for (i = 1; i <= remap->selectorCount; ++i) {
+        remap->selectors[i] = --previous_ps_ID;
+    }
+    for (i = 1; i <= remap->selectorCount; ++i) {
+        const UInt8* record = backend->interrupts.bytes + (i - 1) * CIRStreamBackendInterruptSize;
+        UInt32 kind = CIRStream_ReadWord(record + 4);
+        SInt32 selector = (SInt32)CIRStream_ReadWord(record + 8);
+
+        if ((SInt32)CIRStream_ReadWord(record + 12) != -(SInt32)i ||
+            (kind != 1 && kind != 2) ||
+            selector >= (SInt32)remap->attributeCount ||
+            selector < -(SInt32)remap->selectorCount) {
+            return FALSE;
+        }
+        entry = galloc(sizeof(*entry));
+        memset(entry, 0, sizeof(*entry));
+        entry->id = remap->selectors[i];
+        if (kind == 2) {
+            UInt16 roles[CIRStreamSectionRoleCount];
+            UInt32 j;
+            for (j = 0; j < CIRStreamSectionRoleCount; ++j) {
+                UInt32 index = CIRStream_ReadWord(record + 16 + j * 4);
+                if (index >= remap->attributeCount) {
+                    return FALSE;
+                }
+                roles[j] = remap->attributes[index];
+            }
+            entry->kind = InterruptRecord_SectionSet;
+            entry->textSection = roles[CIRStreamCodeSection];
+            entry->dataSection = roles[CIRStreamDataSection];
+            entry->constSection = roles[CIRStreamConstSection];
+            entry->sconstSection = roles[CIRStreamSmallConstSection];
+            entry->sdataSection = roles[CIRStreamSmallDataSection];
+        } else {
+            entry->kind = InterruptRecord_DeclSpec;
+            entry->sectionIndex =
+                selector < 0 ? remap->selectors[-selector] : remap->attributes[selector];
+        }
+        entry->next = interrupt_generation_records;
+        interrupt_generation_records = entry;
+    }
+    return TRUE;
+}
+
+Boolean CodeGen_ReadPrecompilerData(const UInt8* data, UInt32 size, PrecompilerSectionMap* remap) {
+    CIRStreamReader input = {data, size};
+    CIRStreamBackendHeader backend;
+    UInt32 sectionCount;
+    ObjGenSection** sections;
+    SectionSymbolAttributes** attributes;
+    ObjGenSection* defaults[CIRStreamSectionRoleCount];
+    UInt32* contexts;
+    UInt32 i;
+
+    if (!CIRStream_UnpackBackendHeader(input, &backend)) {
+        return FALSE;
+    }
+    sectionCount = backend.sections.size / CIRStreamBackendSectionSize;
+    remap->attributeCount = backend.sectionAttributes.size / CIRStreamBackendSectionAttributeSize;
+    remap->selectorCount = backend.interrupts.size / CIRStreamBackendInterruptSize;
+    if (!sectionCount ||
+        sectionCount > 0x7fff ||
+        !remap->attributeCount ||
+        remap->attributeCount > 0x7fff) {
+        return FALSE;
+    }
+    sections = galloc((sectionCount + 1) * sizeof(*sections));
+    memset(sections, 0, (sectionCount + 1) * sizeof(*sections));
+    contexts = galloc((backend.files.size / CIRStreamBackendFileSize + 1) * sizeof(*contexts));
+    memset(contexts, 0, (backend.files.size / CIRStreamBackendFileSize + 1) * sizeof(*contexts));
+    if (!read_precompiled_files(&backend, contexts)) {
+        return FALSE;
+    }
+    for (i = 1; i <= sectionCount; ++i) {
+        sections[i] = read_precompiled_section(
+            &backend,
+            backend.sections.bytes + (i - 1) * CIRStreamBackendSectionSize,
+            sections,
+            sectionCount,
+            contexts
+        );
+        if (!sections[i]) {
+            return FALSE;
+        }
+    }
+    attributes = galloc(remap->attributeCount * sizeof(*attributes));
+    remap->attributes = galloc(remap->attributeCount * sizeof(*remap->attributes));
+    attributes[0] = NULL;
+    remap->attributes[0] = 0;
+    if (!read_precompiled_attributes(&backend, sections, sectionCount, attributes, remap)) {
+        return FALSE;
+    }
+    for (i = 1; i <= sectionCount; ++i) {
+        const UInt8* record = backend.sections.bytes + (i - 1) * CIRStreamBackendSectionSize;
+        UInt32 index = CIRStream_ReadWord(record + 28);
+        UInt32 relocations = CIRStream_ReadWord(record + 96);
+        UInt32 output = CIRStream_ReadWord(record + 112);
+        if (index > remap->attributeCount || relocations > sectionCount || output > sectionCount) {
+            return FALSE;
+        }
+        sections[i]->header = index ? attributes[index - 1] : NULL;
+        sections[i]->relocations = sections[relocations];
+        sections[i]->output = sections[output];
+    }
+    for (i = 0; i < CIRStreamSectionRoleCount; ++i) {
+        UInt32 index = CIRStream_ReadWord(backend.defaultSections.bytes + i * 4);
+        if (!index || index >= remap->attributeCount) {
+            return FALSE;
+        }
+        defaults[i] = attributes[index]->target;
+        defaults[i]->header = attributes[index];
+    }
+    copts.textSection = defaults[CIRStreamCodeSection];
+    copts.dataSection = defaults[CIRStreamDataSection];
+    copts.constSection = defaults[CIRStreamConstSection];
+    copts.sconstSection = defaults[CIRStreamSmallConstSection];
+    copts.sdataSection = defaults[CIRStreamSmallDataSection];
+    section_table_dirty = TRUE;
+
+    if (remap->selectorCount > 0x8000) {
+        return FALSE;
+    }
+    remap->selectors = galloc((remap->selectorCount + 1) * sizeof(*remap->selectors));
+    remap->selectors[0] = 0;
+    return read_precompiled_selectors(&backend, remap);
+}
+#endif
 
 void ObjGen_Finish(void) {
     BufferUpdate* update;
@@ -599,6 +1103,17 @@ void CodeGen_PragmaPop(void) {
     ObjGenSection* section;
     SInt32 i;
 
+#if VERSION == VERSION_WII_1_0RC1
+    // The saved table describes the prefix present at #pragma push.
+    // Sections introduced in that scope retain their own attributes.
+    section_table_dirty = TRUE;
+    for (i = 0, section = ELFfile.section_list; section && i < copts.sectionHeaderTableSize;
+         section = section->next, ++i) {
+        if (copts.sectionHeaderTable[i]) {
+            section->header = copts.sectionHeaderTable[i];
+        }
+    }
+#else
     if (copts.sectionHeaderTableSize < ELFfile.sectionHeaderCount) {
         memcpy(
             saved_section_table,
@@ -617,6 +1132,7 @@ void CodeGen_PragmaPop(void) {
         }
 #endif
     }
+#endif
 }
 
 void Finish_Pragma_Section(SectionRec* section) {
@@ -1360,7 +1876,7 @@ ObjGenSection* ObjGen_DeclareCode(Object* object, SInt32 size) {
     }
 #endif
     if (interrupt_routine_flags &&
-        !(interrupt_routine_flags->flags & Interrupt_NoWarn) &&
+        !(CURRENT_INTERRUPT_FLAGS & Interrupt_NoWarn) &&
         size > 256) {
         PPCError_Warning(PPCERR_INTERRUPT_FUNCTION_TOO_BIG, object, size);
     }
@@ -1692,6 +2208,11 @@ void ObjGen_RelocateObj(
     ObjGenSection* section, SInt32 offset, Object* object, UInt8 type, SInt32 addend
 ) {
     CError_ASSERT(2169, ok_to_compress);
+#if VERSION == VERSION_WII_1_0RC1
+    if (CMid_InIPA()) {
+        CMid_ObjectAddrRef(object);
+    }
+#endif
     emit_relocation(type, offset, object, section, addend);
 }
 #if VERSION == VERSION_GC_1_3_2
@@ -1850,6 +2371,13 @@ static InterruptGenerationRecord* resolve_object_pseudo_section(Object* obj, BE_
 #undef CError_LINE_DELTA
 #define CError_LINE_DELTA -18
 #endif
+#if VERSION == VERSION_WII_1_0RC1
+UInt16 GetInterruptRoutineFlags(Object* obj) {
+    UInt16 flags = obj->u.func.interruptflags;
+    CError_ASSERT(2396, flags);
+    return flags;
+}
+#else
 InterruptGenerationRecord* GetInterruptRoutineFlags(Object* obj) {
     InterruptGenerationRecord* info;
 
@@ -1857,6 +2385,7 @@ InterruptGenerationRecord* GetInterruptRoutineFlags(Object* obj) {
     CError_ASSERT(2396, info);
     return info;
 }
+#endif
 #if VERSION == VERSION_GC_1_3_2
 #undef CError_LINE_DELTA
 #define CError_LINE_DELTA 0

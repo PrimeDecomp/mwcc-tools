@@ -681,6 +681,12 @@ static void write_codewarrior_version_record(void) {
     record.name[8] = 'i';
     record.name[9] = 'o';
     record.name[10] = 'r';
+#if VERSION == VERSION_WII_1_0RC1
+    record.majorVersion = 15;
+    record.minorVersion = 4;
+    record.patchVersion = 0;
+    record.reservedVersion = 0;
+#else
 #if VERSION >= VERSION_GC_2_7
     record.majorVersion = 11;
 #else
@@ -692,6 +698,7 @@ static void write_codewarrior_version_record(void) {
     record.reservedVersion = 2;
 #else
     record.reservedVersion = 7;
+#endif
 #endif
     record.versionFormat = 1;
 

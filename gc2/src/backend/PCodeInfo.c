@@ -242,6 +242,16 @@ PCode* vformatpcode(short opcode, va_list argList) {
                 arg->data.reg.reg = va_arg(argList, int);
                 arg->data.reg.effect = effect;
                 break;
+#if VERSION == VERSION_WII_1_0RC1
+            case 'A':
+            case 'E':
+                arg->kind = PCOp_SYSREG;
+                arg->arg = RegClass_SPR;
+                arg->data.reg.reg = *format == 'A' ? SPR_ACC : SPR_SPEFSCR;
+                arg->data.reg.effect = effect;
+                pcsetsideeffects(pcode);
+                break;
+#endif
             case 'C':
                 arg->kind = PCOp_REGISTER;
                 arg->arg = RegClass_SPR;
@@ -334,7 +344,15 @@ PCode* vformatpcode(short opcode, va_list argList) {
                 }
 
                 if (foundSysreg < 0) {
+#if VERSION == VERSION_WII_1_0RC1
+                    /* Gekko's paired-single access through GQR0 does not serialize. */
+                    if (copts.processor != CPU_PPCGEKKO || tmp != SPR_GQR0 ||
+                        opcode < PC_PSQ_L || opcode > PC_PSQ_STUX) {
+                        pcsetsideeffects(pcode);
+                    }
+#else
                     pcsetsideeffects(pcode);
+#endif
                     arg->kind = PCOp_SYSREG;
                     arg->arg = RegClass_SPR;
                     arg->data.reg.reg = tmp;
@@ -485,6 +503,9 @@ PCode* vformatpcode(short opcode, va_list argList) {
                 }
                 break;
 
+#if VERSION == VERSION_WII_1_0RC1
+            case 'h':
+#endif
             case 'd': {
                 int baseEffect;
                 CError_ASSERT(502, format[1] == '(');
@@ -998,6 +1019,12 @@ void formatoperands(PCode* pcode, char* buf, int showBasicBlocks) {
             case 'c':
                 buf += expectandformatoperand(pa, PCOp_REGISTER, RegClass_CRFIELD, -1, buf);
                 break;
+#if VERSION == VERSION_WII_1_0RC1
+            case 'A':
+            case 'E':
+                buf += expectandformatoperand(pa, PCOp_SYSREG, RegClass_SPR, -1, buf);
+                break;
+#endif
             case 'X':
                 CError_ASSERT(1124, pa->data.reg.reg == 0);
                 buf += expectandformatoperand(pa, PCOp_REGISTER, RegClass_SPR, -1, buf);
@@ -1138,6 +1165,9 @@ void formatoperands(PCode* pcode, char* buf, int showBasicBlocks) {
                 }
                 break;
 
+#if VERSION == VERSION_WII_1_0RC1
+            case 'h':
+#endif
             case 'd':
                 if (pa[1].kind == PCOp_MEMORY) {
                     buf += expectandformatoperand(pa + 1, PCOp_MEMORY, 0, -1, buf);
@@ -1491,6 +1521,11 @@ PCode* makecopyforload(int kind, PCodeArg* src, PCodeArg* dst) {
 #endif
 int nbytes_loaded_or_stored_by(PCode* pcode) {
     OpcodeInfo* oinfo = opcodeinfo + pcode->op;
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_SPE_OPCODE(pcode->op)) {
+        return spe_opcodeinfo[pcode->op - PC_EVOR].memoryWidth;
+    }
+#endif
     if (oinfo->flags & (fIsRead | fIsWrite)) {
         switch (pcode->op) {
             case PC_LBZ:
@@ -1592,6 +1627,11 @@ int nbytes_loaded_or_stored_by(PCode* pcode) {
 #if VERSION < VERSION_GC_2_0
                 return 8;
 #else
+#if VERSION == VERSION_WII_1_0RC1
+                if (copts.processor != CPU_PPCGEKKO) {
+                    CError_FATAL(3323);
+                }
+#endif
                 if (pcode->args[4].data.reg.reg == SPR_GQR0 && pcode->args[3].data.imm.value == 1) {
                     return 4;
                 }

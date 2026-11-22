@@ -54,6 +54,9 @@ extern Boolean TOC_use_fsel(ENode* expr);
 extern Boolean TOC_use_isel(ENode* expr, Boolean force);
 extern SInt32 GetSizeSkip(ENode* expr);
 extern void expandTOCreferences(Statement** stmts);
+#if VERSION == VERSION_WII_1_0RC1
+extern int num_int_to_float_converts;
+#endif
 extern Object* createstaticinitobject(void);
 
 #ifdef __cplusplus

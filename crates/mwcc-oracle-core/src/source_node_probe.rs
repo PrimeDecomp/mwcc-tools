@@ -50,7 +50,7 @@ fn version_number(version: &str) -> Result<u32> {
 pub fn valid_site(version: u8, site: u32) -> bool {
     matches!(
         (version, site),
-        (1, 0x4f1c9e) | (2, 0x4f274e) | (3, 0x4f360e) | (4, 0x4f36ee)
+        (1, 0x4f1c9e) | (2, 0x4f274e) | (3, 0x4f360e) | (4, 0x4f36ee) | (6, 0x509cac)
     )
 }
 #[derive(Clone, Debug, Serialize)]

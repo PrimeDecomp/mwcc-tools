@@ -454,7 +454,9 @@ fn parse_event(r: &Record) -> Result<Event> {
             let pools = hex(r, "pools")?;
             let lock = hex(r, "lock")?;
             ensure!(
-                (1..=4).contains(&version) && pools != 0 && lock != 0,
+                crate::source_arena_probe::supports_source_version(version)
+                    && pools != 0
+                    && lock != 0,
                 "invalid arena header"
             );
             EventKind::Begin {
@@ -678,9 +680,11 @@ impl Validator {
                             && a.requested == r.requested,
                         "arena request/commit mismatch"
                     );
-                    let rounded = (a.requested & !7)
-                        .checked_add(8)
-                        .ok_or_else(|| anyhow!("arena rounded request overflow"))?;
+                    let rounded = crate::source_arena_probe::rounded_request(
+                        self.version.unwrap(),
+                        a.requested,
+                    )
+                    .ok_or_else(|| anyhow!("arena rounded request overflow"))?;
                     ensure!(
                         rounded <= i32::MAX as u32
                             && rounded == a.reserved
@@ -1090,7 +1094,8 @@ impl Cursor {
                     self.epochs = r.epochs;
                 }
                 EventKind::ResetEnd(_) => self.reset_depth -= 1,
-                EventKind::Allocation(a) => {
+                // A zero-size RC1 request ends normally and owns no bytes.
+                EventKind::Allocation(a) if a.reserved != 0 => {
                     let _ = self.ledger.observe_allocation(Allocation {
                         id: AllocationId(u64::from(a.allocation)),
                         pool: domain(a.pool).unwrap(),

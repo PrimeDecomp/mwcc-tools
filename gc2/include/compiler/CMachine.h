@@ -25,6 +25,9 @@ extern TypeIntegral stdouble;
 extern TypeIntegral stlongdouble;
 extern TypeIntegral stwchar;
 extern TypeIntegral stvec2x32float;
+#if VERSION == VERSION_WII_1_0RC1
+extern const char* const spe_type_names[];
+#endif
 extern TypeStruct stvectorunsignedchar;
 extern TypeStruct stvectorsignedchar;
 extern TypeStruct stvectorboolchar;
@@ -41,6 +44,10 @@ extern TypeStruct stvector;
 extern void CMach_Configure(void);
 extern SInt32 CMach_ArgumentAlignment(Type* type);
 extern SInt32 CMach_AllocationAlignment(Type* type, UInt32 qual);
+#if VERSION == VERSION_WII_1_0RC1
+extern SInt32 CMach_GetObjectAlignment(Object* object);
+extern SInt32 CMach_GetCopyAlignment(Type* type, Object* object);
+#endif
 extern CInt64 CMach_CalcIntDiadic(Type* type, CInt64 left, short op, CInt64 right);
 extern CInt64 CMach_CalcIntMonadic(Type* type, short op, CInt64 val);
 extern CInt64 CMach_CalcIntConvertFromFloat(Type* type, Float fval);
@@ -69,10 +76,18 @@ extern SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual);
 extern UInt8 CMach_GetFunctionResultClass(TypeFunc* functype);
 extern Boolean Type_RequiresMemoryReturn(Type* type);
 extern Boolean CMach_PassResultInHiddenArg(Type* type);
+#if VERSION == VERSION_WII_1_0RC1
+extern Boolean CMach_PassAddressOf(Type* type);
+#else
+#define CMach_PassAddressOf CMach_PassResultInHiddenArg
+#endif
 extern const char* CMach_GetCPU(void);
 extern Boolean CMach_FloatIsPowerOf2(Float flt);
 extern Boolean CMach_IsUnsignedType(Type* type);
 extern Type* CMach_GetCustomType(short token, short size, short signedness);
+#if VERSION == VERSION_WII_1_0RC1
+extern Boolean CMach_IsSameStructType(Type* a, Type* b);
+#endif
 extern CInt64 CMach_CustomIntConvert(Type* type, Type* oldtype, CInt64 value);
 extern Float CMach_FloatReciprocal(Float flt);
 extern SInt32 CMach_RoundedSizeOf(Object* object);

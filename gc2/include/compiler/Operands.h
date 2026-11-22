@@ -43,12 +43,30 @@ extern Float int_to_float_cc;
 extern Float uns_to_float_cc;
 
 extern void load_immediate(short reg, SInt32 value);
+#if VERSION == VERSION_WII_1_0RC1
+extern void load_immediate_SFPE(short reg, SInt32 value);
+extern void insert_add_immediate_after(PCode* after, short dst, short base, SInt32 value);
+extern void insert_load_immediate_before(PCode* before, short dst, SInt32 value);
+extern void insert_load_immediate_after(PCode* after, short dst, SInt32 value);
+extern void load_imm_vector(short reg, const UInt32* words);
+extern void Coerce_to_spe_register(Operand* op, Type* type, short output_reg);
+extern void store_spe(short reg, Operand* op, Type* type);
+extern short spe_transfer_opcode(Type* type, Boolean store_value);
+#else
 extern void insert_load_immediate_after(short reg, SInt32 value);
+#define load_immediate_SFPE insert_load_immediate_after
+#endif
 extern void set_op_flags(Operand* op, ENode* expr);
 extern void symbol_operand(Operand* op, Object* obj);
 extern void indirect(Operand* op, ENode* expr);
 extern void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut);
+#if VERSION == VERSION_WII_1_0RC1
+extern struct PPC32AddressLoad* ppc32_addr_loads;
+extern void coerce_to_addressable_before(PCode* before, Operand* op);
+#define coerce_to_addressable(op) coerce_to_addressable_before(NULL, (op))
+#else
 extern void coerce_to_addressable(Operand* op);
+#endif
 extern void Coerce_to_register(Operand* op, Type* type, short output_reg);
 extern void coerce_to_register_pair(Operand* op, Type* type, short output_reg, short output_regHi);
 extern void Coerce_to_fp_register(Operand* op, Type* type, short output_reg);
@@ -58,9 +76,16 @@ extern void store(short reg, Operand* op, Type* type);
 extern void store_pair(short reg, short regHi, Operand* op, Type* type);
 extern void store_fp(short reg, Operand* op, Type* type);
 extern void store_v(short reg, Operand* op, Type* type);
+#if VERSION == VERSION_WII_1_0RC1
+#define extend32 extendgpr
+#define extend64 extendpair
+#endif
 extern void extend32(Operand* op, Type* type, short output_reg);
 extern void extend64(Operand* op, Type* type, short output_reg, short output_regHi);
 extern void load_floating_constant(short reg, Type* type, Float* data);
+#if VERSION == VERSION_WII_1_0RC1
+extern void setup_floating_conversion(int num_converts);
+#endif
 extern void convert_integer_to_floating(Operand* op, Boolean is_single, short output_reg);
 extern void convert_unsigned_to_floating(Operand* op, Boolean is_single, short output_reg);
 extern void convert_floating_to_integer(Operand* op, short output_reg);

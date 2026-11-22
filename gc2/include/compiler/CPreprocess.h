@@ -11,6 +11,9 @@ extern void CPrep_PreprocessDumpNewLine(void);
 extern void CPrep_PreprocessDumpFileInfo(Boolean newLine);
 extern void CPrep_PreprocessDumpDirective(char* directive, char* name);
 extern void CPrep_PreprocessDumpDirectiveEnd(void);
+#if VERSION == VERSION_WII_1_0RC1
+extern void CPrep_PreprocessDumpPCH(const char* name, Boolean isSystem);
+#endif
 extern void CPrep_Preprocess(void);
 
 #ifdef __cplusplus

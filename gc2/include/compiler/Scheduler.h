@@ -36,6 +36,10 @@ extern MachineInfo machine7450;
 extern MachineInfo machine750;
 extern MachineInfo machine821;
 
+#if VERSION == VERSION_WII_1_0RC1
+extern void m750_initialize_timing(void);
+#endif
+
 extern void scheduleinstructions(Boolean includePrologEpilog);
 extern int is_dependent(PCode* a, PCode* b, char rclass);
 extern int uses_vpermute_unit(PCode* instr);

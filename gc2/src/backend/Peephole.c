@@ -154,7 +154,7 @@ static void computeliveregisters(Object* func) {
         }
     }
 
-    if (TYPE_FITS_IN_REGISTER(returntype)) {
+    if (TYPE_FITS_IN_REGISTER(returntype) || IS_TYPE_SPE(returntype)) {
         liveregs[RegClass_GPR][epilogue->blockIndex].use |= 1 << 3;
         if (TYPE_IS_8BYTES(returntype)) {
             liveregs[RegClass_GPR][epilogue->blockIndex].use |= 1 << 4;
@@ -1240,6 +1240,12 @@ static int VSPLTIS_VMR(PCode* instr, UInt32* masks) {
 
 static int L_MR(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
+
+#if VERSION == VERSION_WII_1_0RC1
+    if ((instr->flags | defInstr->flags) & (fIsVolatile | fSideEffects)) {
+        return FALSE;
+    }
+#endif
 
     if ((defInstr->flags & fIsRead) &&
         !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg)) &&
@@ -2563,7 +2569,15 @@ static void adjustforward(PCodeBlock* block) {
                         canuseinsert(instr, scan, a[2].data.reg.reg)) {
                         op = &scan->args[2];
                         tmp = find_def_backwords(scan->prevPCode, op->data.reg.reg);
-                        if (tmp->op == PC_RLWINM && tmp->args[2].data.imm.value == 0) {
+                        if (
+#if VERSION == VERSION_WII_1_0RC1
+                            tmp &&
+#endif
+                            tmp->op == PC_RLWINM && tmp->args[2].data.imm.value == 0
+#if VERSION == VERSION_WII_1_0RC1
+                            && !definedbetween(scan, tmp, &tmp->args[1])
+#endif
+                        ) {
                             if (instr->args[3].data.imm.value <= instr->args[4].data.imm.value) {
                                 valA = ((instr->args[3].data.imm.value > 31)
                                             ? 0
@@ -2629,7 +2643,15 @@ static void adjustforward(PCodeBlock* block) {
                         canuseinsert(instr, scan, a[1].data.reg.reg)) {
                         op = &scan->args[1];
                         tmp = find_def_backwords(scan->prevPCode, op->data.reg.reg);
-                        if (tmp->op == PC_RLWINM && tmp->args[2].data.imm.value == 0) {
+                        if (
+#if VERSION == VERSION_WII_1_0RC1
+                            tmp &&
+#endif
+                            tmp->op == PC_RLWINM && tmp->args[2].data.imm.value == 0
+#if VERSION == VERSION_WII_1_0RC1
+                            && !definedbetween(scan, tmp, &tmp->args[1])
+#endif
+                        ) {
                             if (instr->args[3].data.imm.value <= instr->args[4].data.imm.value) {
                                 valA = ((instr->args[3].data.imm.value > 31)
                                             ? 0

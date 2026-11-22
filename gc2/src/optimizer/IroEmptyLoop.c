@@ -1,6 +1,8 @@
 #include "compiler/IroEmptyLoop.h"
 #include "compiler/IroDump.h"
+#include "compiler/IroEval.h"
 #include "compiler/IroFlowgraph.h"
+#include "compiler/IroJump.h"
 #include "compiler/IroLinearForm.h"
 #include "compiler/IroLoop.h"
 #include "compiler/IroUtil.h"
@@ -10,6 +12,7 @@
 #include "compiler/CInt64.h"
 #include "compiler/CParser.h"
 #include "compiler/enode.h"
+#include "compiler/objects.h"
 
 static int EmptyLoop(IRONode* fnode);
 static int CanRemoveRedundantLoop(IROLoop* loop);
@@ -18,31 +21,34 @@ static int RedundantLoopCheck(IROLoop* loop);
 static int CheckStepOverFlow1_EmptyLoop(IROLoop* loop, CInt64* iterCount, CInt64* finalValue);
 static int CheckStepOverFlow2_EmptyLoop(IROLoop* loop, CInt64* iterCount, CInt64* finalValue);
 
-void IRO_FindEmptyLoops(void) {
-    IRONode* fnode;
+static Boolean FindLoopNodes(IRONode* header) {
     IRONode* pred;
     UInt16 i;
-    UInt16 found;
+    Boolean found = FALSE;
 
-    for (fnode = IRO_FirstNode; fnode; fnode = fnode->nextnode) {
-        found = FALSE;
-        for (i = 0; i < fnode->numpred; i++) {
-            pred = IRO_NodeTable[fnode->pred[i]];
-            if (Bv_IsBitSet(fnode->index, pred->dom)) {
-                if (!found) {
-                    Bv_AllocVector(&InLoop, IRO_NumNodes + 1);
-                    Bv_Clear(InLoop);
-                    Bv_SetBit(fnode->index, InLoop);
-                }
-                found = TRUE;
-                Bv_SetBit(pred->index, InLoop);
-                if (pred != fnode) {
-                    AddPreds(pred);
-                }
+    for (i = 0; i < header->numpred; i++) {
+        pred = IRO_NodeTable[header->pred[i]];
+        if (Bv_IsBitSet(header->index, pred->dom)) {
+            if (!found) {
+                Bv_AllocVector(&InLoop, IRO_NumNodes + 1);
+                Bv_Clear(InLoop);
+                Bv_SetBit(header->index, InLoop);
+            }
+            found = TRUE;
+            Bv_SetBit(pred->index, InLoop);
+            if (pred != header) {
+                AddPreds(pred);
             }
         }
+    }
+    return found;
+}
 
-        if (found) {
+void IRO_FindEmptyLoops(void) {
+    IRONode* fnode;
+
+    for (fnode = IRO_FirstNode; fnode; fnode = fnode->nextnode) {
+        if (FindLoopNodes(fnode)) {
             IRO_Dump("IRO_FindEmptyLoops:Found loop with header %d\n", fnode->index);
             IRO_DumpBits("Loop includes: ", InLoop);
             EmptyLoop(fnode);
@@ -52,6 +58,370 @@ void IRO_FindEmptyLoops(void) {
 
     IRO_CheckForUserBreak();
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+typedef struct EmptyLoopTest {
+    VarRecord* var;
+    Type* comparisonType;
+    CInt64 value;
+    CInt64 bound;
+    ENodeType relation;
+} EmptyLoopTest;
+
+static IROLinear* InductionLValue(IROLinear* assign, VarRecord* var) {
+    IROLinear* left;
+
+    if (assign->type == IROLinearOp2Arg) {
+        left = assign->u.diadic.left;
+    } else if (assign->type == IROLinearOp1Arg) {
+        left = assign->u.monadic;
+    } else {
+        return NULL;
+    }
+    if (!IRO_IsAssignOp[assign->nodetype] || IRO_IsVariable(left) != var->object ||
+        left->rtype->size != var->object->type->size) {
+        return NULL;
+    }
+    return left;
+}
+
+static Boolean ReadInductionStep(IROLinear* assign, VarRecord* var, CInt64* step) {
+    IROLinear* rhs;
+    ENodeType op = assign->nodetype;
+
+    if (IS_LINEAR_DIADIC(assign, EASS)) {
+        rhs = assign->u.diadic.right;
+        if (!IS_LINEAR_DIADIC_2(rhs, EADD, ESUB) ||
+            IRO_IsVariable(rhs->u.diadic.left) != var->object ||
+            !IRO_IsIntConstant(rhs->u.diadic.right)) {
+            return FALSE;
+        }
+        op = rhs->nodetype;
+        *step = rhs->u.diadic.right->u.node->data.intval;
+    } else if (IS_LINEAR_DIADIC_2(assign, EADDASS, ESUBASS) &&
+               IRO_IsIntConstant(assign->u.diadic.right)) {
+        *step = assign->u.diadic.right->u.node->data.intval;
+    } else if (IS_LINEAR_MONADIC_2(assign, EPREINC, EPOSTINC) ||
+               IS_LINEAR_MONADIC_2(assign, EPREDEC, EPOSTDEC)) {
+        *step = cint64_one;
+    } else {
+        return FALSE;
+    }
+
+    if (op == ESUB || op == ESUBASS || op == EPREDEC || op == EPOSTDEC) {
+        *step = CInt64_Neg(*step);
+    }
+    return TRUE;
+}
+
+static Boolean ReadInductionValue(IROLinear* assign, VarRecord* var, CInt64* value, Boolean known) {
+    CInt64 step;
+
+    if (!InductionLValue(assign, var)) {
+        return FALSE;
+    }
+    if (IS_LINEAR_DIADIC(assign, EASS) && IRO_IsIntConstant(assign->u.diadic.right)) {
+        *value = assign->u.diadic.right->u.node->data.intval;
+    } else if (known && ReadInductionStep(assign, var, &step)) {
+        *value = CInt64_Add(*value, step);
+    } else {
+        return FALSE;
+    }
+    IRO_TruncateValueToType(value, var->object->type);
+    return TRUE;
+}
+
+static Boolean AnalyzeLoopTest(IRONode* header, IRONode* test, IRONode* preheader, EmptyLoopTest* info) {
+    static const ENodeType reversed[] = {EGREATER, ELESS, EGREATEREQU, ELESSEQU, EEQU, ENOTEQU};
+    static const ENodeType negated[] = {EGREATEREQU, ELESSEQU, EGREATER, ELESS, ENOTEQU, EEQU};
+    IROLinear* cond = test->last->u.label.cond;
+    IROLinear* left;
+    IROLinear* right;
+    IROLinear* variable;
+    IROLinear* scan;
+    Object* object;
+    VarRecord* var;
+    IRONode* node;
+    IRONode* first;
+    Boolean known = FALSE;
+    Boolean readValue = FALSE;
+    CInt64 value;
+
+    if (cond->type != IROLinearOp2Arg || cond->nodetype < ELESS || cond->nodetype > ENOTEQU) {
+        return FALSE;
+    }
+    left = cond->u.diadic.left;
+    right = cond->u.diadic.right;
+    variable = left;
+    if (!IRO_IsIntConstant(right)) {
+        if (!IRO_IsIntConstant(left)) {
+            return FALSE;
+        }
+        variable = right;
+    }
+    object = IRO_IsVariable(variable);
+    if (!object || object->datatype != DLOCAL || !IS_TYPE_INT(object->type) ||
+        object->type->size > 4 || IRO_HasSideEffect(variable) ||
+        !(var = IRO_FindVar(object, FALSE, TRUE)) || var->noregister) {
+        return FALSE;
+    }
+
+    // Follow the first entry to the test. A join could supply a different induction value.
+    first = preheader;
+    while (first->numpred == 1) {
+        IRONode* pred = IRO_NodeTable[first->pred[0]];
+        if (pred->numsucc != 1 || pred->nextnode != first ||
+            Bv_IsBitSet(pred->index, InLoop) || !Bv_IsBitSet(pred->index, first->dom)) {
+            break;
+        }
+        first = pred;
+    }
+    for (node = first;; node = IRO_NodeTable[node->succ[0]]) {
+        for (scan = node->first; scan; scan = scan->next) {
+            Bv_Clear(IRO_VarKills);
+            IRO_GetKills(scan);
+            if (Bv_IsBitSet(var->index, IRO_VarKills)) {
+                if (readValue) {
+                    return FALSE;
+                }
+                known = ReadInductionValue(scan, var, &value, known);
+            }
+            if (scan == variable) {
+                readValue = TRUE;
+            }
+            if (scan == node->last) {
+                break;
+            }
+        }
+        if (node == test) {
+            break;
+        }
+        if (node->numsucc != 1) {
+            return FALSE;
+        }
+        if (Bv_IsBitSet(node->index, InLoop)) {
+            IRONode* next = IRO_NodeTable[node->succ[0]];
+            if (next->numpred != 1 || !Bv_IsBitSet(next->index, InLoop) ||
+                Bv_IsBitSet(next->index, node->dom)) {
+                return FALSE;
+            }
+        }
+    }
+    if (!known || !readValue) {
+        return FALSE;
+    }
+
+    IRO_TruncateValueToType(&value, variable->rtype);
+    info->value = value;
+    info->bound = (variable == left ? right : left)->u.node->data.intval;
+    IRO_TruncateValueToType(&info->bound, variable->rtype);
+    info->var = var;
+    info->comparisonType = variable->rtype;
+    info->relation = variable == left ? cond->nodetype : reversed[cond->nodetype - ELESS];
+    if (test->last->type == IROLinearIfNot) {
+        info->relation = negated[info->relation - ELESS];
+    }
+    return TRUE;
+}
+
+static Boolean EvaluateLoopTest(const EmptyLoopTest* test) {
+    int order;
+
+    if (CInt64_Equal(test->value, test->bound)) {
+        order = 0;
+    } else if (is_unsigned(test->comparisonType) ? CInt64_LessU(test->value, test->bound)
+                                                 : CInt64_Less(test->value, test->bound)) {
+        order = -1;
+    } else {
+        order = 1;
+    }
+    switch (test->relation) {
+        case ELESS: return order < 0;
+        case EGREATER: return order > 0;
+        case ELESSEQU: return order <= 0;
+        case EGREATEREQU: return order >= 0;
+        case EEQU: return order == 0;
+        case ENOTEQU: return order != 0;
+        default: return FALSE;
+    }
+}
+
+static IROLinear* FindEmptyLoopUpdate(IRONode* test, VarRecord* var) {
+    IRONode* node;
+    IROLinear* scan;
+    IROLinear* update = NULL;
+
+    for (node = IRO_FirstNode; node; node = node->nextnode) {
+        if (!Bv_IsBitSet(node->index, InLoop)) {
+            continue;
+        }
+        if (node != test && (node->numsucc != 1 || !Bv_IsBitSet(node->succ[0], InLoop))) {
+            return NULL;
+        }
+        for (scan = node->first; scan; scan = scan->next) {
+            if (node == test && scan == node->last) {
+                break;
+            }
+            if (scan->type != IROLinearNop && scan->type != IROLinearLabel &&
+                scan->type != IROLinearGoto &&
+                (IRO_HasSideEffect(scan) || IRO_ExprHasFloatingPointEffects(scan))) {
+                if (update || !InductionLValue(scan, var) || (scan->flags & IROLF_Reffed)) {
+                    return NULL;
+                }
+                update = scan;
+            }
+            if (scan == node->last) {
+                break;
+            }
+        }
+    }
+    return update;
+}
+
+static Boolean GetEmptyLoopFinalValue(const EmptyLoopTest* test, CInt64 step, CInt64* final) {
+    Type* type = test->var->object->type;
+    CInt64 stride;
+    CInt64 distance;
+    CInt64 count;
+    Boolean descending = CInt64_IsNegative(&step);
+
+    if (type->size != test->comparisonType->size ||
+        is_unsigned(type) != is_unsigned(test->comparisonType) ||
+        CInt64_IsZero(&step)) {
+        return FALSE;
+    }
+
+    stride = descending ? CInt64_Neg(step) : step;
+    if (CInt64_IsNegative(&stride) || CInt64_Greater(stride, IRO_MakeULong(0xffffffffu))) {
+        return FALSE;
+    }
+    distance = descending ? CInt64_Sub(test->value, test->bound)
+                          : CInt64_Sub(test->bound, test->value);
+    switch (test->relation) {
+        case ELESS:
+        case ELESSEQU:
+            if (descending) {
+                return FALSE;
+            }
+            break;
+        case EGREATER:
+        case EGREATEREQU:
+            if (!descending) {
+                return FALSE;
+            }
+            break;
+        case ENOTEQU: {
+            CInt64 remainder = CInt64_ModU(distance, stride);
+            if (CInt64_IsNegative(&distance) || !CInt64_IsZero(&remainder)) {
+                return FALSE;
+            }
+            break;
+        }
+        case EEQU:
+            distance = stride;
+            break;
+        default:
+            return FALSE;
+    }
+
+    if (test->relation == ELESSEQU || test->relation == EGREATEREQU) {
+        distance = CInt64_Add(distance, cint64_one);
+    }
+    count = CInt64_DivU(CInt64_Add(distance, CInt64_Sub(stride, cint64_one)), stride);
+    *final = CInt64_Add(test->value, CInt64_Mul(count, step));
+    return CInt64_GreaterEqual(*final, IRO_MinValueOfIntegerType(type)) &&
+           CInt64_LessEqual(*final, IRO_MaxValueOfIntegerType(type));
+}
+
+static Boolean RemoveEmptyCountedLoop(IRONode* test, const EmptyLoopTest* info) {
+    IROLinear* update = FindEmptyLoopUpdate(test, info->var);
+    IROLinear* assign;
+    IROLinear* left;
+    IROLinear* value;
+    IROList list;
+    CInt64 step;
+    CInt64 final;
+
+    if (!update || !ReadInductionStep(update, info->var, &step) ||
+        !GetEmptyLoopFinalValue(info, step, &final)) {
+        return FALSE;
+    }
+
+    left = InductionLValue(update, info->var);
+    IRO_InitList(&list);
+    left = IRO_DuplicateExpr(left, &list);
+    value = IRO_NewIntConst(final, left->rtype);
+    IRO_AddToList(value, &list);
+    assign = IRO_NewLinear(IROLinearOp2Arg);
+    assign->nodetype = EASS;
+    assign->rtype = left->rtype;
+    assign->stmt = update->stmt;
+    assign->u.diadic.left = left;
+    assign->u.diadic.right = value;
+    IRO_AddToList(assign, &list);
+    IRO_Paste(list.head, list.tail, IRO_FindStart(test->last->u.label.cond));
+    return TRUE;
+}
+
+Boolean IRO_RemoveAllEmptyLoops(void) {
+    BitVector* savedKills = IRO_VarKills;
+    Boolean changed = FALSE;
+    IRONode* header;
+    IRONode* node;
+    IRONode* preheader;
+    EmptyLoopTest info;
+    UInt16 i;
+
+    Bv_AllocVector(&IRO_VarKills, IRO_NumVars + 1);
+    for (header = IRO_FirstNode; header; header = header->nextnode) {
+        if (!FindLoopNodes(header)) {
+            continue;
+        }
+        preheader = NULL;
+        for (i = 0; i < header->numpred; i++) {
+            node = IRO_NodeTable[header->pred[i]];
+            if (!Bv_IsBitSet(node->index, InLoop)) {
+                if (preheader) {
+                    preheader = NULL;
+                    break;
+                }
+                preheader = node;
+            }
+        }
+        if (!preheader) {
+            continue;
+        }
+        for (node = IRO_FirstNode; node; node = node->nextnode) {
+            if (Bv_IsBitSet(node->index, InLoop) && node->numsucc == 2 && node->nextnode &&
+                (node == header || (header->numpred == 2 &&
+                                    (header->pred[0] == node->index || header->pred[1] == node->index))) &&
+                !Bv_IsBitSet(node->nextnode->index, InLoop) && node->last &&
+                (node->last->type == IROLinearIf || node->last->type == IROLinearIfNot) &&
+                AnalyzeLoopTest(header, node, preheader, &info) &&
+                (!EvaluateLoopTest(&info) || RemoveEmptyCountedLoop(node, &info))) {
+                IROLinear* cond = node->last->u.label.cond;
+                node->last->type = IROLinearNop;
+                cond->flags &= ~IROLF_Reffed;
+                IRO_CheckSideEffect(cond);
+                changed = TRUE;
+                break;
+            }
+        }
+    }
+    IRO_VarKills = savedKills;
+    if (changed) {
+        IRO_UpdateFlagsOnInts();
+        if (copts.deadcode) {
+            IRO_RemoveUnreachable();
+        } else {
+            IRO_ComputeSuccPred();
+            IRO_ComputeDom();
+        }
+    }
+    IRO_CheckForUserBreak();
+    return changed;
+}
+#endif
 
 static int EmptyLoop(IRONode* fnode) {
     ENode* enode;

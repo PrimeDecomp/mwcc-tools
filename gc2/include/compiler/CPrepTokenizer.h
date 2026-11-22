@@ -12,6 +12,13 @@ enum {
     LF = 10
 };
 
+#if VERSION == VERSION_WII_1_0RC1
+enum SourceEncoding {
+    SourceEncodingASCII,
+    SourceEncodingSJIS
+};
+#endif
+
 extern short prepskipnextchar(void);
 extern short prepnextchar(void);
 extern short prepnextstringchar(unsigned char* str, Boolean countNewlines);

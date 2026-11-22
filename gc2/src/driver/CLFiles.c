@@ -33,6 +33,11 @@ void File_Free(File* file) {
             DisposeHandle(file->browsedata);
             file->browsedata = NULL;
         }
+#if VERSION == VERSION_WII_1_0RC1
+        if (file->programIR) {
+            DisposeHandle(file->programIR);
+        }
+#endif
         xfree(file);
     }
 }

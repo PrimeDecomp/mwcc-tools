@@ -10,6 +10,8 @@ fn usage(command: &str) -> &'static str {
     writes build.ninja for the version (default GC_1_2_5); for GC 2.6 and 2.7 its default targets include the
     WebAssembly modules: build/V/wasm/mwcc.wasm (the module every in-process compile and trace runs: gc2's sources
     with ORACLE_PROBES and the Rust hooks), mwcceppc.wasm (the stock compiler), oracle.wasm and persist.wasm (mwdec's)
+    --version Wii_1_0RC1 builds the source compiler's mwcceppc.wasm and persist.wasm
+                        (--oracle adds the instrumented WebAssembly modules)
     --version Wii_Retro   relinks Wii 1.0RC1 with the Retro patches into build/Wii_Retro/mwcceppc.exe
     --oracle   also the native oracle, build/V/oracle/mwcceppc.exe (the original's code with the hooks linked in)"
         }
@@ -23,6 +25,7 @@ fn usage(command: &str) -> &'static str {
         "build-hooks" => {
             "build-hooks OUTPUT [--trace-shim | --frontend-version V] [--wasm] [--root DIR] [--rustc FILE] [--timeout SECS]"
         }
+        "build-native-oracle-objects" => "build-native-oracle-objects PLAN [--root DIR]",
         "verify" | "gates" => "verify|gates [--root DIR] [--ninja FILE] [--jobs N] [--timeout SECS]",
         "download" => "download TOOL OUTPUT [OTHER_OUTPUT...] [--root DIR] [--timeout SECS]",
         "transform-dep" => "transform-dep DEP OUT [--root DIR]",
@@ -34,6 +37,10 @@ fn usage(command: &str) -> &'static str {
         "wasm-linker-version" => {
             "wasm-linker-version LINKER OUTPUT [--root DIR]
     writes the linker's version information (its resource script's VS_VERSIONINFO) to OUTPUT"
+        }
+        "wasm-compiler-version" => {
+            "wasm-compiler-version COMPILER OUTPUT [--root DIR]
+    writes the source compiler's VS_VERSIONINFO to OUTPUT"
         }
         "wasm-common" => {
             "wasm-common LINKER OUTPUT [--root DIR]
@@ -130,6 +137,15 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
         i += 1;
     }
     match command {
+        "build-native-oracle-objects" => {
+            ensure!(positional.len() == 1, "{}", usage(command));
+            mwcc_oracle_core::windows_oracle::compile(
+                &std::path::absolute(root)?,
+                &PathBuf::from(&positional[0]),
+                &rustc,
+                timeout,
+            )?;
+        }
         "build-hooks" => {
             ensure!(
                 positional.len() == 1,
@@ -259,6 +275,16 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                 &positional[0],
                 &positional[1],
             )?;
+        }
+        "wasm-compiler-version" => {
+            ensure!(
+                positional.len() == 2,
+                "wasm-compiler-version COMPILER OUTPUT [--root DIR]"
+            );
+            let data = mwcc_oracle_core::wasm_build::version_info(&root, &positional[0])?;
+            let output = root.join(&positional[1]);
+            std::fs::create_dir_all(output.parent().unwrap())?;
+            std::fs::write(output, data)?;
         }
         "wasm-common" => {
             ensure!(

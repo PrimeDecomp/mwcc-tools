@@ -22,6 +22,9 @@ struct CInlineBackendOptions {
     UInt8 fp_contract;
     UInt8 no_register_save_helpers;
     UInt8 unroll_speculative;
+#if VERSION == VERSION_WII_1_0RC1
+    UInt8 removeemptyloops;
+#endif
     SInt16 unroll_instr_limit;
     SInt16 unroll_factor_limit;
     UInt8 altivec_model;
@@ -33,8 +36,13 @@ struct CInlineBackendOptions {
     SInt32 sdata2_threshold;
     UInt8 pool_data;
     UInt8 common;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean e500_floatingpoint;
+    Boolean e500v2_floatingpoint;
+#else
     UInt8 use_fp;
     UInt8 soft_float;
+#endif
     UInt8 codegen_pic;
     UInt8 full_dwarf;
     UInt8 no_comment_records;
@@ -65,6 +73,18 @@ struct CInlineBackendOptions {
     UInt8 switch_tables;
     UInt8 prepare_compress;
     UInt8 min_struct_alignment;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean legacy_struct_alignment;
+    Boolean ppc_no_fp_blockmove;
+    Boolean exceptions;
+    UInt8 dontinline;
+    UInt8 alwaysinline;
+    UInt8 warn_notinlined;
+    UInt8 inline_bottom_up;
+    SInt16 inlinelevel;
+    SInt32 inlinemaxsize;
+    SInt32 inlinemaxtotalsize;
+#endif
     UInt8 unsafe_global_reg_vars;
     UInt8 ignore_global_reg_vars;
     UInt32 bc_range;
@@ -153,6 +173,10 @@ struct CI_FuncData {
     HashNameNode* functionbodypath;
     SInt32 symdeclend;
     UInt8 can_inline;
+#if VERSION == VERSION_WII_1_0RC1
+    // Stock saved bodies inherit the consumer's inlining settings.
+    Boolean use_caller_inline_options;
+#endif
 };
 
 typedef enum CI_ActionType {
@@ -220,6 +244,13 @@ extern void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParam
 extern Boolean CInline_CanFreeLHeap(void);
 extern Boolean CInline_GenerateDeferredFuncs(void);
 extern void CInline_Finish(void);
+#if VERSION == VERSION_WII_1_0RC1
+extern Boolean CInline_WalkFunctionReferences(CI_FuncData* body, void (*visit)(Object*, Boolean));
+extern void CInline_CallGraphInlining(void);
+extern void CInline_GenerateGraphFunction(
+    Object* object, CI_FuncData* body, UInt8 oldStyleParameters, Boolean initializer
+);
+#endif
 
 #ifdef __cplusplus
 }

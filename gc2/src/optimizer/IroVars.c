@@ -22,6 +22,13 @@
 #include "compiler/OracleProbes.h"
 #include "compiler/types.h"
 
+#if VERSION == VERSION_WII_1_0RC1 && defined(ORACLE_PROBES)
+#include <stddef.h>
+_Static_assert(
+    offsetof(CompilerLinkerOptions, opt_pointer_analysis) == 0x101, "pointer analysis offset"
+);
+#endif
+
 #pragma pack(push, 2)
 typedef struct IndirectRecordMatch {
     IROLinear* nd;

@@ -213,7 +213,12 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
         }
     }
 
-    if (!DisableDueToAsm && copts.optimizationlevel > 0) {
+    if (!DisableDueToAsm &&
+        (copts.optimizationlevel > 0
+#if VERSION == VERSION_WII_1_0RC1
+         || copts.removeemptyloops
+#endif
+        )) {
         passCount = copts.multiplepasses ? 2 : 1;
         IRO_CPFirstTime = TRUE;
         for (pass = 0; pass < passCount; pass++) {
@@ -252,6 +257,11 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
             IRO_RemoveUnreachable();
             IRO_SimplifyConditionals();
 
+#if VERSION == VERSION_WII_1_0RC1
+            if (copts.removeemptyloops && IRO_RemoveAllEmptyLoops()) {
+                IRO_DumpAfterPhase("IRO_RemoveAllEmptyLoops", FALSE);
+            }
+#else
             if (pass == 1 && copts.optimizationlevel > 2) {
                 IRO_RenumberInts();
                 IRO_DumpAfterPhase("Before IRO_FindEmptyLoops", FALSE);
@@ -259,6 +269,7 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
                 IRO_DumpAfterPhase("After IRO_FindEmptyLoops", FALSE);
                 IRO_RenumberInts();
             }
+#endif
 
             if (copts.unrolling && !copts.optimizesize && pass == 0) {
                 IRO_DumpAfterPhase("Before IRO_LoopUnroller", FALSE);
@@ -336,6 +347,12 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
 
                 changed |= IRO_EvaluateConditionals();
                 IRO_DumpAfterPhase("IRO_EvaluateConditionals", FALSE);
+#if VERSION == VERSION_WII_1_0RC1
+                if (!changed && copts.removeemptyloops && IRO_RemoveAllEmptyLoops()) {
+                    IRO_DumpAfterPhase("IRO_RemoveAllEmptyLoops", FALSE);
+                    changed = TRUE;
+                }
+#endif
             } while (changed);
         }
 
@@ -406,4 +423,7 @@ void CodeGen_UpdateOptimizerOptions(void) {
     copts.loopinvariants = copts.strengthreduction = copts.lifetimes = copts.deadstore =
         copts.unrolling = copts.vectorizeloops = copts.optimizationlevel >= 3;
     copts.multiplepasses = copts.optimizationlevel >= 4;
+#if VERSION == VERSION_WII_1_0RC1
+    copts.removeemptyloops = copts.optimizationlevel >= 3;
+#endif
 }

@@ -78,6 +78,20 @@ CW_CALLBACK UCBStoreObjectData(CWPluginContext context, SInt32 whichfile, CWObje
         Handle browsehand;
         UCBSecretDetachHandle(context, object->objectdata, &objecthand);
         UCBSecretDetachHandle(context, object->browsedata, &browsehand);
+#if VERSION == VERSION_WII_1_0RC1
+        if (filedata->objectdata && filedata->objectdata != objecthand) {
+            DisposeHandle(filedata->objectdata);
+        }
+        if (filedata->browsedata && filedata->browsedata != browsehand) {
+            DisposeHandle(filedata->browsedata);
+        }
+        if (object->programIR) {
+            if (filedata->programIR) {
+                DisposeHandle(filedata->programIR);
+            }
+            UCBSecretDetachHandle(context, object->programIR, &filedata->programIR);
+        }
+#endif
         filedata->objectdata = objecthand;
         filedata->browsedata = browsehand;
         UCBSecretAttachHandle(context, objecthand, &object->objectdata);
@@ -733,6 +747,11 @@ CWCompilerLinkerContext::CWCompilerLinkerContext()
     memset(&sourcefile, 0, sizeof(sourcefile));
     sourcetext = NULL;
     sourcetextsize = 0;
+#if VERSION == VERSION_WII_1_0RC1
+    programInputs = NULL;
+    programInputCount = 0;
+    deferProgramIPA = FALSE;
+#endif
 
     precompile = autoprecompile = preprocess = FALSE;
     cachingPCH = FALSE;

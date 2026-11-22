@@ -565,10 +565,7 @@ pub fn ingest(root: &Path, spec: &Ingest) -> Result<IngestResult> {
             c.producer_sha256.as_str(),
         ),
         (
-            request.root.join(format!(
-                "build/compilers/GC/{}/mwcceppc.exe",
-                request.version.compiler_directory()
-            )),
+            mwcc_project::compilers::stock_executable(&request.root, request.version),
             c.original_sha256
                 .as_deref()
                 .context("stock compiler identity missing")?,

@@ -21,6 +21,17 @@
 #include "compiler/templates.h"
 #include "compiler/tokens.h"
 #include "compiler/types.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CABI.h"
+#include "compiler/CClass.h"
+#include "compiler/CDecl.h"
+#include "compiler/CExpr.h"
+#include "compiler/CIRStreamCode.h"
+#include "compiler/CIRStreamTools.h"
+#include "compiler/CMiddleLayer.h"
+#include "compiler/CPrecTransport.h"
+#include "compiler/ObjGen_PPC_EABI.h"
+#endif
 #include "driver/CCompiler.h"
 #include "driver/COSToolsCLT.h"
 #include "driver/CWPlugins.h"
@@ -39,6 +50,17 @@ typedef struct StaticData {
     OLinkList* links;
     SInt32 size;
 } StaticData;
+
+#if VERSION == VERSION_WII_1_0RC1
+// Preserve the source PCH record layout by using the high bit of the byte count.
+#define CPREC_STATIC_READ_ONLY 0x80000000u
+// The native alignment qualifiers and tentative flag change the raw source records.
+#define CPREC_SOURCE_VERSION 5146
+#elif VERSION < VERSION_GC_2_0
+#define CPREC_SOURCE_VERSION 1047
+#else
+#define CPREC_SOURCE_VERSION 5145
+#endif
 
 typedef struct Header {
     UInt32 magic;
@@ -83,7 +105,11 @@ typedef struct Header {
     InitExpr* init_expressions;
     CI_Action* cinline_tactionlist;
     TemplateFunction* ctempl_templatefuncs;
+#if VERSION == VERSION_WII_1_0RC1
+    ObjectList* tentativeData; // Previously reserved in the source PCH header.
+#else
     UInt32 x9C;
+#endif
     UInt32 xA0;
     UInt32 xA4;
     UInt32 xA8;
@@ -98,10 +124,18 @@ typedef struct Header {
     UInt32 xCC;
     UInt32 xD0;
     UInt32 xD4;
+#if VERSION == VERSION_WII_1_0RC1
+    // These words were reserved in the legacy source PCH header.
+    UInt32 backendSize;
+    UInt32 backendOffset;
+    UInt32 sectionPatchSize;
+    UInt32 sectionPatchOffset;
+#else
     UInt32 xD8;
     UInt32 xDC;
     UInt32 xE0;
     UInt32 xE4;
+#endif
     HashNameNode* nametable[0x800];
     Macro* macrotable[0x800];
     NameSpaceName* root_nametable[0x400];
@@ -141,6 +175,9 @@ static GList cprec_glist;
 static Header* cprec_header;
 static AddrPatch** cprec_addrhash;
 static Patch* cprec_patch_list;
+#if VERSION == VERSION_WII_1_0RC1
+static Patch* cprec_sectionpatches;
+#endif
 static BuiltIn* cprec_builtin;
 static PointerHash** cprec_pointerhash;
 static StaticData* cprec_staticdata;
@@ -205,7 +242,13 @@ static OLinkList* CPrec_OLinkListCopy(OLinkList* list) {
     return copy;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+void PreComp_StaticData(
+    Object* obj, const void* data, OLinkList* links, SInt32 size, Boolean readOnly
+) {
+#else
 void PreComp_StaticData(Object* obj, const void* data, OLinkList* links, SInt32 size) {
+#endif
     StaticData* entry;
 
     if (obj->sclass != TK_STATIC && !(obj->qual & (Q_IMPLICIT_WEAK | Q_WEAK))) {
@@ -215,19 +258,43 @@ void PreComp_StaticData(Object* obj, const void* data, OLinkList* links, SInt32 
     entry = galloc(sizeof(StaticData));
     entry->object = obj;
     entry->size = size;
+#if VERSION == VERSION_WII_1_0RC1
+    if (readOnly) {
+        entry->size = (SInt32)((UInt32)size | CPREC_STATIC_READ_ONLY);
+    }
+#endif
 
     entry->next = cprec_staticdata;
     cprec_staticdata = entry;
 
     if (data) {
+#if VERSION == VERSION_WII_1_0RC1
+        entry->buffer = galloc(size);
+        memcpy(entry->buffer, data, size);
+#else
         entry->buffer = galloc(obj->type->size);
         memcpy(entry->buffer, data, obj->type->size);
+#endif
     } else {
         entry->buffer = NULL;
     }
 
     entry->links = CPrec_OLinkListCopy(links);
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static void CPrec_DeclareStaticData(const StaticData* entry) {
+    UInt32 size = (UInt32)entry->size;
+
+    if (size & CPREC_STATIC_READ_ONLY) {
+        CInit_DeclareReadOnlyData(
+            entry->object, entry->buffer, entry->links, (SInt32)(size & ~CPREC_STATIC_READ_ONLY)
+        );
+    } else {
+        CInit_DeclareData(entry->object, entry->buffer, entry->links, entry->size);
+    }
+}
+#endif
 
 static void CPrec_InitAddressHashTable(void) {
     cprec_addrhash = lalloc(0x4000 * sizeof(AddrPatch*));
@@ -356,6 +423,11 @@ static void CPrec_SetupBuiltInArray(void) {
         REG_BUILTIN(&stvectorfloat);
         REG_BUILTIN(&stvectorpixel);
         REG_BUILTIN(&stvec2x32float);
+#if VERSION == VERSION_WII_1_0RC1
+        for (int spe = 0; spe < SPEBuiltinTypeCount; spe++) {
+            REG_BUILTIN(&stspevector[spe]);
+        }
+#endif
 
         if (counting) {
             array = lalloc(sizeof(void*) * total);
@@ -654,7 +726,7 @@ static void CPrec_DumpMacroTable(void) {
             CPrec_AppendPointerPatch(macro->text);
             CPrec_AppendWord16(macro->nargs);
             CPrec_AppendByte(macro->is_special);
-            CPrec_AppendByte(macro->isExpanding);
+            CPrec_AppendByte(macro->flags);
 
             for (j = 1; j < (macro->nargs & 0x7FFF); j++) {
                 CPrec_AppendNamePatch(macro->names[j - 1]);
@@ -980,9 +1052,14 @@ static TypeFunc* CPrec_GetTypeFuncPatch(TypeFunc* type) {
         (void*)(p + offsetof(TypeFunc, functype)), CPrec_GetTypePatch(type->functype)
     );
     if (type->args) {
+        Boolean includeNames = (type->flags & FUNC_IS_TEMPL_ANY) != 0;
+#if VERSION == VERSION_WII_1_0RC1
+        if ((type->flags & FUNC_METHOD) && IS_TEMPL_CLASS(TYPE(TYPE_METHOD(type)->theclass))) {
+            includeNames = TRUE;
+        }
+#endif
         CPrec_NewPointerPatch(
-            (void*)(p + offsetof(TypeFunc, args)),
-            CPrec_GetArgListPatch(type->args, (type->flags & FUNC_IS_TEMPL_ANY) != 0)
+            (void*)(p + offsetof(TypeFunc, args)), CPrec_GetArgListPatch(type->args, includeNames)
         );
     }
     if (type->exspecs) {
@@ -3126,6 +3203,14 @@ static Object* CPrec_GetObjectPatch(Object* obj) {
 
     CPrec_NewAddrPatch(obj, (void*)(p = CPrec_AppendAlign()));
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (cprec_dowrite && obj->section) {
+        Patch* patch = lalloc(sizeof(*patch));
+        patch->offset = p + offsetof(Object, section);
+        patch->next = cprec_sectionpatches;
+        cprec_sectionpatches = patch;
+    }
+#endif
     obj->toc = NULL;
     obj->debugInfo.symbol = NULL;
 
@@ -3570,9 +3655,12 @@ static StaticData* CPrec_GetStaticDataPatch(StaticData* sd) {
             (void*)(current + offsetof(StaticData, object)), CPrec_GetObjectPatch(sd->object)
         );
         if (sd->buffer) {
-            CPrec_RawMemPatch(
-                (void*)(current + offsetof(StaticData, buffer)), sd->buffer, sd->object->type->size
-            );
+#if VERSION == VERSION_WII_1_0RC1
+            SInt32 size = (SInt32)((UInt32)sd->size & ~CPREC_STATIC_READ_ONLY);
+#else
+            SInt32 size = sd->object->type->size;
+#endif
+            CPrec_RawMemPatch((void*)(current + offsetof(StaticData, buffer)), sd->buffer, size);
         }
         if (sd->links) {
             CPrec_NewPointerPatch(
@@ -3593,6 +3681,32 @@ static StaticData* CPrec_GetStaticDataPatch(StaticData* sd) {
 
     return (StaticData*)first;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static ObjectList* CPrec_GetTentativeDataPatch(const ObjectList* list) {
+    ObjectList* first = NULL;
+    ObjectList* previous = NULL;
+    const ObjectList record = {0};
+
+    for (; list; list = list->next) {
+        ObjectList* current;
+
+        if (list->object->flags & OBJECT_DEFINED) {
+            continue;
+        }
+        current = (ObjectList*)CPrec_AppendAlign();
+        CPrec_AppendData(&record, sizeof(record));
+        CPrec_NewPointerPatch(&current->object, CPrec_GetObjectPatch(list->object));
+        if (previous) {
+            CPrec_NewPointerPatch(&previous->next, current);
+        } else {
+            first = current;
+        }
+        previous = current;
+    }
+    return first;
+}
+#endif
 
 static CallbackAction* CPrec_GetCallbackPatch(CallbackAction* ca) {
     CallbackAction* first;
@@ -3926,6 +4040,9 @@ static OSErr CPrec_DumpColorSymbolTable(Boolean doWrite) {
 
     cprec_patch_list = NULL;
     cprec_tokenpatches = NULL;
+#if VERSION == VERSION_WII_1_0RC1
+    cprec_sectionpatches = NULL;
+#endif
     cprec_offset = 0;
     cprec_zero_offset = 0;
     cprec_dowrite = doWrite;
@@ -3993,6 +4110,18 @@ static OSErr CPrec_DumpColorSymbolTable(Boolean doWrite) {
             return err;
         }
     }
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (cinit_tentative) {
+        ObjectList* p = CPrec_GetTentativeDataPatch(cinit_tentative);
+        if (doWrite) {
+            cprec_header->tentativeData = p;
+        }
+        if ((err = CPrec_FlushRawBuffer()) != noErr) {
+            return err;
+        }
+    }
+#endif
 
     if (callbackactions) {
         CallbackAction* p = CPrec_GetCallbackPatch(callbackactions);
@@ -4137,11 +4266,7 @@ static OSErr CPrec_WriteFile(void) {
     memclrw(cprec_header, sizeof(Header));
 
     cprec_header->magic = 0xBEEFFACE;
-    #if VERSION < VERSION_GC_2_0
-    cprec_header->version = 1047;
-#else
-    cprec_header->version = 5145;
-#endif
+    cprec_header->version = CPREC_SOURCE_VERSION;
     cprec_header->target = 2;
     cprec_header->check_header_flags = copts.checkprecompflags;
     cprec_header->cplusplus = copts.cplusplus;
@@ -4206,6 +4331,29 @@ static OSErr CPrec_WriteFile(void) {
         offset += cprec_glist.size;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    cprec_glist.size = 0;
+    CodeGen_WritePrecompilerData(&cprec_glist);
+    cprec_header->backendSize = cprec_glist.size;
+    cprec_header->backendOffset = offset;
+    if ((err = COS_FileWrite(cprec_refnum, *cprec_glist.data, cprec_glist.size)) != noErr) {
+        return err;
+    }
+    offset += cprec_glist.size;
+    if (cprec_sectionpatches) {
+        Patch* patch;
+        cprec_glist.size = 0;
+        for (patch = cprec_sectionpatches; patch; patch = patch->next) {
+            AppendGListLong(&cprec_glist, patch->offset);
+        }
+        cprec_header->sectionPatchSize = cprec_glist.size;
+        cprec_header->sectionPatchOffset = offset;
+        if ((err = COS_FileWrite(cprec_refnum, *cprec_glist.data, cprec_glist.size)) != noErr) {
+            return err;
+        }
+    }
+#endif
+
     if ((err = COS_FileSetPos(cprec_refnum, 0)) != noErr) {
         return err;
     }
@@ -4253,6 +4401,2996 @@ static void CPrec_ReadData(SInt32 offset, void* buffer, SInt32 size) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static const UInt8* CPrec_ReadRawSection(UInt32 imageSize, UInt32 offset, UInt32 size) {
+    if (offset < sizeof(Header) || offset > imageSize || size > imageSize - offset) {
+        CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+    }
+    if (cprec_buffer) {
+        return (const UInt8*)cprec_buffer + offset;
+    } else {
+        UInt8* data = lalloc(size);
+        CPrec_ReadData(offset, data, size);
+        return data;
+    }
+}
+
+static void CPrec_ReadRawBuffer(UInt32 imageSize) {
+    UInt32 rawOffset = cprec_header->rawdataoffset;
+    UInt32 storedSize = cprec_header->rawdatasize;
+    UInt32 rawSize = cprec_header->rawsize;
+    const UInt8* input;
+
+    if (rawSize > 0x7fffffffu || ((rawSize + 31) >> 5) > storedSize) {
+        CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+    }
+
+    input = CPrec_ReadRawSection(imageSize, rawOffset, storedSize);
+    cprec_rawbuffer = galloc(rawSize);
+    if (!CPrec_ExpandRawData(input, storedSize, cprec_rawbuffer, rawSize)) {
+        CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+    }
+}
+
+static void CPrec_ReadBackend(UInt32 imageSize) {
+    PrecompilerSectionMap remap;
+    UInt32 size = cprec_header->backendSize;
+    const UInt8* data;
+    UInt32 i;
+
+    if (!size) {
+        return;
+    }
+    data = CPrec_ReadRawSection(imageSize, cprec_header->backendOffset, size);
+    if (!CodeGen_ReadPrecompilerData(data, size, &remap)) {
+        CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+    }
+    size = cprec_header->sectionPatchSize;
+    if (!size) {
+        return;
+    }
+    if (size & 3) {
+        CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+    }
+    data = CPrec_ReadRawSection(imageSize, cprec_header->sectionPatchOffset, size);
+    for (i = 0; i < size; i += 4) {
+        UInt32 offset = CIRStream_ReadWord(data + i);
+        UInt16* field;
+        SInt16 index;
+
+        if (offset > cprec_header->rawsize ||
+            cprec_header->rawsize - offset < sizeof(*field) ||
+            (offset & 1)) {
+            CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+        }
+        field = (UInt16*)((UInt8*)cprec_rawbuffer + offset);
+        index = (SInt16)*field;
+        if (index < 0) {
+            UInt32 selector = -(SInt32)index;
+            if (selector > remap.selectorCount) {
+                CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+            }
+            *field = remap.selectors[selector];
+        } else {
+            if ((UInt32)index >= remap.attributeCount) {
+                CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+            }
+            *field = remap.attributes[index];
+        }
+    }
+}
+static int CPrec_InstallStockMacro(const CPrecStockMacro* entry, void* context) {
+    UInt32 count = entry->argumentCount ? entry->argumentCount - 1 : 0;
+    size_t remaining = entry->replacementSize;
+    const UInt8* stream = entry->replacement;
+    Macro* macro;
+    char* text = NULL;
+    UInt32 length = 0;
+    UInt32 i;
+    Boolean pasting = FALSE;
+    Boolean lastComma = FALSE;
+
+    (void)context;
+    if (count > 127 || ((entry->flags & CPrecStockMacroVariadic) && !count)) {
+        return 0;
+    }
+    macro = galloc(offsetof(Macro, names) + count * sizeof(macro->names[0]));
+    macro->name = GetHashNameNodeExport(entry->name);
+    macro->nargs = entry->argumentCount;
+    if (entry->flags & CPrecStockMacroVariadic) {
+        macro->nargs |= 0x8000;
+    }
+    macro->is_special = FALSE;
+    macro->flags = (entry->flags & CPrecStockMacroGnuVariadic) ? MacroGnuVariadic : 0;
+    for (i = 0; i < count; ++i) {
+        const char* name = CPrec_StockMacroArgument(entry, i);
+        if (!name || !*name) {
+            return 0;
+        }
+        macro->names[i] = GetHashNameNodeExport(name);
+    }
+    if (remaining) {
+        UInt32 capacity = remaining < 0x10000 ? remaining * 2 + 1 : 0x20000;
+        text = galloc(capacity);
+        while (remaining) {
+            CPrecMacroToken token;
+            Boolean space;
+            Boolean gnuComma;
+            size_t prefix;
+            size_t bytes;
+            if (!decodemacrotoken(&stream, &remaining, &token)) {
+                return 0;
+            }
+            if (token.kind == CPrecMacroPaste && !(token.flags & CPrecMacroParameter)) {
+                if (!length || pasting || !remaining) {
+                    return 0;
+                }
+                pasting = TRUE;
+                continue;
+            }
+            space = length && !pasting && (token.flags & CPrecMacroLeadingSpace);
+            gnuComma = pasting && lastComma && (macro->flags & MacroGnuVariadic) &&
+                (token.flags & CPrecMacroParameter) && (UInt32)token.kind == count;
+            pasting = FALSE;
+            lastComma = token.kind == ',' && !(token.flags & CPrecMacroParameter);
+            if (gnuComma) {
+                --length;
+            }
+            prefix = token.quote ? strlen(token.prefix) : 0;
+            bytes = token.flags & CPrecMacroParameter ? 2
+                : token.spelling ? token.length + prefix + (token.quote ? 2 : 0)
+                                 : 1;
+            if (bytes >= capacity - length - space) {
+                return 0;
+            }
+            if (space) {
+                text[length++] = ' ';
+            }
+            if (token.flags & CPrecMacroParameter) {
+                if (token.kind < 1 || (UInt32)token.kind > count) {
+                    return 0;
+                }
+                if (gnuComma) {
+                    text[length++] = TK_MACRO_ARG_GNU_COMMA;
+                } else if (token.flags & CPrecMacroStringify) {
+                    text[length++] = TK_MACRO_ARG_HASH;
+                } else if (token.flags & CPrecMacroUnexpanded) {
+                    text[length++] = TK_MACRO_ARG_PASTED;
+                } else {
+                    text[length++] = TK_MACRO_ARG_EXPANDED;
+                }
+                text[length++] = token.kind;
+            } else if (token.spelling) {
+                size_t j;
+                for (j = 0; j < token.length; ++j) {
+                    unsigned char byte = token.spelling[j];
+                    if (byte >= TK_MACRO_ARG_EXPANDED && byte <= TK_MACRO_ARG_GNU_COMMA) {
+                        return 0;
+                    }
+                }
+                if (token.quote) {
+                    memcpy(text + length, token.prefix, prefix);
+                    length += prefix;
+                    text[length++] = token.quote;
+                }
+                memcpy(text + length, token.spelling, token.length);
+                length += token.length;
+                if (token.quote) {
+                    text[length++] = token.quote;
+                }
+            } else {
+                text[length++] = token.kind;
+            }
+        }
+        text[length] = 0;
+    }
+    macro->text = length ? text : NULL;
+    CPrep_InstallPrecompiledMacro(macro);
+    return 1;
+}
+
+typedef struct CPrecStockType {
+    struct CPrecStockType* next;
+    struct CPrecStockType* pending;
+    UInt32 offset;
+    Type* type;
+    UInt32 pointerDepth;
+    UInt32 aggregateDepth;
+    Boolean decoding;
+} CPrecStockType;
+
+typedef struct CPrecStockObject {
+    struct CPrecStockObject* next;
+    UInt32 offset;
+    ObjBase* object;
+    Boolean pendingData;
+} CPrecStockObject;
+
+typedef struct CPrecStockScope {
+    struct CPrecStockScope* next;
+    struct CPrecStockScope* pending;
+    const UInt8* record;
+    NameSpace* scope;
+} CPrecStockScope;
+
+typedef struct CPrecStockExpression {
+    struct CPrecStockExpression* next;
+    UInt32 offset;
+    ENode* node;
+} CPrecStockExpression;
+
+typedef struct CPrecStockDefaultArgument {
+    struct CPrecStockDefaultArgument* next;
+    FuncArg* argument;
+    UInt32 offset;
+} CPrecStockDefaultArgument;
+
+typedef struct CPrecStockFunction {
+    struct CPrecStockFunction* next;
+    Object* object;
+    const UInt8* package;
+} CPrecStockFunction;
+
+typedef struct CPrecStockGraph {
+    const UInt8* raw;
+    UInt32 rawSize;
+    UInt8* builtinIndices;
+    PrecompilerSectionMap sections;
+    CPrecStockType* types[256];
+    CPrecStockObject* objects[256];
+    CPrecStockScope* scopes[256];
+    CPrecStockExpression* expressions[256];
+    CPrecStockType* pendingTemplateClasses;
+    CPrecStockType* pendingClassClones;
+    CPrecStockScope* pendingScopes;
+    CPrecStockDefaultArgument* pendingDefaults;
+    CPrecStockFunction* pendingFunctions;
+    UInt32 objectsRemaining;
+    UInt32 dataDefinitions;
+    UInt32 functionTemplates;
+    UInt32 functionInstances;
+    UInt32 pointerDepth;
+    UInt32 aggregateDepth;
+} CPrecStockGraph;
+
+enum {
+    StockBuiltinRoot = 0,
+    StockBuiltinEllipsis = 25,
+    StockBuiltinOldStyle = 26,
+    StockTypeEnum = 4,
+    StockTypeStruct = 5,
+    StockTypeClass = 6,
+    StockTypeFunction = 7,
+    StockTypeBitfield = 8,
+    StockTypeTemplate = 10,
+    StockTypeMemberPointer = 11,
+    StockTypePointer = 12,
+    StockTypeArray = 13,
+    StockDependentEnumValue = 8,
+    StockTemplateTemplateParam = 11,
+    StockTemplateUsingStorage = 0x166,
+    StockFunctionDeferredDefinition = 0x800000,
+    StockFunctionCppLinkage = 0x40000000,
+    StockClassTrivialCopy = 0x20000,
+    StockClassTemplateClone = 0x200,
+    StockClassTemplateHeader = 0x34,
+    StockClassTemplateSize = 0x56,
+    StockClassInstanceSize = 0x48,
+    StockFunctionInstanceSize = 0x1c,
+    StockTemplateActionSize = 0x1c,
+    StockExpressionTemplate = 0x4c,
+    StockExpressionSize = 0x2e,
+    StockExpressionDepth = 256
+};
+
+static Type* CPrec_StockBuiltinType(int index) {
+    static TypePointer charPointer = {TYPEPOINTER, 4, TYPE(&stchar), 0};
+    // The stock order comes from the builtin registration function at 0x47b350.
+    static Type* const types[] = {
+        [1] = &stvoid,
+        [2] = TYPE(&stbool),
+        [3] = TYPE(&stchar),
+        [4] = TYPE(&stsignedchar),
+        [5] = TYPE(&stunsignedchar),
+        [6] = TYPE(&stwchar),
+        [7] = TYPE(&stsignedshort),
+        [8] = TYPE(&stunsignedshort),
+        [9] = TYPE(&stsignedint),
+        [10] = TYPE(&stunsignedint),
+        [11] = TYPE(&stsignedlong),
+        [12] = TYPE(&stunsignedlong),
+        [13] = TYPE(&stsignedlonglong),
+        [14] = TYPE(&stunsignedlonglong),
+        [15] = TYPE(&stfloat),
+        [16] = TYPE(&stshortdouble),
+        [17] = TYPE(&stdouble),
+        [18] = TYPE(&stlongdouble),
+        [27] = &stillegal,
+        [28] = &sttemplexpr,
+        [29] = &stvoid,
+        [30] = TYPE(&void_ptr),
+        [31] = TYPE(&charPointer),
+        [32] = TYPE(&rt_func),
+        [33] = TYPE(&catchinfostruct),
+        [34] = TYPE(&stvectorunsignedchar),
+        [35] = TYPE(&stvectorsignedchar),
+        [36] = TYPE(&stvectorboolchar),
+        [37] = TYPE(&stvectorunsignedshort),
+        [38] = TYPE(&stvectorsignedshort),
+        [39] = TYPE(&stvectorboolshort),
+        [40] = TYPE(&stvectorunsignedlong),
+        [41] = TYPE(&stvectorsignedlong),
+        [42] = TYPE(&stvectorboollong),
+        [43] = TYPE(&stvectorfloat),
+        [44] = TYPE(&stvectorpixel),
+        [45] = TYPE(&stvec2x32float),
+        [46] = TYPE(&stspevector[0]),
+        [47] = TYPE(&stspevector[1]),
+        [48] = TYPE(&stspevector[2]),
+        [49] = TYPE(&stspevector[3]),
+        [50] = TYPE(&stspevector[4]),
+        [51] = TYPE(&stspevector[5]),
+        [52] = TYPE(&stspevector[6]),
+        [53] = TYPE(&stspevector[7])
+    };
+    return (unsigned int)index < sizeof(types) / sizeof(types[0]) ? types[index] : NULL;
+}
+
+static const UInt8* CPrec_StockRecord(const CPrecStockGraph* graph, UInt32 offset, UInt32 size) {
+    if (!offset || (offset & 1) || offset > graph->rawSize || size > graph->rawSize - offset) {
+        return NULL;
+    }
+    return graph->raw + offset;
+}
+
+static UInt16 CPrec_StockHalfword(const UInt8* field) {
+    return (UInt16)(field[0] | (field[1] << 8));
+}
+
+static Boolean CPrec_ReadStockParamID(const UInt8* record, TemplParamID* pid) {
+    if (record[3] > TPT_TEMPLATE) {
+        return FALSE;
+    }
+    pid->index = CPrec_StockHalfword(record);
+    pid->nindex = record[2];
+    pid->type = (TemplParamType)record[3];
+    return TRUE;
+}
+
+static int CPrec_StockBuiltin(const CPrecStockGraph* graph, const UInt8* slot) {
+    return (int)graph->builtinIndices[(slot - graph->raw) / 2] - 1;
+}
+
+static Boolean CPrec_ReadStockName(
+    const CPrecStockGraph* graph, const UInt8* slot, HashNameNode** name
+) {
+    UInt32 offset = CIRStream_ReadWord(slot);
+    const char* text;
+
+    *name = NULL;
+    if (offset) {
+        text = CPrec_StockHashName(graph->raw, graph->rawSize, offset);
+        if (!text) {
+            return FALSE;
+        }
+        *name = GetHashNameNodeExport(text);
+    }
+    return TRUE;
+}
+
+static Type* CPrec_ReadStockType(CPrecStockGraph* graph, const UInt8* slot, UInt32 depth);
+static Type* CPrec_ReadStockTypeAt(CPrecStockGraph* graph, UInt32 offset, UInt32 depth);
+static Object* CPrec_ReadStockSymbol(CPrecStockGraph* graph, UInt32 offset, UInt32 depth);
+static ENode* CPrec_ReadStockExpression(CPrecStockGraph* graph, UInt32 offset, UInt32 depth);
+static Boolean CPrec_ReadStockTemplateMember(CPrecStockGraph* graph, UInt32 offset, Object* object);
+static Boolean CPrec_ReadStockTemplateArgs(
+    CPrecStockGraph* graph, UInt32 offset, TemplArg** tail, UInt32 depth
+);
+
+static Type* CPrec_ReadStockEmbeddedTemplate(CPrecStockGraph* graph, UInt32 offset, UInt32 depth) {
+    return offset > StockClassTemplateHeader
+        ? CPrec_ReadStockTypeAt(graph, offset - StockClassTemplateHeader, depth)
+        : NULL;
+}
+
+static NameSpace* CPrec_ReadStockScope(CPrecStockGraph* graph, const UInt8* slot, UInt32 depth) {
+    int builtin = CPrec_StockBuiltin(graph, slot);
+    UInt32 offset = CIRStream_ReadWord(slot);
+    const UInt8* record;
+    CPrecStockScope** bucket;
+    CPrecStockScope* entry;
+    HashNameNode* name;
+    NameSpace* parent;
+
+    if (builtin >= 0) {
+        return builtin == StockBuiltinRoot ? cscope_root : NULL;
+    }
+    if (depth >= 128) {
+        return NULL;
+    }
+    record = CPrec_StockRecord(graph, offset, 0x24);
+    if (!record || record[0x21] != 1 || record[0x23] || CIRStream_ReadWord(record + 0x10)) {
+        return NULL;
+    }
+    bucket = &graph->scopes[(offset >> 2) % (sizeof(graph->scopes) / sizeof(graph->scopes[0]))];
+    for (entry = *bucket; entry; entry = entry->next) {
+        if (entry->record == record) {
+            return entry->scope;
+        }
+    }
+    entry = lalloc(sizeof(*entry));
+    entry->record = record;
+    entry->scope = NULL;
+    entry->next = *bucket;
+    *bucket = entry;
+    parent = CPrec_ReadStockScope(graph, record, depth + 1);
+    if (!parent || !CPrec_ReadStockName(graph, record + 4, &name)) {
+        return NULL;
+    }
+    entry->scope =
+        record[0x20] ? CScope_NewHashNameSpace(name) : CScope_NewListNameSpace(name, TRUE);
+    entry->scope->parent = parent;
+    entry->scope->is_unnamed = record[0x22] != 0;
+    entry->pending = graph->pendingScopes;
+    graph->pendingScopes = entry;
+    return entry->scope;
+}
+
+static Boolean CPrec_ReadStockFuncArgs(
+    CPrecStockGraph* graph, const UInt8* slot, FuncArg** tail, UInt32 depth
+) {
+    UInt32 remaining = graph->rawSize / 0x1c;
+    for (;;) {
+        int builtin = CPrec_StockBuiltin(graph, slot);
+        UInt32 offset = CIRStream_ReadWord(slot);
+        const UInt8* record;
+        FuncArg* arg;
+
+        if (builtin >= 0) {
+            if (builtin != StockBuiltinEllipsis && builtin != StockBuiltinOldStyle) {
+                return FALSE;
+            }
+            *tail = builtin == StockBuiltinEllipsis ? &elipsis : &oldstyle;
+            return TRUE;
+        }
+        if (!offset) {
+            return TRUE;
+        }
+        record = CPrec_StockRecord(graph, offset, 0x1c);
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        arg = CParser_NewFuncArg();
+        arg->type = CPrec_ReadStockType(graph, record + 0x0c, depth);
+        if (!arg->type || !CPrec_ReadStockName(graph, record + 4, &arg->name)) {
+            return FALSE;
+        }
+        arg->qual = CIRStream_ReadWord(record + 0x10);
+        arg->sclass = (SInt16)CPrec_StockHalfword(record + 0x18);
+        arg->is_array = record[0x1a] != 0;
+        if (CIRStream_ReadWord(record + 8)) {
+            CPrecStockDefaultArgument* pending = lalloc(sizeof(*pending));
+            pending->argument = arg;
+            pending->offset = CIRStream_ReadWord(record + 8);
+            pending->next = graph->pendingDefaults;
+            graph->pendingDefaults = pending;
+        }
+        *tail = arg;
+        tail = &arg->next;
+        slot = record;
+    }
+}
+
+static Boolean CPrec_ReadStockExceptions(
+    CPrecStockGraph* graph, UInt32 offset, ExceptSpecList** tail, UInt32 depth
+) {
+    UInt32 remaining = graph->rawSize / 12;
+    for (; offset;) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 12);
+        ExceptSpecList* entry;
+
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        entry = galloc(sizeof(*entry));
+        entry->next = NULL;
+        entry->type = NULL;
+        entry->qual = CIRStream_ReadWord(record + 8);
+        offset = CIRStream_ReadWord(record);
+        if (CIRStream_ReadWord(record + 4) || CPrec_StockBuiltin(graph, record + 4) >= 0) {
+            entry->type = CPrec_ReadStockType(graph, record + 4, depth);
+            if (!entry->type) {
+                return FALSE;
+            }
+        } else if (offset) {
+            return FALSE;
+        }
+        *tail = entry;
+        tail = &entry->next;
+    }
+    return TRUE;
+}
+
+static CPrecStockObject** CPrec_FindStockObject(CPrecStockGraph* graph, UInt32 offset) {
+    CPrecStockObject** link =
+        &graph->objects[(offset >> 2) % (sizeof(graph->objects) / sizeof(graph->objects[0]))];
+    while (*link && (*link)->offset != offset) {
+        link = &(*link)->next;
+    }
+    return link;
+}
+
+static void CPrec_RememberStockObject(CPrecStockObject** link, UInt32 offset, ObjBase* object) {
+    CPrecStockObject* entry = lalloc(sizeof(*entry));
+    entry->next = *link;
+    entry->offset = offset;
+    entry->object = object;
+    entry->pendingData = FALSE;
+    *link = entry;
+}
+
+static const UInt8* CPrec_StockDependentEnumValue(
+    CPrecStockGraph* graph, const UInt8* slot, UInt32 enumOffset
+) {
+    const UInt8* record = CPrec_StockRecord(graph, CIRStream_ReadWord(slot), 0x10);
+    return record &&
+            record[0] == StockTypeTemplate &&
+            record[6] == StockDependentEnumValue &&
+            CIRStream_ReadWord(record + 8) == enumOffset
+        ? record
+        : NULL;
+}
+
+static Type* CPrec_ReadStockEnum(
+    CPrecStockGraph* graph, const UInt8* record, SInt32 size, UInt32 depth
+) {
+    TypeEnum* result = galloc(sizeof(*result));
+    ObjEnumConst** tail = &result->enumlist;
+    UInt32 offset = CIRStream_ReadWord(record + 0x0a);
+    UInt32 enumOffset = (UInt32)(record - graph->raw);
+    Boolean isTemplate;
+
+    memset(result, 0, sizeof(*result));
+    result->type = TYPEENUM;
+    result->size = size;
+    result->nspace = CPrec_ReadStockScope(graph, record + 6, 0);
+    result->enumtype = CPrec_ReadStockType(graph, record + 0x0e, depth);
+    if (!result->nspace ||
+        !result->enumtype ||
+        !IS_TYPE_INT(result->enumtype) ||
+        size != result->enumtype->size ||
+        !CPrec_ReadStockName(graph, record + 0x12, &result->enumname)) {
+        return NULL;
+    }
+    isTemplate = result->nspace->theclass && IS_TEMPL_CLASS(TYPE(result->nspace->theclass));
+    while (offset) {
+        const UInt8* enumerator = CPrec_StockRecord(graph, offset, 0x16);
+        CPrecStockObject** link = CPrec_FindStockObject(graph, offset);
+        ObjEnumConst* object;
+        if (!enumerator || *link || enumerator[0] != OT_ENUMCONST || enumerator[1] > ACCESSNONE) {
+            return NULL;
+        }
+        if (CIRStream_ReadWord(enumerator + 0x0a) != enumOffset) {
+            Type* builtin = CPrec_StockBuiltinType(CPrec_StockBuiltin(graph, enumerator + 0x0a));
+            if (!isTemplate ||
+                ((!builtin || !IS_TYPE_INT(builtin)) &&
+                 !CPrec_StockDependentEnumValue(graph, enumerator + 0x0a, enumOffset))) {
+                return NULL;
+            }
+        }
+        object = galloc(sizeof(*object));
+        memset(object, 0, sizeof(*object));
+        if (!CPrec_ReadStockName(graph, enumerator + 6, &object->name) || !object->name) {
+            return NULL;
+        }
+        object->otype = OT_ENUMCONST;
+        object->access = enumerator[1];
+        object->type = TYPE(result);
+        object->val.hi = (SInt32)CIRStream_ReadWord(enumerator + 0x0e);
+        object->val.lo = CIRStream_ReadWord(enumerator + 0x12);
+        *tail = object;
+        tail = &object->next;
+        CPrec_RememberStockObject(link, offset, OBJ_BASE(object));
+        offset = CIRStream_ReadWord(enumerator + 2);
+    }
+    return TYPE(result);
+}
+
+static Boolean CPrec_ReadStockMembers(
+    CPrecStockGraph* graph, UInt32 offset, TypeStruct* result, UInt32 depth
+) {
+    StructMember** tail = &result->members;
+    UInt32 remaining = graph->rawSize / 0x18;
+
+    for (; offset;) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 0x18);
+        StructMember* member;
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        member = galloc(sizeof(*member));
+        memset(member, 0, sizeof(*member));
+        member->type = CPrec_ReadStockType(graph, record + 4, depth);
+        member->offset = (SInt32)CIRStream_ReadWord(record + 0x10);
+        member->qual = CIRStream_ReadWord(record + 0x14);
+        if (!member->type ||
+            member->offset < 0 ||
+            member->offset > result->size ||
+            !CPrec_ReadStockName(graph, record + 8, &member->name)) {
+            return FALSE;
+        }
+        *tail = member;
+        tail = &member->next;
+        offset = CIRStream_ReadWord(record);
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockBases(
+    CPrecStockGraph* graph, UInt32 offset, TypeClass* result, UInt32 depth
+) {
+    ClassList** tail = &result->bases;
+    UInt32 remaining = graph->rawSize / 0x12;
+
+    for (; offset;) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 0x12);
+        ClassList* base;
+        Type* target;
+        if (!record || !remaining-- || record[0x10] > ACCESSNONE || record[0x11] > 1) {
+            return FALSE;
+        }
+        target = CPrec_ReadStockType(graph, record + 4, depth);
+        if (!target ||
+            !IS_TYPE_CLASS(target) ||
+            CIRStream_ReadWord(record + 8) > (UInt32)result->size) {
+            return FALSE;
+        }
+        base = galloc(sizeof(*base));
+        memset(base, 0, sizeof(*base));
+        base->base = TYPE_CLASS(target);
+        base->offset = (SInt32)CIRStream_ReadWord(record + 8);
+        base->voffset = (SInt32)CIRStream_ReadWord(record + 0x0c);
+        base->access = record[0x10];
+        base->is_virtual = record[0x11];
+        *tail = base;
+        tail = &base->next;
+        offset = CIRStream_ReadWord(record);
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockVirtualBases(
+    CPrecStockGraph* graph, UInt32 offset, TypeClass* result, UInt32 depth
+) {
+    VClassList** tail = &result->vbases;
+    UInt32 remaining = graph->rawSize / 0x12;
+
+    for (; offset;) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 0x12);
+        VClassList* base;
+        Type* target;
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        target = CPrec_ReadStockType(graph, record + 4, depth);
+        if (!target ||
+            !IS_TYPE_CLASS(target) ||
+            CIRStream_ReadWord(record + 8) > (UInt32)result->size) {
+            return FALSE;
+        }
+        base = galloc(sizeof(*base));
+        memset(base, 0, sizeof(*base));
+        base->base = TYPE_CLASS(target);
+        base->offset = (SInt32)CIRStream_ReadWord(record + 8);
+        base->voffset = (SInt32)CIRStream_ReadWord(record + 0x0c);
+        base->has_override = record[0x10] != 0;
+        *tail = base;
+        tail = &base->next;
+        offset = CIRStream_ReadWord(record);
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockVTable(
+    CPrecStockGraph* graph, TypeClass* result, UInt32 offset, UInt32 depth
+) {
+    const UInt8* record;
+    Object* object;
+    SInt32 size;
+    SInt32 displacement;
+
+    if (!offset) {
+        return TRUE;
+    }
+    record = CPrec_StockRecord(graph, offset, 0x10);
+    if (!record) {
+        return FALSE;
+    }
+    object = CPrec_ReadStockSymbol(graph, CIRStream_ReadWord(record), depth);
+    size = (SInt32)CIRStream_ReadWord(record + 4);
+    displacement = (SInt32)CIRStream_ReadWord(record + 0x0c);
+    if (!object ||
+        object->datatype != DDATA ||
+        !object->nspace->theclass ||
+        size < 0 ||
+        object->type->size != size ||
+        displacement < 0 ||
+        displacement > result->size) {
+        return FALSE;
+    }
+    CABI_AddVTable(result);
+    result->vtable->object = object;
+    result->vtable->owner = object->nspace->theclass;
+    result->vtable->size = size;
+    result->vtable->offset = displacement;
+    if (result->action == CLASS_ACTION_NONE && result->vtable->owner == result) {
+        CClass_MakeStaticActionClass(result);
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockClassMembers(
+    CPrecStockGraph* graph, UInt32 offset, TypeClass* result, UInt32 depth
+) {
+    ObjMemberVar** tail = &result->ivars;
+
+    for (; offset;) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 0x1c);
+        CPrecStockObject** link = CPrec_FindStockObject(graph, offset);
+        ObjMemberVar* member;
+        if (!record || *link || record[0] != OT_MEMBERVAR || record[1] > ACCESSNONE || record[3]) {
+            return FALSE;
+        }
+        member = galloc(sizeof(*member));
+        memset(member, 0, sizeof(*member));
+        member->otype = OT_MEMBERVAR;
+        member->access = record[1];
+        member->anonunion = record[2];
+        member->type = CPrec_ReadStockType(graph, record + 0x10, depth);
+        member->qual = CIRStream_ReadWord(record + 0x14);
+        member->offset = CIRStream_ReadWord(record + 0x18);
+        if (!member->type ||
+            (!(result->flags & CLASS_IS_TEMPL) && member->offset > (UInt32)result->size) ||
+            !CPrec_ReadStockName(graph, record + 8, &member->name)) {
+            return FALSE;
+        }
+        *tail = member;
+        tail = &member->next;
+        CPrec_RememberStockObject(link, offset, OBJ_BASE(member));
+        offset = CIRStream_ReadWord(record + 4);
+    }
+    return TRUE;
+}
+
+static Type* CPrec_ReadStockClass(
+    CPrecStockGraph* graph, CPrecStockType* entry, const UInt8* record, SInt32 size, UInt32 depth
+) {
+    UInt32 flags = CIRStream_ReadWord(record + 0x22);
+    UInt16 align = CPrec_StockHalfword(record + 0x2a);
+    UInt32 scopeOffset = CIRStream_ReadWord(record + 6);
+    const UInt8* scope = CPrec_StockRecord(graph, scopeOffset, 0x24);
+    TypeClass* result;
+    size_t classSize = sizeof(TypeClass);
+    Boolean valid;
+
+    if (flags & CLASS_IS_TEMPL) {
+        if (!CPrec_StockRecord(graph, entry->offset, StockClassTemplateSize) ||
+            (flags & CLASS_IS_TEMPL_INST)) {
+            return NULL;
+        }
+        classSize = sizeof(TemplClass);
+        if (flags & StockClassTemplateClone) {
+            // RC1 gives a nested template proxy an empty scope under the outer instance.
+            if (!scope ||
+                CIRStream_ReadWord(scope + 0x0c) != entry->offset ||
+                CIRStream_ReadWord(scope + 0x1c) ||
+                !CIRStream_ReadWord(record + 0x38)) {
+                return NULL;
+            }
+            result = galloc(classSize);
+            memset(result, 0, classSize);
+            result->type = TYPECLASS;
+            result->flags = (UInt16)flags;
+            entry->pending = graph->pendingClassClones;
+            graph->pendingClassClones = entry;
+            return TYPE(result);
+        }
+    } else if (flags & CLASS_IS_TEMPL_INST) {
+        if (!CPrec_StockRecord(graph, entry->offset, StockClassInstanceSize)) {
+            return NULL;
+        }
+        classSize = sizeof(TemplClassInst);
+    }
+    if (!scope ||
+        CIRStream_ReadWord(scope + 0x0c) != entry->offset ||
+        size < 0 ||
+        (!align && (!(flags & CLASS_IS_TEMPL_INST) || (flags & CLASS_COMPLETED))) ||
+        align > 0x4000 ||
+        (align & (align - 1)) ||
+        record[0x2e] > CLASS_MODE_CLASS ||
+        record[0x2f] > CLASS_ACTION_JAVA ||
+        CIRStream_ReadWord(record + 0x1e)) {
+        return NULL;
+    }
+    result = galloc(classSize);
+    memset(result, 0, classSize);
+    result->type = TYPECLASS;
+    result->size = size;
+    result->align = align;
+    result->flags = (UInt16)flags;
+    result->mode = record[0x2e];
+    result->action = record[0x2f];
+    result->eflags = record[0x2c];
+    if (flags & CLASS_COMPLETED) {
+        result->irCopyKind = flags & StockClassTrivialCopy ? ClassCopyTrivial : ClassCopyNontrivial;
+    }
+    result->nspace = CPrec_ReadStockScope(graph, record + 6, 0);
+    if (!result->nspace ||
+        result->nspace->theclass ||
+        !CPrec_ReadStockName(graph, record + 0x0a, &result->classname)) {
+        return NULL;
+    }
+    result->nspace->theclass = result;
+    entry->type = TYPE(result);
+    ++graph->aggregateDepth;
+    valid = CPrec_ReadStockBases(graph, CIRStream_ReadWord(record + 0x0e), result, depth) &&
+        CPrec_ReadStockVirtualBases(graph, CIRStream_ReadWord(record + 0x12), result, depth) &&
+        CPrec_ReadStockClassMembers(graph, CIRStream_ReadWord(record + 0x16), result, depth) &&
+        CPrec_ReadStockVTable(graph, result, CIRStream_ReadWord(record + 0x1a), depth);
+    --graph->aggregateDepth;
+    if (valid && (flags & CLASS_IS_TEMPL_ANY)) {
+        entry->pending = graph->pendingTemplateClasses;
+        graph->pendingTemplateClasses = entry;
+    }
+    return valid ? TYPE(result) : NULL;
+}
+
+static Type* CPrec_DecodeStockType(CPrecStockGraph* graph, CPrecStockType* entry, UInt32 depth) {
+    UInt32 offset = entry->offset;
+    const UInt8* record = CPrec_StockRecord(graph, offset, 6);
+    UInt8 kind;
+    SInt32 size;
+
+    if (!record) {
+        return NULL;
+    }
+    kind = record[0];
+    size = (SInt32)CIRStream_ReadWord(record + 2);
+    if (kind == StockTypeEnum) {
+        return CPrec_StockRecord(graph, offset, 0x16)
+            ? CPrec_ReadStockEnum(graph, record, size, depth)
+            : NULL;
+    }
+    if (kind == StockTypeClass) {
+        return CPrec_StockRecord(graph, offset, 0x30)
+            ? CPrec_ReadStockClass(graph, entry, record, size, depth)
+            : NULL;
+    }
+    if (kind == StockTypeStruct) {
+        TypeStruct* result;
+        UInt16 align;
+        Boolean valid;
+        if (!CPrec_StockRecord(graph, offset, 0x12) ||
+            size < 0 ||
+            record[0x10] > STRUCT_TYPE_UNION) {
+            return NULL;
+        }
+        align = CPrec_StockHalfword(record + 0x0e);
+        if (!align || align > 0x4000 || (align & (align - 1))) {
+            return NULL;
+        }
+        result = TYPE_STRUCT(CDecl_NewStructType(size, align));
+        result->stype = record[0x10];
+        if (!CPrec_ReadStockName(graph, record + 6, &result->name)) {
+            return NULL;
+        }
+        entry->type = TYPE(result);
+        ++graph->aggregateDepth;
+        valid = CPrec_ReadStockMembers(graph, CIRStream_ReadWord(record + 0x0a), result, depth);
+        --graph->aggregateDepth;
+        return valid ? TYPE(result) : NULL;
+    }
+    if (kind == StockTypeTemplate) {
+        TypeTemplDep* result;
+
+        if (!CPrec_StockRecord(graph, offset, 0x10)) {
+            return NULL;
+        }
+        result = galloc(sizeof(*result));
+        memset(result, 0, sizeof(*result));
+        result->type = TYPETEMPLATE;
+        result->size = size;
+        result->dtype = record[6] == StockTemplateTemplateParam ? TEMPLDEP_ARGUMENT
+                                                                : (TypeTemplDepType)record[6];
+        switch (result->dtype) {
+            case TEMPLDEP_ARGUMENT:
+                return CPrec_ReadStockParamID(record + 8, &result->u.pid) ? TYPE(result) : NULL;
+            case TEMPLDEP_QUALNAME: {
+                Type* parent = CPrec_ReadStockType(graph, record + 8, depth);
+                if (!parent ||
+                    !IS_TYPE_TEMPLATE(parent) ||
+                    !CPrec_ReadStockName(graph, record + 0x0c, &result->u.qual.name) ||
+                    !result->u.qual.name) {
+                    return NULL;
+                }
+                result->u.qual.type = TYPE_TEMPLATE(parent);
+                return TYPE(result);
+            }
+            case TEMPLDEP_TEMPLATE: {
+                Type* target = CPrec_ReadStockType(graph, record + 8, depth);
+                if (!target ||
+                    !IS_TEMPL_CLASS(target) ||
+                    !CPrec_ReadStockTemplateArgs(
+                        graph, CIRStream_ReadWord(record + 0x0c), &result->u.templ.args, depth
+                    )) {
+                    return NULL;
+                }
+                result->u.templ.templ = TEMPL_CLASS(target);
+                return TYPE(result);
+            }
+            case TEMPLDEP_ARRAY:
+                result->u.array.type = CPrec_ReadStockType(graph, record + 8, depth);
+                result->u.array.index =
+                    CPrec_ReadStockExpression(graph, CIRStream_ReadWord(record + 0x0c), 0);
+                return result->u.array.type && result->u.array.index ? TYPE(result) : NULL;
+            case TEMPLDEP_QUALTEMPL: {
+                Type* target = CPrec_ReadStockType(graph, record + 8, depth);
+                if (!target ||
+                    !IS_TYPE_TEMPLATE(target) ||
+                    !CPrec_ReadStockTemplateArgs(
+                        graph, CIRStream_ReadWord(record + 0x0c), &result->u.qualtempl.args, depth
+                    )) {
+                    return NULL;
+                }
+                result->u.qualtempl.type = TYPE_TEMPLATE(target);
+                return TYPE(result);
+            }
+            case TEMPLDEP_BITFIELD:
+                result->u.bitfield.type = CPrec_ReadStockType(graph, record + 8, depth);
+                result->u.bitfield.size =
+                    CPrec_ReadStockExpression(graph, CIRStream_ReadWord(record + 0x0c), 0);
+                return result->u.bitfield.type && result->u.bitfield.size ? TYPE(result) : NULL;
+            default:
+                return NULL;
+        }
+    }
+    if (kind == StockTypeBitfield) {
+        TypeBitfield* result;
+        Type* base;
+        if (!CPrec_StockRecord(graph, offset, 0x0c) ||
+            size < 1 ||
+            size > 8 ||
+            record[0x0a] + record[0x0b] > size * 8) {
+            return NULL;
+        }
+        base = CPrec_ReadStockType(graph, record + 6, depth);
+        if (!base || !IS_TYPE_INT_OR_ENUM(base) || size != base->size) {
+            return NULL;
+        }
+        result = galloc(sizeof(*result));
+        memset(result, 0, sizeof(*result));
+        result->type = TYPEBITFIELD;
+        result->size = size;
+        result->bitfieldtype = base;
+        result->offset = record[0x0a];
+        result->bitlength = record[0x0b];
+        return TYPE(result);
+    }
+    if (kind == StockTypePointer || kind == StockTypeArray) {
+        TypePointer* result;
+        Type* target;
+        if (!CPrec_StockRecord(graph, offset, kind == StockTypeArray ? 0x14 : 0x0e) ||
+            (kind == StockTypePointer ? size != 4 : size < 0)) {
+            return NULL;
+        }
+        result = TYPE_POINTER(
+            kind == StockTypePointer ? CDecl_NewPointerType(NULL) : CDecl_NewArrayType(NULL, size)
+        );
+        result->qual = CIRStream_ReadWord(record + 0x0a);
+        entry->type = TYPE(result);
+        if (kind == StockTypePointer) {
+            ++graph->pointerDepth;
+        }
+        target = CPrec_ReadStockType(graph, record + 6, depth);
+        if (kind == StockTypePointer) {
+            --graph->pointerDepth;
+        }
+        result->target = target;
+        return target ? TYPE(result) : NULL;
+    }
+    if (kind == StockTypeMemberPointer) {
+        TypeMemberPointer* result;
+        if (!CPrec_StockRecord(graph, offset, 0x12)) {
+            return NULL;
+        }
+        result = galloc(sizeof(*result));
+        memset(result, 0, sizeof(*result));
+        result->type = TYPEMEMBERPOINTER;
+        result->size = size;
+        result->qual = CIRStream_ReadWord(record + 0x0e);
+        entry->type = TYPE(result);
+        ++graph->pointerDepth;
+        result->ty1 = CPrec_ReadStockType(graph, record + 6, depth);
+        result->ty2 = CPrec_ReadStockType(graph, record + 0x0a, depth);
+        --graph->pointerDepth;
+        if (!result->ty1 ||
+            !result->ty2 ||
+            !IS_TYPE_CLASS(result->ty2) ||
+            size != (IS_TYPE_FUNC(result->ty1) ? 12 : 4)) {
+            return NULL;
+        }
+        return TYPE(result);
+    }
+    if (kind == StockTypeFunction) {
+        TypeFunc* result;
+        UInt32 flags;
+        if (!CPrec_StockRecord(graph, offset, 0x24)) {
+            return NULL;
+        }
+        flags = CIRStream_ReadWord(record + 0x1a) &
+            ~(StockFunctionDeferredDefinition | StockFunctionCppLinkage);
+        if ((flags & FUNC_METHOD) && !CPrec_StockRecord(graph, offset, 0x30)) {
+            return NULL;
+        }
+        if (flags & FUNC_METHOD) {
+            TypeMemberFunc* method = galloc(sizeof(*method));
+            memset(method, 0, sizeof(*method));
+            result = TYPE_FUNC(method);
+        } else {
+            result = galloc(sizeof(*result));
+            memset(result, 0, sizeof(*result));
+        }
+        result->type = TYPEFUNC;
+        result->size = size;
+        entry->type = TYPE(result);
+        result->functype = CPrec_ReadStockType(graph, record + 0x0e, depth);
+        result->qual = CIRStream_ReadWord(record + 0x16);
+        // RC1 marks ordinary C++ function linkage separately from the declaration's name.
+        result->flags = flags;
+        if (!result->functype ||
+            !CPrec_ReadStockFuncArgs(graph, record + 6, &result->args, depth) ||
+            !CPrec_ReadStockExceptions(
+                graph, CIRStream_ReadWord(record + 0x0a), &result->exspecs, depth
+            )) {
+            return NULL;
+        }
+        if (flags & FUNC_METHOD) {
+            TypeMemberFunc* method = TYPE_METHOD(result);
+            Type* owner = CPrec_ReadStockType(graph, record + 0x22, depth);
+            if (!owner || !IS_TYPE_CLASS(owner)) {
+                return NULL;
+            }
+            method->theclass = TYPE_CLASS(owner);
+            method->vtbl_index = (SInt32)CIRStream_ReadWord(record + 0x26);
+            method->funcid = (SInt32)CIRStream_ReadWord(record + 0x2a);
+            method->is_static = record[0x2e] != 0;
+        }
+        return TYPE(result);
+    }
+    return NULL;
+}
+
+static Type* CPrec_ReadStockType(CPrecStockGraph* graph, const UInt8* slot, UInt32 depth) {
+    int builtin = CPrec_StockBuiltin(graph, slot);
+    return builtin >= 0 ? CPrec_StockBuiltinType(builtin)
+                        : CPrec_ReadStockTypeAt(graph, CIRStream_ReadWord(slot), depth);
+}
+
+static Type* CPrec_ReadStockTypeAt(CPrecStockGraph* graph, UInt32 offset, UInt32 depth) {
+    CPrecStockType** bucket;
+    CPrecStockType* entry;
+
+    if (!offset || depth >= 128) {
+        return NULL;
+    }
+    bucket = &graph->types[(offset >> 2) % (sizeof(graph->types) / sizeof(graph->types[0]))];
+    for (entry = *bucket; entry; entry = entry->next) {
+        if (entry->offset == offset) {
+            // A recursive C declarator must pass through an aggregate and a pointer.
+            if (entry->decoding &&
+                (entry->pointerDepth == graph->pointerDepth ||
+                 entry->aggregateDepth == graph->aggregateDepth)) {
+                return NULL;
+            }
+            return entry->type;
+        }
+    }
+    entry = lalloc(sizeof(*entry));
+    entry->offset = offset;
+    entry->type = NULL;
+    entry->pending = NULL;
+    entry->pointerDepth = graph->pointerDepth;
+    entry->aggregateDepth = graph->aggregateDepth;
+    entry->decoding = TRUE;
+    entry->next = *bucket;
+    *bucket = entry;
+    entry->type = CPrec_DecodeStockType(graph, entry, depth + 1);
+    entry->decoding = FALSE;
+    return entry->type;
+}
+
+static BClassList* CPrec_GetStockBasePath(Type* derived, TypeClass* base) {
+    short depth;
+    Boolean ambiguous;
+    BClassList* path;
+
+    if (!derived || !IS_TYPE_CLASS(derived) || !base) {
+        return NULL;
+    }
+    path = CClass_GetBasePath(TYPE_CLASS(derived), base, &depth, &ambiguous);
+    return path && !ambiguous ? CClass_GetPathCopy(path, TRUE) : NULL;
+}
+
+static Object* CPrec_ReadStockAlias(CPrecStockGraph* graph, const UInt8* record, UInt32 depth) {
+    Object* target = CPrec_ReadStockSymbol(graph, CIRStream_ReadWord(record + 0x40), depth + 1);
+    BClassList* path = NULL;
+    Object* alias;
+    if (!target) {
+        return NULL;
+    }
+    if (CIRStream_ReadWord(record + 0x44)) {
+        Type* derived = CPrec_ReadStockType(graph, record + 0x44, depth);
+        path = CPrec_GetStockBasePath(derived, target->nspace->theclass);
+        if (!path) {
+            return NULL;
+        }
+    }
+    alias = galloc(sizeof(*alias));
+    *alias = *target;
+    alias->access = record[1];
+    alias->datatype = DALIAS;
+    alias->u.alias.object = target;
+    alias->u.alias.member = path;
+    alias->u.alias.offset = (SInt32)CIRStream_ReadWord(record + 0x48);
+    return alias;
+}
+
+static Boolean CPrec_ReadStockInlineData(
+    CPrecStockGraph* graph, const UInt8* record, Object* object
+) {
+    if (IS_TYPE_FLOAT(object->type)) {
+        const UInt8* value = CPrec_StockRecord(graph, CIRStream_ReadWord(record), 8);
+        Float* constant;
+
+        if (!value) {
+            return FALSE;
+        }
+        constant = galloc(sizeof(*constant));
+        constant->data.words[0] = (SInt32)CIRStream_ReadWord(value);
+        constant->data.words[1] = (SInt32)CIRStream_ReadWord(value + 4);
+        object->u.data.u.floatconst = constant;
+        return TRUE;
+    }
+    if (IS_TYPE_INT_OR_ENUM(object->type) || IS_TYPE_POINTER_ONLY(object->type)) {
+        object->u.data.u.intconst.hi = (SInt32)CIRStream_ReadWord(record);
+        object->u.data.u.intconst.lo = CIRStream_ReadWord(record + 4);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static Object* CPrec_ReadStockSymbol(CPrecStockGraph* graph, UInt32 offset, UInt32 depth) {
+    const UInt8* record = CPrec_StockRecord(graph, offset, 0x60);
+    CPrecStockObject** saved;
+    HashNameNode* name;
+    HashNameNode* linkName;
+    NameSpace* owner;
+    Type* type;
+    Object* object;
+    SInt32 section;
+    Boolean isFunction;
+    Boolean isTemplate;
+    Boolean inlineData;
+    UInt32 dataDefinition;
+    UInt32 functionDefinition;
+    UInt32 functionInstance;
+    UInt32 templateMember;
+    const UInt8* package;
+    UInt32 qual;
+
+    if (depth >= 128 ||
+        !record ||
+        record[0] != OT_OBJECT ||
+        record[1] > ACCESSNONE ||
+        (record[2] != DDATA && record[2] != DFUNC && record[2] != DVFUNC && record[2] != DALIAS)) {
+        return NULL;
+    }
+    saved = CPrec_FindStockObject(graph, offset);
+    if (*saved) {
+        return OBJECT((*saved)->object);
+    }
+    if (record[2] == DALIAS) {
+        object = CPrec_ReadStockAlias(graph, record, depth);
+        if (object) {
+            CPrec_RememberStockObject(saved, offset, OBJ_BASE(object));
+        }
+        return object;
+    }
+    isFunction = record[2] != DDATA;
+    qual = CIRStream_ReadWord(record + 0x14);
+    inlineData = !isFunction && (qual & Q_INLINE_DATA);
+    dataDefinition = isFunction ? 0 : CIRStream_ReadWord(record + 0x4c);
+    functionDefinition = isFunction ? CIRStream_ReadWord(record + 0x40) : 0;
+    functionInstance = isFunction ? CIRStream_ReadWord(record + 0x48) : 0;
+    if ((dataDefinition && !CPrec_StockRecord(graph, dataDefinition, 0x1a)) ||
+        CIRStream_ReadWord(record + 0x1c) ||
+        (!isFunction && !inlineData && CIRStream_ReadWord(record + 0x40))) {
+        return NULL;
+    }
+    owner = CPrec_ReadStockScope(graph, record + 8, 0);
+    type = CPrec_ReadStockType(graph, record + 0x10, depth);
+    isTemplate = type && IS_TEMPL_FUNC(type);
+    if (functionInstance) {
+        const UInt8* instance =
+            CPrec_StockRecord(graph, functionInstance, StockFunctionInstanceSize);
+        if (isTemplate || !instance || CIRStream_ReadWord(instance + 0x18) != offset) {
+            return NULL;
+        }
+    }
+    templateMember =
+        !isTemplate && owner && owner->theclass && IS_TEMPL_CLASS(TYPE(owner->theclass))
+        ? CIRStream_ReadWord(record + (isFunction ? 0x4c : 0x50))
+        : 0;
+    package = CPrec_StockRecord(
+        graph, functionDefinition, isTemplate ? 0x36 : 0x0c + CIRStreamFunctionOptionsSize
+    );
+    section = (SInt32)CIRStream_ReadWord(record + 4);
+    if (!owner ||
+        !type ||
+        isFunction != IS_TYPE_FUNC(type) ||
+        ((record[0x1a] & OBJECT_DEFINED) && !dataDefinition && !package && !templateMember) ||
+        (functionDefinition && !package) ||
+        (isTemplate && (!package || CIRStream_ReadWord(package + 0x2e) != offset)) ||
+        (isFunction && (TYPE_FUNC(type)->flags & FUNC_DEFINED) && !package && !templateMember) ||
+        (record[2] == DVFUNC && !(TYPE_FUNC(type)->flags & FUNC_METHOD)) ||
+        section < -(SInt32)graph->sections.selectorCount ||
+        section >= (SInt32)graph->sections.attributeCount ||
+        !CPrec_ReadStockName(graph, record + 0x0c, &name) ||
+        !name ||
+        !CPrec_ReadStockName(graph, record + (isFunction ? 0x44 : 0x48), &linkName)) {
+        return NULL;
+    }
+    if (qual & Q_IS_TEMPLATED) {
+        ObjectTemplated* templated;
+        Object* parent;
+        if (!CPrec_StockRecord(graph, offset, 0x64) ||
+            !owner->theclass ||
+            !IS_TEMPL_CLASS_INST(TYPE(owner->theclass))) {
+            return NULL;
+        }
+        parent = CPrec_ReadStockSymbol(graph, CIRStream_ReadWord(record + 0x60), depth + 1);
+        if (!parent ||
+            !parent->nspace->theclass ||
+            !IS_TEMPL_CLASS(TYPE(parent->nspace->theclass))) {
+            return NULL;
+        }
+        templated = galloc(sizeof(*templated));
+        memset(templated, 0, sizeof(*templated));
+        templated->parent = parent;
+        object = &templated->object;
+        object->otype = OT_OBJECT;
+    } else {
+        object = isFunction ? CParser_NewCompilerDefFunctionObject()
+                            : CParser_NewCompilerDefDataObject();
+    }
+    object->datatype = record[2];
+    object->name = name;
+    object->nspace = owner;
+    object->access = record[1];
+    object->type = type;
+    object->qual = qual;
+    object->sclass = (SInt16)CPrec_StockHalfword(record + 0x18);
+    object->flags = CPrec_StockHalfword(record + 0x1a);
+    object->section =
+        section < 0 ? graph->sections.selectors[-section] : graph->sections.attributes[section];
+    if (templateMember &&
+        (package ||
+         dataDefinition ||
+         !CPrec_ReadStockTemplateMember(graph, templateMember, object))) {
+        return NULL;
+    }
+    if (isFunction) {
+        object->u.func.linkname = linkName;
+        object->u.func.interruptflags = CPrec_StockHalfword(record + 0x5c);
+        if (functionInstance) {
+            TYPE_FUNC(type)->flags |= FUNC_IS_TEMPL_INSTANCE;
+            ++graph->functionInstances;
+        }
+        if (isTemplate) {
+            ++graph->functionTemplates;
+        } else if (package) {
+            CPrecStockFunction* entry = lalloc(sizeof(*entry));
+            entry->object = object;
+            entry->package = package;
+            entry->next = graph->pendingFunctions;
+            graph->pendingFunctions = entry;
+            object->flags &= ~OBJECT_DEFINED;
+        }
+    } else {
+        object->u.data.linkname = linkName;
+        if (inlineData && !CPrec_ReadStockInlineData(graph, record + 0x40, object)) {
+            return NULL;
+        }
+    }
+    CPrec_RememberStockObject(saved, offset, OBJ_BASE(object));
+    if (dataDefinition) {
+        (*saved)->pendingData = TRUE;
+        ++graph->dataDefinitions;
+    }
+    return object;
+}
+
+static ObjBase* CPrec_ReadStockMemberAlias(
+    CPrecStockGraph* graph, NameSpace* scope, UInt32 offset
+) {
+    const UInt8* record = CPrec_StockRecord(graph, offset, 0x24);
+    CPrecStockObject* saved;
+    Type* base;
+    BClassList* path;
+    ObjMemberVarPath* entry;
+
+    if (!record || !record[3] || !scope->theclass) {
+        return NULL;
+    }
+    base = CPrec_ReadStockType(graph, record + 0x1c, 0);
+    saved = *CPrec_FindStockObject(graph, CIRStream_ReadWord(record + 0x20));
+    if (!base || !IS_TYPE_CLASS(base) || !saved || saved->object->otype != OT_MEMBERVAR) {
+        return NULL;
+    }
+    path = CPrec_GetStockBasePath(TYPE(scope->theclass), TYPE_CLASS(base));
+    if (!path) {
+        return NULL;
+    }
+    entry = galloc(sizeof(*entry));
+    *OBJ_MEMBER_VAR(entry) = *OBJ_MEMBER_VAR(saved->object);
+    entry->access = record[1];
+    entry->has_path = TRUE;
+    entry->path = path;
+    return OBJ_BASE(entry);
+}
+
+static Boolean CPrec_ReadStockObject(
+    CPrecStockGraph* graph, NameSpace* scope, HashNameNode* name, UInt32 offset, Object* runtime
+) {
+    const UInt8* record = CPrec_StockRecord(graph, offset, 2);
+    const UInt8* function;
+    Object* object;
+    Type* type;
+    NameSpace* owner;
+    CPrecStockObject** saved;
+
+    if (!record || record[1] > ACCESSNONE) {
+        return FALSE;
+    }
+    if (record[0] == OT_TYPE) {
+        ObjType* alias;
+        if (!CPrec_StockRecord(graph, offset, 0x0c)) {
+            return FALSE;
+        }
+        saved = CPrec_FindStockObject(graph, offset);
+        if (*saved) {
+            CScope_AddObject(scope, name, (*saved)->object);
+            return TRUE;
+        }
+        alias = galloc(sizeof(*alias));
+        alias->otype = OT_TYPE;
+        alias->access = record[1];
+        alias->type = CPrec_ReadStockType(graph, record + 4, 0);
+        alias->qual = CIRStream_ReadWord(record + 8);
+        if (!alias->type) {
+            return FALSE;
+        }
+        CPrec_RememberStockObject(saved, offset, OBJ_BASE(alias));
+        CScope_AddObject(scope, name, OBJ_BASE(alias));
+        return TRUE;
+    }
+    if (record[0] == OT_TYPETAG) {
+        ObjTypeTag* tag;
+        if (!CPrec_StockRecord(graph, offset, 6)) {
+            return FALSE;
+        }
+        type = CPrec_ReadStockType(graph, record + 2, 0);
+        if (!type || (!IS_TYPE_STRUCT(type) && !IS_TYPE_ENUM(type) && !IS_TYPE_CLASS(type))) {
+            return FALSE;
+        }
+        tag = galloc(sizeof(*tag));
+        tag->otype = OT_TYPETAG;
+        tag->access = record[1];
+        tag->type = type;
+        CScope_AddObject(scope, name, OBJ_BASE(tag));
+        return TRUE;
+    }
+    if (record[0] == OT_NAMESPACE) {
+        ObjNameSpace* ns;
+        if (!CPrec_StockRecord(graph, offset, 6)) {
+            return FALSE;
+        }
+        owner = CPrec_ReadStockScope(graph, record + 2, 0);
+        if (!owner) {
+            return FALSE;
+        }
+        ns = galloc(sizeof(*ns));
+        ns->otype = OT_NAMESPACE;
+        ns->access = record[1];
+        ns->nspace = owner;
+        CScope_AddObject(scope, name, OBJ_BASE(ns));
+        return TRUE;
+    }
+    if (record[0] == OT_ENUMCONST) {
+        CPrecStockObject* entry;
+        if (!CPrec_StockRecord(graph, offset, 0x16)) {
+            return FALSE;
+        }
+        entry = *CPrec_FindStockObject(graph, offset);
+        if (!entry) {
+            CPrec_ReadStockType(graph, record + 0x0a, 0);
+            entry = *CPrec_FindStockObject(graph, offset);
+        }
+        if (!entry ||
+            entry->object->otype != OT_ENUMCONST ||
+            OBJ_ENUM_CONST(entry->object)->name != name) {
+            return FALSE;
+        }
+        CScope_AddObject(scope, name, entry->object);
+        return TRUE;
+    }
+    saved = CPrec_FindStockObject(graph, offset);
+    if (*saved) {
+        CScope_AddObject(scope, name, (*saved)->object);
+        return TRUE;
+    }
+    if (record[0] == OT_MEMBERVAR) {
+        ObjBase* alias = CPrec_ReadStockMemberAlias(graph, scope, offset);
+        if (!alias) {
+            return FALSE;
+        }
+        CPrec_RememberStockObject(saved, offset, alias);
+        CScope_AddObject(scope, name, alias);
+        return TRUE;
+    }
+    if (record[0] != OT_OBJECT || !CPrec_StockRecord(graph, offset, 0x60)) {
+        return FALSE;
+    }
+    if (record[2] == DFUNC &&
+        CPrec_StockHalfword(record + 0x18) == StockTemplateUsingStorage &&
+        scope->theclass &&
+        IS_TEMPL_CLASS(TYPE(scope->theclass)) &&
+        !CIRStream_ReadWord(record + 8)) {
+        // The source instantiator binds this dependent name through its using action.
+        type = CPrec_ReadStockType(graph, record + 0x10, 0);
+        return type &&
+            IS_TYPE_TEMPLATE(type) &&
+            TYPE_TEMPLATE(type)->dtype == TEMPLDEP_QUALNAME &&
+            TYPE_TEMPLATE(type)->u.qual.name == name;
+    }
+    function = CPrec_StockRecord(graph, CIRStream_ReadWord(record + 0x10), 0x24);
+    if (record[2] == DFUNC &&
+        function &&
+        function[0] == StockTypeFunction &&
+        (CIRStream_ReadWord(function + 0x1a) & FUNC_INTRINSIC)) {
+        if (runtime) {
+            CPrec_RememberStockObject(saved, offset, OBJ_BASE(runtime));
+        }
+        return TRUE; // CParser setup has already created the target's intrinsic objects.
+    }
+    if (runtime &&
+        CParser_IsPublicRuntimeObject(runtime) &&
+        record[2] == DFUNC &&
+        !CPrec_StockHalfword(record + 0x18) &&
+        record[0x1a] == 0) {
+        CPrec_RememberStockObject(saved, offset, OBJ_BASE(runtime));
+        return TRUE;
+    }
+    object = CPrec_ReadStockSymbol(graph, offset, 0);
+    if (!object) {
+        return FALSE;
+    }
+    CScope_AddObject(scope, name, OBJ_BASE(object));
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockNameChain(
+    CPrecStockGraph* graph, NameSpace* scope, UInt32 entry, UInt32* namesRemaining
+) {
+    for (; entry;) {
+        const UInt8* record = CPrec_StockRecord(graph, entry, 0x10);
+        const UInt8* list;
+        HashNameNode* name;
+        Object* runtime;
+        if (!record ||
+            !*namesRemaining ||
+            !CPrec_ReadStockName(graph, record + 4, &name) ||
+            !name) {
+            return FALSE;
+        }
+        --*namesRemaining;
+        runtime = scope == cscope_root ? CParser_FindPublicRuntimeObject(name) : NULL;
+        list = record + 8;
+        for (;;) {
+            UInt32 next = CIRStream_ReadWord(list);
+            if (!graph->objectsRemaining-- ||
+                !CPrec_ReadStockObject(graph, scope, name, CIRStream_ReadWord(list + 4), runtime)) {
+                return FALSE;
+            }
+            if (!next) {
+                break;
+            }
+            list = CPrec_StockRecord(graph, next, 8);
+            if (!list) {
+                return FALSE;
+            }
+        }
+        entry = CIRStream_ReadWord(record);
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockNameTable(
+    CPrecStockGraph* graph, NameSpace* scope, const UInt8* table, UInt32 namesRemaining
+) {
+    UInt32 i;
+    for (i = 0; i < 0x400; ++i) {
+        if (!CPrec_ReadStockNameChain(
+                graph, scope, CIRStream_ReadWord(table + i * 4), &namesRemaining
+            )) {
+            return FALSE;
+        }
+    }
+    return namesRemaining == 0;
+}
+
+static NameSpaceName* CPrec_ReverseStockNames(NameSpaceName* list) {
+    NameSpaceName* reversed = NULL;
+    while (list) {
+        NameSpaceName* next = list->next;
+        list->next = reversed;
+        reversed = list;
+        list = next;
+    }
+    return reversed;
+}
+
+static Boolean CPrec_ReadStockUsings(CPrecStockGraph* graph, NameSpace* scope, UInt32 offset) {
+    NameSpaceList** tail = &scope->usings;
+    UInt32 remaining = graph->rawSize / 8;
+
+    for (; offset;) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 8);
+        NameSpaceList* item;
+        NameSpace* target;
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        target = CPrec_ReadStockScope(graph, record + 4, 0);
+        if (!target) {
+            return FALSE;
+        }
+        item = galloc(sizeof(*item));
+        item->nspace = target;
+        item->next = NULL;
+        *tail = item;
+        tail = &item->next;
+        offset = CIRStream_ReadWord(record);
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockScopeContents(CPrecStockGraph* graph) {
+    while (graph->pendingScopes) {
+        CPrecStockScope* entry = graph->pendingScopes;
+        const UInt8* record = entry->record;
+        NameSpace* scope = entry->scope;
+        UInt32 namesRemaining = CIRStream_ReadWord(record + 0x1c);
+        UInt32 namesOffset = CIRStream_ReadWord(record + 0x18);
+        graph->pendingScopes = entry->pending;
+        if (CIRStream_ReadWord(record + 0x0c)) {
+            Type* owner = CPrec_ReadStockType(graph, record + 0x0c, 0);
+            if (!owner || !IS_TYPE_CLASS(owner) || TYPE_CLASS(owner)->nspace != scope) {
+                return FALSE;
+            }
+        }
+        if (!CPrec_ReadStockUsings(graph, scope, CIRStream_ReadWord(record + 8))) {
+            return FALSE;
+        }
+        if (scope->is_hash) {
+            const UInt8* table = CPrec_StockRecord(graph, namesOffset, 0x1000);
+            UInt32 i;
+            if (!namesOffset && !namesRemaining) {
+                continue;
+            }
+            if (!table || !CPrec_ReadStockNameTable(graph, scope, table, namesRemaining)) {
+                return FALSE;
+            }
+            for (i = 0; i < 0x400; ++i) {
+                scope->data.hash[i] = CPrec_ReverseStockNames(scope->data.hash[i]);
+            }
+        } else if (!CPrec_ReadStockNameChain(graph, scope, namesOffset, &namesRemaining) ||
+                   namesRemaining) {
+            return FALSE;
+        } else {
+            scope->data.list = CPrec_ReverseStockNames(scope->data.list);
+        }
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockClassList(CPrecStockGraph* graph, UInt32 offset) {
+    UInt32 remaining = graph->rawSize / 0x0c;
+    for (; offset;) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 0x0c);
+        Type* type;
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        type = CPrec_ReadStockType(graph, record + 4, 0);
+        if (!type || !IS_TYPE_CLASS(type)) {
+            return FALSE;
+        }
+        offset = CIRStream_ReadWord(record);
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockFriendList(
+    CPrecStockGraph* graph, TypeClass* owner, UInt32 offset, Boolean isClass, UInt32* remaining
+) {
+    while (offset) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 8);
+
+        if (!record || !*remaining) {
+            return FALSE;
+        }
+        --*remaining;
+        if (isClass) {
+            Type* type = CPrec_ReadStockType(graph, record + 4, 0);
+            if (!type || !IS_TYPE_CLASS(type)) {
+                return FALSE;
+            }
+            CDecl_AddFriend(owner, NULL, TYPE_CLASS(type));
+        } else {
+            Object* function = CPrec_ReadStockSymbol(graph, CIRStream_ReadWord(record + 4), 0);
+            if (!function || !function->type || !IS_TYPE_FUNC(function->type)) {
+                return FALSE;
+            }
+            CDecl_AddFriend(owner, function, NULL);
+        }
+        offset = CIRStream_ReadWord(record);
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockFriends(CPrecStockGraph* graph, UInt32 offset) {
+    UInt32 remaining = graph->rawSize / 8;
+
+    while (offset) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 0x10);
+        Type* type;
+
+        if (!record || !remaining) {
+            return FALSE;
+        }
+        --remaining;
+        type = CPrec_ReadStockType(graph, record + 4, 0);
+        if (!type ||
+            !IS_TYPE_CLASS(type) ||
+            !CPrec_ReadStockFriendList(
+                graph, TYPE_CLASS(type), CIRStream_ReadWord(record + 8), FALSE, &remaining
+            ) ||
+            !CPrec_ReadStockFriendList(
+                graph, TYPE_CLASS(type), CIRStream_ReadWord(record + 0x0c), TRUE, &remaining
+            )) {
+            return FALSE;
+        }
+        offset = CIRStream_ReadWord(record);
+    }
+    return TRUE;
+}
+
+static Object* CPrec_ReadStockObjectRef(CPrecStockGraph* graph, const UInt8* slot) {
+    // RC1's builtin reference table starts its object entries at index 54.
+    static Object** const runtime[] = {
+        &newh_func,     &delh_func,      &copy_func,    &clear_func,   &rt_ptmf_null,
+        &rt_ptmf_cmpr,  &rt_ptmf_cast,   &rt_ptmf_test, &rt_ptmf_call, &rt_ptmf_scall,
+        &rt_ptmf_call4, &rt_ptmf_scall4, &Rgtid_func,   &Rdync_func,   &carr_func,
+        &darr_func,     &cnar_func,      &dnar_func,    &dnar3_func,   &Xgreg_func,
+        &Xthrw_func,    &Xicth_func,     &Xecth_func,   &Xunex_func
+    };
+    int builtin = CPrec_StockBuiltin(graph, slot);
+
+    if (builtin >= 0) {
+        unsigned int index = (unsigned int)(builtin - 54);
+        return index < sizeof(runtime) / sizeof(runtime[0]) ? *runtime[index] : NULL;
+    }
+    return CPrec_ReadStockSymbol(graph, CIRStream_ReadWord(slot), 0);
+}
+
+static Boolean CPrec_ReadStockCodeReference(
+    CPrecStockGraph* graph,
+    const UInt8* entry,
+    CIRStreamReference* reference,
+    HashNameNode** fileName
+) {
+    reference->header.kind = entry[4];
+    reference->header.flags = entry[5];
+    reference->header.callCount = CPrec_StockHalfword(entry + 6);
+    switch (reference->header.kind) {
+        case CIRStreamRefType:
+            reference->value.type = CPrec_ReadStockType(graph, entry, 0);
+            return reference->value.type != NULL;
+        case CIRStreamRefObject:
+            reference->value.object = CPrec_ReadStockObjectRef(graph, entry);
+            return reference->value.object != NULL;
+        case CIRStreamRefFile: {
+            const UInt8* file = CPrec_StockRecord(graph, CIRStream_ReadWord(entry), 4);
+            return file && CPrec_ReadStockName(graph, file, fileName);
+        }
+        case CIRStreamRefSourceType:
+            reference->value.type = NULL;
+            return TRUE;
+        case CIRStreamRefName:
+            return CPrec_ReadStockName(graph, entry, &reference->value.name);
+    }
+    return FALSE;
+}
+
+static Boolean CPrec_ReadStockFunction(
+    CPrecStockGraph* graph, Object* object, const UInt8* package
+) {
+    UInt32 offset = CIRStream_ReadWord(package);
+    const UInt8* packed = CPrec_StockRecord(graph, offset, 0x1a);
+    const UInt8* entries;
+    UInt32 index, count;
+    HashNameNode** fileNames;
+    CIRStreamFunctionDefinition definition = {0};
+    CIRStreamFunctionCode code;
+
+    if (!packed) {
+        return FALSE;
+    }
+    count = CIRStream_ReadWord(packed + 0x14);
+    if (count > (graph->rawSize - offset - 0x1a) / 8 ||
+        count > 0x7fffffffUL / sizeof(CIRStreamReference) ||
+        count >= 0x7fffffffUL / sizeof(HashNameNode*)) {
+        return FALSE;
+    }
+    // The packed header has two padding bytes before the first reference.
+    entries = packed + 0x1a;
+    definition.header.code.size = CIRStream_ReadWord(packed + 4);
+    definition.header.code.bytes =
+        CPrec_StockRecord(graph, CIRStream_ReadWord(packed), definition.header.code.size);
+    if (!definition.header.code.bytes || !definition.header.code.size) {
+        return FALSE;
+    }
+    definition.header.inlineSize = CIRStream_ReadWord(package + 8);
+    definition.header.options.bytes = package + 0x0c;
+    definition.header.options.size = CIRStreamFunctionOptionsSize;
+    definition.header.localCount = CIRStream_ReadWord(packed + 8);
+    definition.header.labelCount = CIRStream_ReadWord(packed + 0x0c);
+    definition.header.typeCount = CIRStream_ReadWord(packed + 0x10);
+    definition.header.referenceCount = count;
+    definition.references = lalloc(count * sizeof(*definition.references));
+    fileNames = lalloc((count + 1) * sizeof(*fileNames));
+    fileNames[0] = NULL;
+    for (index = 0; index < count; ++index) {
+        CIRStreamReference* reference = &definition.references[index];
+        if (!CPrec_ReadStockCodeReference(
+                graph, entries + index * 8, reference, &fileNames[index + 1]
+            )) {
+            return FALSE;
+        }
+        if (reference->header.kind == CIRStreamRefFile) {
+            reference->value.fileID = index + 1;
+        }
+    }
+    return CIRStream_UnpackPrecompiledCode(
+               object, cscope_root, copts.processor == CPU_PPCGEKKO, &definition, fileNames, &code
+           ) &&
+        CMid_LoadPrecompiledFunction(object, &code, &definition.header);
+}
+
+static Boolean CPrec_ReadStockFunctions(CPrecStockGraph* graph) {
+    while (graph->pendingFunctions) {
+        CPrecStockFunction* entry = graph->pendingFunctions;
+
+        graph->pendingFunctions = entry->next;
+        if (!CPrec_ReadStockFunction(graph, entry->object, entry->package)) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockDataLinks(
+    CPrecStockGraph* graph, UInt32 offset, UInt32 size, OLinkList** tail
+) {
+    UInt32 remaining = graph->rawSize / 0x10;
+
+    while (offset) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 0x10);
+        OLinkList* link;
+        UInt32 location;
+        Object* target;
+
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        location = CIRStream_ReadWord(record + 8);
+        target = CPrec_ReadStockObjectRef(graph, record + 4);
+        if (!target || size < 4 || location > size - 4) {
+            return FALSE;
+        }
+        link = lalloc(sizeof(*link));
+        link->obj = target;
+        link->offset = (SInt32)location;
+        link->addend = (SInt32)CIRStream_ReadWord(record + 0x0c);
+        *tail = link;
+        tail = &link->next;
+        offset = CIRStream_ReadWord(record);
+    }
+    *tail = NULL;
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockStaticData(
+    CPrecStockGraph* graph, UInt32 offset, StaticData** definitions
+) {
+    UInt32 remaining = graph->rawSize / 8;
+
+    while (offset) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 8);
+        CPrecStockObject* saved;
+        const UInt8* symbol;
+        const UInt8* data;
+        UInt32 objectOffset, bufferOffset, linkOffset, size;
+        Object* object;
+        StaticData* entry;
+
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        objectOffset = CIRStream_ReadWord(record + 4);
+        symbol = CPrec_StockRecord(graph, objectOffset, 0x60);
+        if (!symbol || symbol[2] != DDATA) {
+            return FALSE;
+        }
+        object = CPrec_ReadStockSymbol(graph, objectOffset, 0);
+        saved = *CPrec_FindStockObject(graph, objectOffset);
+        data = CPrec_StockRecord(graph, CIRStream_ReadWord(symbol + 0x4c), 0x1a);
+        if (!object || !saved->pendingData || !data || data[0x18] > 1) {
+            return FALSE;
+        }
+        if (object->sclass != TK_STATIC && !(object->qual & (Q_IMPLICIT_WEAK | Q_WEAK))) {
+            return FALSE;
+        }
+        bufferOffset = CIRStream_ReadWord(data + 0x0c);
+        linkOffset = CIRStream_ReadWord(data + 0x10);
+        size = CIRStream_ReadWord(data + 0x14);
+        if (size != (UInt32)object->type->size ||
+            size > 0x7fffffffu ||
+            (!bufferOffset && linkOffset)) {
+            return FALSE;
+        }
+        entry = lalloc(sizeof(*entry));
+        entry->object = object;
+        entry->buffer = bufferOffset ? (void*)CPrec_StockRecord(graph, bufferOffset, size) : NULL;
+        entry->size = (SInt32)(size | (data[0x18] ? CPREC_STATIC_READ_ONLY : 0));
+        if ((bufferOffset && !entry->buffer) ||
+            !CPrec_ReadStockDataLinks(graph, linkOffset, size, &entry->links)) {
+            return FALSE;
+        }
+        object->flags &= ~OBJECT_DEFINED;
+        saved->pendingData = FALSE;
+        --graph->dataDefinitions;
+        entry->next = *definitions;
+        *definitions = entry;
+        offset = CIRStream_ReadWord(record);
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockTentativeData(CPrecStockGraph* graph, UInt32 offset) {
+    ObjectList** tail = &cinit_tentative;
+    UInt32 remaining = graph->rawSize / 8;
+
+    while (offset) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 8);
+        Object* object;
+        ObjectList* entry;
+
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        object = CPrec_ReadStockObjectRef(graph, record + 4);
+        if (!object || object->datatype != DDATA || !object->type || object->type->size < 0) {
+            return FALSE;
+        }
+        OBJECT_MARK_TENTATIVE(object);
+        entry = galloc(sizeof(*entry));
+        entry->object = object;
+        *tail = entry;
+        tail = &entry->next;
+        offset = CIRStream_ReadWord(record);
+    }
+    *tail = NULL;
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockExpressionList(
+    CPrecStockGraph* graph, UInt32 offset, ENodeList** tail, UInt32 depth
+) {
+    UInt32 remaining = graph->rawSize / 8;
+
+    for (; offset;) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 8);
+        ENodeList* entry;
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        entry = galloc(sizeof(*entry));
+        entry->node = CPrec_ReadStockExpression(graph, CIRStream_ReadWord(record + 4), depth);
+        if (!entry->node) {
+            return FALSE;
+        }
+        entry->next = NULL;
+        *tail = entry;
+        tail = &entry->next;
+        offset = CIRStream_ReadWord(record);
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockExpressionData(
+    CPrecStockGraph* graph, const UInt8* record, ENode* node, UInt32 depth
+) {
+    const UInt8* data = record + 0x10;
+    UInt32 first = CIRStream_ReadWord(data);
+    UInt32 second = CIRStream_ReadWord(data + 4);
+
+    if (ENODE_IS_RANGE(node, EPOSTINC, EFORCELOAD) || ENODE_IS2(node, ETYPCON, EBITFIELD)) {
+        node->data.monadic = CPrec_ReadStockExpression(graph, first, depth);
+        if (!node->data.monadic) {
+            return FALSE;
+        }
+        node->hascall = node->data.monadic->hascall;
+        return TRUE;
+    }
+    if (ENODE_IS_RANGE(node, EMUL, EBSET) || ENODE_IS(node, EMFPOINTER)) {
+        node->data.diadic.left = CPrec_ReadStockExpression(graph, first, depth);
+        node->data.diadic.right = CPrec_ReadStockExpression(graph, second, depth);
+        if (!node->data.diadic.left || !node->data.diadic.right) {
+            return FALSE;
+        }
+        node->hascall = node->data.diadic.left->hascall || node->data.diadic.right->hascall;
+        return TRUE;
+    }
+    switch (node->type) {
+        case EINTCONST:
+            node->data.intval.hi = (SInt32)first;
+            node->data.intval.lo = second;
+            return TRUE;
+        case EFLOATCONST:
+            node->data.floatval.data.words[0] = (SInt32)first;
+            node->data.floatval.data.words[1] = (SInt32)second;
+            return TRUE;
+        case EVECTOR128CONST:
+            memcpy(node->data.vector128val.uc, data, sizeof(node->data.vector128val.uc));
+            return TRUE;
+        case ESTRINGCONST: {
+            const UInt8* text = CPrec_StockRecord(graph, second, first);
+            if (!first || !text) {
+                return FALSE;
+            }
+            node->data.string.size = (SInt32)first;
+            node->data.string.data = galloc(first);
+            memcpy(node->data.string.data, text, first);
+            node->data.string.ispascal = data[0x0c];
+            return TRUE;
+        }
+        case ECOND:
+            node->data.cond.cond = CPrec_ReadStockExpression(graph, first, depth);
+            node->data.cond.expr1 = CPrec_ReadStockExpression(graph, second, depth);
+            node->data.cond.expr2 =
+                CPrec_ReadStockExpression(graph, CIRStream_ReadWord(data + 8), depth);
+            if (!node->data.cond.cond || !node->data.cond.expr1 || !node->data.cond.expr2) {
+                return FALSE;
+            }
+            node->hascall = node->data.cond.cond->hascall ||
+                node->data.cond.expr1->hascall ||
+                node->data.cond.expr2->hascall;
+            return TRUE;
+        case EFUNCCALL:
+        case EFUNCCALLP: {
+            Type* type = CPrec_ReadStockType(graph, data + 8, 0);
+            if (!type || !IS_TYPE_FUNC(type)) {
+                return FALSE;
+            }
+            node->data.funccall.funcref = CPrec_ReadStockExpression(graph, first, depth);
+            node->data.funccall.functype = TYPE_FUNC(type);
+            node->hascall = TRUE;
+            return node->data.funccall.funcref &&
+                CPrec_ReadStockExpressionList(graph, second, &node->data.funccall.args, depth);
+        }
+        case EOBJREF:
+            node->data.objref = CPrec_ReadStockObjectRef(graph, data);
+            return node->data.objref != NULL;
+        case EMEMBERFUNCLITERAL:
+            node->data.objref = CPrec_ReadStockObjectRef(graph, data);
+            if (!CExpr_MaterializeMemberFunctionLiteral(node)) {
+                return FALSE;
+            }
+            *node = *CInline_CopyExpression(node, CopyModeGlobal);
+            return TRUE;
+        case ENULLCHECK:
+            node->data.nullcheck.nullcheckexpr = CPrec_ReadStockExpression(graph, first, depth);
+            node->data.nullcheck.condexpr = CPrec_ReadStockExpression(graph, second, depth);
+            node->data.nullcheck.precompid = (SInt32)CIRStream_ReadWord(data + 8);
+            if (!node->data.nullcheck.nullcheckexpr || !node->data.nullcheck.condexpr) {
+                return FALSE;
+            }
+            node->hascall = node->data.nullcheck.nullcheckexpr->hascall ||
+                node->data.nullcheck.condexpr->hascall;
+            return TRUE;
+        case EPRECOMP:
+            node->data.precompid = (SInt32)first;
+            return TRUE;
+        case ETEMP:
+            node->data.temp.type = CPrec_ReadStockType(graph, data, 0);
+            node->data.temp.uniqueid = (SInt32)second;
+            node->data.temp.needs_dtor = data[8] != 0;
+            return node->data.temp.type != NULL;
+        case ETEMPLDEP:
+            node->data.templdep.subtype = (TemplDepSubType)record[0x2c];
+            if (node->data.templdep.subtype == TDE_SIZEOF ||
+                node->data.templdep.subtype == TDE_ALIGNOF) {
+                node->data.templdep.u.typeexpr.type = CPrec_ReadStockType(graph, data, 0);
+                return node->data.templdep.u.typeexpr.type != NULL;
+            }
+            return node->data.templdep.subtype == TDE_PARAM &&
+                CPrec_ReadStockParamID(data, &node->data.templdep.u.pid) &&
+                node->data.templdep.u.pid.type == TPT_NONTYPE;
+        default:
+            return FALSE;
+    }
+}
+
+static ENode* CPrec_ReadStockExpression(CPrecStockGraph* graph, UInt32 offset, UInt32 depth) {
+    const UInt8* record = CPrec_StockRecord(graph, offset, StockExpressionSize);
+    CPrecStockExpression** bucket;
+    CPrecStockExpression* entry;
+    ENode* node;
+    ENodeType kind;
+
+    if (!record || depth >= StockExpressionDepth) {
+        return NULL;
+    }
+    if (record[0] == StockExpressionTemplate) {
+        kind = ETEMPLDEP;
+    } else if (!CIRStream_DecodeExpressionKind(record[0], &kind)) {
+        return NULL;
+    }
+    bucket = &graph->expressions
+                  [(offset >> 2) % (sizeof(graph->expressions) / sizeof(graph->expressions[0]))];
+    for (entry = *bucket; entry; entry = entry->next) {
+        if (entry->offset == offset) {
+            return entry->node;
+        }
+    }
+    entry = lalloc(sizeof(*entry));
+    entry->next = *bucket;
+    entry->offset = offset;
+    entry->node = NULL;
+    *bucket = entry;
+    node = galloc(sizeof(*node));
+    memset(node, 0, sizeof(*node));
+    node->type = kind;
+    node->cost = record[1];
+    node->flags = (UInt16)CIRStream_ReadWord(record + 8);
+    node->rtype = CPrec_ReadStockType(graph, record + 4, 0);
+    if (!node->rtype || !CPrec_ReadStockExpressionData(graph, record, node, depth + 1)) {
+        return NULL;
+    }
+    entry->node = node;
+    return node;
+}
+
+static Boolean CPrec_ReadStockDefaults(CPrecStockGraph* graph) {
+    while (graph->pendingDefaults) {
+        CPrecStockDefaultArgument* entry = graph->pendingDefaults;
+        graph->pendingDefaults = entry->next;
+        entry->argument->dexpr = CPrec_ReadStockExpression(graph, entry->offset, 0);
+        if (!entry->argument->dexpr) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+static SInt16 CPrec_DecodeStockToken(SInt16 kind) {
+    // RC1 inserts additional tokens among the common lexer ranges.
+    if ((kind >= TK_STRING_WIDE && kind < 0) ||
+        kind == TK_EOL ||
+        (kind >= 0 && kind < 128) ||
+        (kind >= 0x100 && kind <= 0x11c)) {
+        return kind;
+    }
+    if (kind >= 0x11e && kind <= 0x126) {
+        return kind - 1;
+    }
+    if (kind >= 0x130 && kind <= 0x131) {
+        return kind - (0x130 - TK_EXPLICIT);
+    }
+    if (kind >= 0x145 && kind <= 0x183) {
+        return kind - (0x145 - TK_ASM);
+    }
+    switch (kind) {
+        case 0x12d:
+            return TK_RESTRICT;
+        case 0x12e:
+            return TK_UU_ATTRIBUTE_UU;
+        case 0x196:
+            return TK_UU_ALIGNOF_UU;
+        case 0x197:
+            return TK_UU_UUIDOF;
+    }
+    return TK_ILLEGAL;
+}
+
+static Boolean CPrec_ReadStockTokenStream(
+    CPrecStockGraph* graph, UInt32 count, UInt32 offset, TokenStream* stream
+) {
+    enum {
+        StockTokenSize = 0x1c
+    };
+    const UInt8* records;
+    UInt32 index;
+
+    if (!count) {
+        return !offset;
+    }
+    if (count > graph->rawSize / StockTokenSize || count > 0x7fffffffu / sizeof(TStreamElement)) {
+        return FALSE;
+    }
+    records = CPrec_StockRecord(graph, offset, count * StockTokenSize);
+    if (!records) {
+        return FALSE;
+    }
+    stream->tokens = (SInt32)count;
+    stream->firsttoken = galloc(count * sizeof(TStreamElement));
+    memset(stream->firsttoken, 0, count * sizeof(TStreamElement));
+    for (index = 0; index < count; ++index) {
+        const UInt8* record = records + index * StockTokenSize;
+        const UInt8* data = record + 4;
+        TStreamElement* token = &stream->firsttoken[index];
+
+        token->tokentype = CPrec_DecodeStockToken((SInt16)CPrec_StockHalfword(record));
+        token->subtype = (SInt16)CPrec_StockHalfword(record + 2);
+        switch (token->tokentype) {
+            case TK_ILLEGAL:
+                return FALSE;
+            case TK_IDENTIFIER:
+                if (!CPrec_ReadStockName(graph, data, &token->data.tkidentifier) ||
+                    !token->data.tkidentifier) {
+                    return FALSE;
+                }
+                break;
+            case TK_INTCONST:
+                token->data.tkintconst.hi = (SInt32)CIRStream_ReadWord(data);
+                token->data.tkintconst.lo = CIRStream_ReadWord(data + 4);
+                break;
+            case TK_FLOATCONST:
+                token->data.tkfloatconst.data.words[0] = (SInt32)CIRStream_ReadWord(data);
+                token->data.tkfloatconst.data.words[1] = (SInt32)CIRStream_ReadWord(data + 4);
+                break;
+            case TK_STRING:
+            case TK_STRING_WIDE: {
+                UInt32 size = CIRStream_ReadWord(data + 4);
+                const UInt8* bytes = CPrec_StockRecord(graph, CIRStream_ReadWord(data), size);
+                UInt32 unit = token->tokentype == TK_STRING_WIDE ? stwchar.size : 1;
+                UInt32 start;
+                if (!size || !bytes || !unit || size % unit) {
+                    return FALSE;
+                }
+                token->subtype &= 1; // The source lexer stores only the Pascal flag here.
+                token->data.tkstring.size = (SInt32)size;
+                token->data.tkstring.data = galloc(size);
+                memcpy(token->data.tkstring.data, bytes, size);
+                if (unit > 1) {
+                    for (start = 0; start < size; start += unit) {
+                        CTool_EndianConvertMem(token->data.tkstring.data + start, (short)unit);
+                    }
+                }
+                break;
+            }
+        }
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockTemplateParams(
+    CPrecStockGraph* graph, UInt32 offset, TemplParam** tail, UInt32 depth
+) {
+    UInt32 remaining = graph->rawSize / 0x18;
+
+    if (depth >= 128) {
+        return FALSE;
+    }
+    while (offset) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 0x18);
+        const UInt8* payload;
+        TemplParam* param;
+
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        payload = record + 0x0c;
+        param = galloc(sizeof(*param));
+        memset(param, 0, sizeof(*param));
+        if (!CPrec_ReadStockName(graph, record + 4, &param->name) ||
+            !CPrec_ReadStockParamID(record + 8, &param->pid)) {
+            return FALSE;
+        }
+        switch (param->pid.type) {
+            case TPT_TYPE:
+                if (CPrec_StockBuiltin(graph, payload) >= 0 || CIRStream_ReadWord(payload)) {
+                    param->data.typeparam.type = CPrec_ReadStockType(graph, payload, 0);
+                    if (!param->data.typeparam.type) {
+                        return FALSE;
+                    }
+                }
+                param->data.typeparam.qual = CIRStream_ReadWord(payload + 4);
+                break;
+            case TPT_NONTYPE:
+                param->data.paramdecl.type = CPrec_ReadStockType(graph, payload, 0);
+                if (!param->data.paramdecl.type) {
+                    return FALSE;
+                }
+                param->data.paramdecl.qual = CIRStream_ReadWord(payload + 4);
+                if (CIRStream_ReadWord(payload + 8)) {
+                    param->data.paramdecl.defaultarg =
+                        CPrec_ReadStockExpression(graph, CIRStream_ReadWord(payload + 8), 0);
+                    if (!param->data.paramdecl.defaultarg) {
+                        return FALSE;
+                    }
+                }
+                break;
+            case TPT_TEMPLATE:
+                if (CIRStream_ReadWord(payload + 4) ||
+                    !CPrec_ReadStockTemplateParams(
+                        graph, CIRStream_ReadWord(payload), &param->data.templparam.plist, depth + 1
+                    )) {
+                    return FALSE;
+                }
+                break;
+        }
+        *tail = param;
+        tail = &param->next;
+        offset = CIRStream_ReadWord(record);
+    }
+    *tail = NULL;
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockTemplateMember(
+    CPrecStockGraph* graph, UInt32 offset, Object* object
+) {
+    const UInt8* record = CPrec_StockRecord(graph, offset, 0x30);
+    TemplClass* owner = TEMPL_CLASS(object->nspace->theclass);
+    TemplateMember* member;
+
+    if (!record) {
+        return FALSE;
+    }
+    member = galloc(sizeof(*member));
+    memset(member, 0, sizeof(*member));
+    member->object = object;
+    if (!CPrec_ReadStockTemplateParams(graph, CIRStream_ReadWord(record), &member->params, 0) ||
+        !CPrec_ReadStockTokenStream(
+            graph,
+            CIRStream_ReadWord(record + 0x14),
+            CIRStream_ReadWord(record + 0x18),
+            &member->stream
+        )) {
+        return FALSE;
+    }
+    member->next = owner->members;
+    owner->members = member;
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockTemplateArgs(
+    CPrecStockGraph* graph, UInt32 offset, TemplArg** tail, UInt32 depth
+) {
+    UInt32 remaining = graph->rawSize / 0x12;
+
+    while (offset) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 0x12);
+        TemplArg* arg;
+
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        arg = galloc(sizeof(*arg));
+        memset(arg, 0, sizeof(*arg));
+        if (!CPrec_ReadStockParamID(record + 4, &arg->pid)) {
+            return FALSE;
+        }
+        if (arg->pid.type == TPT_NONTYPE) {
+            arg->data.paramdecl.expr =
+                CPrec_ReadStockExpression(graph, CIRStream_ReadWord(record + 8), 0);
+            arg->data.paramdecl.is_ref = record[0x0c] != 0;
+            if (!arg->data.paramdecl.expr) {
+                return FALSE;
+            }
+        } else {
+            arg->data.typeparam.type = CPrec_ReadStockType(graph, record + 8, depth);
+            arg->data.typeparam.qual = CIRStream_ReadWord(record + 0x0c);
+            if (!arg->data.typeparam.type) {
+                return FALSE;
+            }
+        }
+        arg->is_deduced = record[0x10] != 0;
+        *tail = arg;
+        tail = &arg->next;
+        offset = CIRStream_ReadWord(record);
+    }
+    *tail = NULL;
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockClassInstance(
+    CPrecStockGraph* graph, const UInt8* record, TemplClassInst* instance
+) {
+    Type* type = CPrec_ReadStockEmbeddedTemplate(graph, CIRStream_ReadWord(record + 0x34), 0);
+    UInt32 parentOffset = CIRStream_ReadWord(record + 0x38);
+
+    if (!type ||
+        !IS_TEMPL_CLASS(type) ||
+        !CPrec_ReadStockTemplateArgs(
+            graph, CIRStream_ReadWord(record + 0x3c), &instance->inst_args, 0
+        ) ||
+        !CPrec_ReadStockTemplateArgs(
+            graph, CIRStream_ReadWord(record + 0x44), &instance->oargs, 0
+        )) {
+        return FALSE;
+    }
+    if (parentOffset) {
+        Type* parent = CPrec_ReadStockEmbeddedTemplate(graph, parentOffset, 0);
+        if (!parent ||
+            !IS_TEMPL_CLASS_INST(parent) ||
+            TYPE_CLASS(parent)->nspace != instance->theclass.nspace->parent) {
+            return FALSE;
+        }
+        instance->parent = TEMPL_CLASS_INST(parent);
+    }
+    instance->templ = TEMPL_CLASS(type);
+    instance->is_instantiated = record[0x40] != 0;
+    instance->is_specialized = record[0x41] != 0;
+    instance->is_extern = record[0x42] != 0;
+    instance->static_instantiated = record[0x43] != 0;
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockClassInstances(
+    CPrecStockGraph* graph, UInt32 offset, TemplClassInst** tail
+) {
+    UInt32 remaining = graph->rawSize / StockClassInstanceSize;
+
+    while (offset) {
+        Type* type = CPrec_ReadStockTypeAt(graph, offset, 0);
+        const UInt8* record;
+        Type* owner;
+        TemplClassInst* inst;
+        if (!remaining-- || !type || !IS_TEMPL_CLASS_INST(type)) {
+            return FALSE;
+        }
+        record = graph->raw + offset;
+        owner = CPrec_ReadStockEmbeddedTemplate(graph, CIRStream_ReadWord(record + 0x34), 0);
+        if (!owner || !IS_TEMPL_CLASS(owner)) {
+            return FALSE;
+        }
+        inst = TEMPL_CLASS_INST(type);
+        if (TYPE_CLASS(owner)->flags & StockClassTemplateClone) {
+            // The stock master owns one list, while source clones own their instances.
+            TemplClass* clone = TEMPL_CLASS(owner);
+            inst->next = clone->instances;
+            clone->instances = inst;
+        } else {
+            *tail = inst;
+            tail = &inst->next;
+        }
+        offset = CIRStream_ReadWord(record + 0x30);
+    }
+    *tail = NULL;
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockPartialSpecs(
+    CPrecStockGraph* graph, UInt32 offset, TemplPartialSpec** tail
+) {
+    UInt32 remaining = graph->rawSize / 0x0c;
+
+    while (offset) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 0x0c);
+        Type* type;
+        TemplPartialSpec* spec;
+
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        type = CPrec_ReadStockType(graph, record + 4, 0);
+        if (!type || !IS_TEMPL_CLASS(type)) {
+            return FALSE;
+        }
+        spec = galloc(sizeof(*spec));
+        spec->templ = TEMPL_CLASS(type);
+        if (!CPrec_ReadStockTemplateArgs(graph, CIRStream_ReadWord(record + 8), &spec->args, 0)) {
+            return FALSE;
+        }
+        *tail = spec;
+        tail = &spec->next;
+        offset = CIRStream_ReadWord(record);
+    }
+    *tail = NULL;
+    return TRUE;
+}
+
+static ClassList* CPrec_FindStockTemplateBase(
+    CPrecStockGraph* graph, UInt32 offset, ClassList* base, UInt32 target
+) {
+    for (; base; base = base->next) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 0x12);
+        if (!record) {
+            return NULL;
+        }
+        if (offset == target) {
+            return base;
+        }
+        offset = CIRStream_ReadWord(record);
+    }
+    return NULL;
+}
+
+static Boolean CPrec_ReadStockTemplateAction(
+    CPrecStockGraph* graph,
+    const UInt8* record,
+    TemplateAction* action,
+    UInt32 baseOffset,
+    ClassList* bases
+) {
+    const UInt8* data = record + 0x10;
+    Type* type;
+    UInt32 offset;
+
+    switch (record[0x1a]) {
+        case 0:
+            action->type = TAT_NESTEDCLASS;
+            type = CPrec_ReadStockType(graph, data, 0);
+            if (!type || !IS_TEMPL_CLASS(type)) {
+                return FALSE;
+            }
+            action->u.tclasstype = TEMPL_CLASS(type);
+            return TRUE;
+        case 1:
+            action->type = TAT_ENUMTYPE;
+            type = CPrec_ReadStockType(graph, data, 0);
+            if (!type || !IS_TYPE_ENUM(type)) {
+                return FALSE;
+            }
+            action->u.enumtype = TYPE_ENUM(type);
+            return TRUE;
+        case 3:
+            action->type = TAT_BASE;
+            action->u.base.type = CPrec_ReadStockType(graph, data, 0);
+            action->u.base.access = data[8];
+            action->u.base.is_virtual = data[9];
+            offset = CIRStream_ReadWord(data + 4);
+            if (offset) {
+                action->u.base.insert_after =
+                    CPrec_FindStockTemplateBase(graph, baseOffset, bases, offset);
+            }
+            return action->u.base.type &&
+                (!offset || action->u.base.insert_after) &&
+                data[8] <= ACCESSNONE &&
+                data[9] <= 1;
+        case 4:
+            action->type = TAT_OBJECTINIT;
+            action->u.objectinit.object = CPrec_ReadStockObjectRef(graph, data);
+            action->u.objectinit.initexpr =
+                CPrec_ReadStockExpression(graph, CIRStream_ReadWord(data + 4), 0);
+            return action->u.objectinit.object &&
+                action->u.objectinit.object->datatype == DDATA &&
+                action->u.objectinit.initexpr;
+        case 5:
+            action->type = TAT_USINGDECL;
+            type = CPrec_ReadStockType(graph, data, 0);
+            if (!type ||
+                !IS_TYPE_TEMPLATE(type) ||
+                TYPE_TEMPLATE(type)->dtype != TEMPLDEP_QUALNAME ||
+                data[4] > ACCESSNONE) {
+                return FALSE;
+            }
+            action->u.usingdecl.type = TYPE_TEMPLATE(type);
+            action->u.usingdecl.access = data[4];
+            return TRUE;
+        case 6: {
+            const CPrecStockObject* saved = *CPrec_FindStockObject(graph, CIRStream_ReadWord(data));
+            if (!saved ||
+                (saved->object->otype != OT_MEMBERVAR &&
+                 saved->object->otype != OT_TYPE &&
+                 saved->object->otype != OT_OBJECT)) {
+                return FALSE;
+            }
+            action->type = TAT_OBJECTDEF;
+            action->u.refobj = saved->object;
+            return TRUE;
+        }
+        default:
+            return FALSE;
+    }
+}
+
+static TemplateAction** CPrec_ReadStockEnumeratorActions(
+    CPrecStockGraph* graph, UInt32 enumOffset, TypeEnum* type, TemplateAction** tail
+) {
+    const UInt8* record = CPrec_StockRecord(graph, enumOffset, 0x16);
+    UInt32 offset;
+    ObjEnumConst* enumerator;
+    Boolean hasDependentValue = FALSE;
+
+    if (!record) {
+        return NULL;
+    }
+    offset = CIRStream_ReadWord(record + 0x0a);
+    // RC1 stores a dependent initializer on the enumerator's type.
+    for (enumerator = type->enumlist; enumerator; enumerator = enumerator->next) {
+        const UInt8* object = CPrec_StockRecord(graph, offset, 0x16);
+        const UInt8* value;
+        if (!object) {
+            return NULL;
+        }
+        value = CPrec_StockDependentEnumValue(graph, object + 0x0a, enumOffset);
+        offset = CIRStream_ReadWord(object + 2);
+        if (value) {
+            UInt32 exprOffset = CIRStream_ReadWord(value + 0x0c);
+            TemplateAction* action = galloc(sizeof(*action));
+            memset(action, 0, sizeof(*action));
+            action->type = TAT_ENUMERATOR;
+            action->u.enumerator.objenumconst = enumerator;
+            if (exprOffset) {
+                action->u.enumerator.initexpr = CPrec_ReadStockExpression(graph, exprOffset, 0);
+                if (!action->u.enumerator.initexpr) {
+                    return NULL;
+                }
+            } else if (!hasDependentValue) {
+                return NULL;
+            }
+            *tail = action;
+            tail = &action->next;
+        }
+        hasDependentValue = value != NULL;
+    }
+    return tail;
+}
+
+static Boolean CPrec_ReadStockClassTemplate(
+    CPrecStockGraph* graph, const UInt8* record, TemplClass* templ
+) {
+    UInt32 parentOffset = CIRStream_ReadWord(record + StockClassTemplateHeader);
+    UInt32 pspecOwner = CIRStream_ReadWord(record + 0x46);
+    UInt32 baseOffset = CIRStream_ReadWord(record + 0x0e);
+    UInt32 offset = CIRStream_ReadWord(record + 0x4e);
+    UInt32 remaining = graph->rawSize / StockTemplateActionSize;
+    TemplateAction** tail = &templ->actions;
+
+    if (CIRStream_ReadWord(record + 0x38) ||
+        !CPrec_ReadStockTemplateParams(
+            graph, CIRStream_ReadWord(record + 0x3c), &templ->templ__params, 0
+        ) ||
+        !CPrec_ReadStockClassInstances(
+            graph, CIRStream_ReadWord(record + 0x42), &templ->instances
+        ) ||
+        !CPrec_ReadStockPartialSpecs(graph, CIRStream_ReadWord(record + 0x4a), &templ->pspecs)) {
+        return FALSE;
+    }
+    if (parentOffset) {
+        Type* parent = CPrec_ReadStockEmbeddedTemplate(graph, parentOffset, 0);
+        if (!parent ||
+            !IS_TEMPL_CLASS(parent) ||
+            TYPE_CLASS(parent)->nspace != templ->theclass.nspace->parent) {
+            return FALSE;
+        }
+        templ->templ_parent = TEMPL_CLASS(parent);
+    }
+    if (pspecOwner) {
+        Type* owner = CPrec_ReadStockTypeAt(graph, pspecOwner, 0);
+        if (!owner || !IS_TEMPL_CLASS(owner) || owner == TYPE(templ)) {
+            return FALSE;
+        }
+        templ->pspec_owner = TEMPL_CLASS(owner);
+    }
+    templ->lex_order_count = CPrec_StockHalfword(record + 0x52);
+    templ->align = (SInt8)record[0x54];
+    templ->flags = record[0x55];
+    while (offset) {
+        const UInt8* rawAction = CPrec_StockRecord(graph, offset, StockTemplateActionSize);
+        TemplateAction* action;
+        if (!rawAction || !remaining--) {
+            return FALSE;
+        }
+        action = galloc(sizeof(*action));
+        memset(action, 0, sizeof(*action));
+        if (!CPrec_ReadStockTemplateAction(
+                graph, rawAction, action, baseOffset, templ->theclass.bases
+            )) {
+            return FALSE;
+        }
+        *tail = action;
+        tail = &action->next;
+        if (action->type == TAT_ENUMTYPE) {
+            tail = CPrec_ReadStockEnumeratorActions(
+                graph, CIRStream_ReadWord(rawAction + 0x10), action->u.enumtype, tail
+            );
+            if (!tail) {
+                return FALSE;
+            }
+        }
+        offset = CIRStream_ReadWord(rawAction);
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockClassTemplates(CPrecStockGraph* graph, UInt32 offset) {
+    TemplClass** tail = &ctempl_templates;
+    UInt32 remaining = graph->rawSize / StockClassTemplateSize;
+
+    while (offset) {
+        Type* type = CPrec_ReadStockTypeAt(graph, offset, 0);
+        if (!remaining-- ||
+            !type ||
+            !IS_TEMPL_CLASS(type) ||
+            (TYPE_CLASS(type)->flags & StockClassTemplateClone)) {
+            return FALSE;
+        }
+        *tail = TEMPL_CLASS(type);
+        tail = &(*tail)->next;
+        offset = CIRStream_ReadWord(graph->raw + offset + 0x30);
+    }
+    *tail = NULL;
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockClassClones(CPrecStockGraph* graph) {
+    while (graph->pendingClassClones) {
+        CPrecStockType* entry = graph->pendingClassClones;
+        const UInt8* record = graph->raw + entry->offset;
+        Type* original =
+            CPrec_ReadStockEmbeddedTemplate(graph, CIRStream_ReadWord(record + 0x34), 0);
+        UInt32 outerOffset = CIRStream_ReadWord(record + 0x38);
+        Type* outer = CPrec_ReadStockEmbeddedTemplate(graph, outerOffset, 0);
+        const UInt8* scope = graph->raw + CIRStream_ReadWord(record + 6);
+        TemplClass* clone = TEMPL_CLASS(entry->type);
+        TemplClass* master;
+        TemplClassInst* inst;
+        TemplClassInst* instances = NULL;
+        UInt32 remaining = graph->rawSize / StockClassInstanceSize;
+
+        if (!original ||
+            !IS_TEMPL_CLASS(original) ||
+            (TYPE_CLASS(original)->flags & StockClassTemplateClone) ||
+            !outer ||
+            !IS_TEMPL_CLASS_INST(outer)) {
+            return FALSE;
+        }
+        graph->pendingClassClones = entry->pending;
+        master = TEMPL_CLASS(original);
+        if (!master->templ_parent ||
+            !master->templ__params ||
+            CIRStream_ReadWord(scope) !=
+                CIRStream_ReadWord(graph->raw + outerOffset - StockClassTemplateHeader + 6)) {
+            return FALSE;
+        }
+        clone->theclass = master->theclass;
+        clone->templ_parent = master->templ_parent;
+        clone->inst_parent = TEMPL_CLASS_INST(outer);
+        clone->templ__params = master->templ__params;
+        clone->actions = master->actions;
+        clone->lex_order_count = master->lex_order_count;
+        clone->align = master->align;
+        clone->flags = master->flags;
+        for (inst = clone->instances; inst;) {
+            TemplClassInst* next = inst->next;
+            if (!remaining--) {
+                return FALSE;
+            }
+            inst->next = instances;
+            instances = inst;
+            inst = next;
+        }
+        clone->instances = instances;
+        clone->next = ctempl_templates;
+        ctempl_templates = clone;
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockFunctionInstances(
+    CPrecStockGraph* graph,
+    UInt32 offset,
+    UInt32 templateOffset,
+    UInt32 enclosingInstance,
+    TemplateFunction* templ
+) {
+    TemplFuncInstance** tail = &templ->instances;
+    UInt32 remaining = graph->rawSize / StockFunctionInstanceSize;
+
+    while (offset) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, StockFunctionInstanceSize);
+        const UInt8* symbol;
+        UInt32 symbolOffset;
+        Object* object;
+        TemplFuncInstance* instance;
+
+        if (!record ||
+            !remaining-- ||
+            CIRStream_ReadWord(record) != templateOffset ||
+            CIRStream_ReadWord(record + 4) != enclosingInstance) {
+            return FALSE;
+        }
+        symbolOffset = CIRStream_ReadWord(record + 0x18);
+        symbol = CPrec_StockRecord(graph, symbolOffset, 0x60);
+        object = CPrec_ReadStockSymbol(graph, symbolOffset, 0);
+        if (!symbol ||
+            CIRStream_ReadWord(symbol + 0x48) != offset ||
+            !object ||
+            !IS_TYPE_FUNC(object->type) ||
+            object->u.func.inst ||
+            object->nspace != templ->tfunc->nspace) {
+            return FALSE;
+        }
+        instance = galloc(sizeof(*instance));
+        memset(instance, 0, sizeof(*instance));
+        instance->object = object;
+        instance->is_instantiated = record[0x0c] != 0;
+        instance->is_specialized = record[0x0d] != 0;
+        instance->is_extern = record[0x0e] != 0;
+        if (!CPrec_ReadStockTemplateArgs(
+                graph, CIRStream_ReadWord(record + 8), &instance->args, 0
+            )) {
+            return FALSE;
+        }
+        object->u.func.inst = instance;
+        --graph->functionInstances;
+        *tail = instance;
+        tail = &instance->next;
+        if (!instance->is_specialized &&
+            !instance->is_instantiated &&
+            !instance->is_extern &&
+            (object->qual & Q_INLINE) &&
+            !(TYPE_FUNC(object->type)->flags & FUNC_DEFINED) &&
+            templ->stream.tokens) {
+            CInline_AddTemplateFunctionAction(object, templ, instance);
+        }
+        offset = CIRStream_ReadWord(record + 0x10);
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_LinkStockFunctionClones(CPrecStockGraph* graph, UInt32 offset) {
+    TemplateFunction* templ;
+
+    for (templ = ctempl_templatefuncs; templ; templ = templ->next) {
+        const UInt8* record = graph->raw + offset;
+        if (CIRStream_ReadWord(record + 4)) {
+            UInt32 originalOffset = CIRStream_ReadWord(record);
+            const UInt8* original = CPrec_StockRecord(graph, originalOffset, 0x36);
+            Object* object;
+
+            if (!original || CIRStream_ReadWord(original + 4)) {
+                return FALSE;
+            }
+            object = CPrec_ReadStockSymbol(graph, CIRStream_ReadWord(original + 0x2e), 0);
+            if (!object || !IS_TEMPL_FUNC(object->type) || !object->u.func.u.templ) {
+                return FALSE;
+            }
+            templ->original = object->u.func.u.templ;
+        }
+        offset = CIRStream_ReadWord(record + 0x0e);
+    }
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockFunctionTemplates(CPrecStockGraph* graph, UInt32 offset) {
+    TemplateFunction** tail = &ctempl_templatefuncs;
+    UInt32 remaining = graph->rawSize / 0x36;
+    UInt32 first = offset;
+
+    while (offset) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 0x36);
+        UInt32 enclosingInstance;
+        UInt32 parentOffset;
+        UInt32 symbolOffset;
+        const UInt8* symbol;
+        Object* object;
+        TemplateFunction* templ;
+
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        symbolOffset = CIRStream_ReadWord(record + 0x2e);
+        symbol = CPrec_StockRecord(graph, symbolOffset, 0x60);
+        object = CPrec_ReadStockSymbol(graph, symbolOffset, 0);
+        if (!symbol ||
+            CIRStream_ReadWord(symbol + 0x40) != offset ||
+            !object ||
+            !IS_TEMPL_FUNC(object->type) ||
+            object->u.func.u.templ) {
+            return FALSE;
+        }
+        enclosingInstance = CIRStream_ReadWord(record + 4);
+        parentOffset = enclosingInstance ? enclosingInstance : CIRStream_ReadWord(record);
+        if (parentOffset) {
+            Type* parent = CPrec_ReadStockEmbeddedTemplate(graph, parentOffset, 0);
+            if (!parent ||
+                !(enclosingInstance ? IS_TEMPL_CLASS_INST(parent) : IS_TEMPL_CLASS(parent)) ||
+                TYPE_CLASS(parent)->nspace != object->nspace) {
+                return FALSE;
+            }
+        }
+        templ = galloc(sizeof(*templ));
+        memset(templ, 0, sizeof(*templ));
+        templ->name = object->name;
+        templ->tfunc = object;
+        if (!CPrec_ReadStockTemplateParams(
+                graph, CIRStream_ReadWord(record + 8), &templ->params, 0
+            ) ||
+            !CPrec_ReadStockTokenStream(
+                graph,
+                CIRStream_ReadWord(record + 0x16),
+                CIRStream_ReadWord(record + 0x1a),
+                &templ->stream
+            )) {
+            return FALSE;
+        }
+        object->u.func.u.templ = templ;
+        --graph->functionTemplates;
+        if (!CPrec_ReadStockFunctionInstances(
+                graph, CIRStream_ReadWord(record + 0x32), offset, enclosingInstance, templ
+            )) {
+            return FALSE;
+        }
+        *tail = templ;
+        tail = &templ->next;
+        offset = CIRStream_ReadWord(record + 0x0e);
+    }
+    *tail = NULL;
+    return CPrec_LinkStockFunctionClones(graph, first);
+}
+
+static Boolean CPrec_ReadStockInitializers(CPrecStockGraph* graph, UInt32 offset) {
+    InitExpr** tail = &init_expressions;
+    UInt32 remaining = graph->rawSize / 0x18;
+
+    while (offset) {
+        const UInt8* record = CPrec_StockRecord(graph, offset, 0x18);
+        InitExpr* entry;
+
+        if (!record || !remaining--) {
+            return FALSE;
+        }
+        entry = galloc(sizeof(*entry));
+        entry->expr = CPrec_ReadStockExpression(graph, CIRStream_ReadWord(record + 4), 0);
+        entry->object = CPrec_ReadStockObjectRef(graph, record + 8);
+        if (!entry->expr || !entry->object || entry->object->datatype != DDATA) {
+            return FALSE;
+        }
+        *tail = entry;
+        tail = &entry->next;
+        offset = CIRStream_ReadWord(record);
+    }
+    *tail = NULL;
+    return TRUE;
+}
+
+static Boolean CPrec_ReadStockDeclarations(const UInt8* image, UInt32 size) {
+    CPrecStockGraph graph;
+    StaticData* definitions = NULL;
+    UInt32 backendSize = CIRStream_ReadWord(image + 0xd2);
+    UInt32 backendOffset = CIRStream_ReadWord(image + 0xd6);
+
+    memset(&graph, 0, sizeof(graph));
+    graph.raw = image + CIRStream_ReadWord(image + 0x3a);
+    graph.rawSize = CIRStream_ReadWord(image + 0x32);
+    graph.objectsRemaining = graph.rawSize / 8;
+    if (CIRStream_ReadWord(image + 0x86)) { // Saved thunks.
+        return FALSE;
+    }
+    graph.builtinIndices = lalloc(graph.rawSize / 2);
+    if (!CPrec_IndexStockBuiltins(image, size, graph.builtinIndices, graph.rawSize / 2) ||
+        !CodeGen_ReadPrecompilerData(image + backendOffset, backendSize, &graph.sections) ||
+        !CPrec_ReadStockClassTemplates(&graph, CIRStream_ReadWord(image + 0x62)) ||
+        !CPrec_ReadStockClassList(&graph, CIRStream_ReadWord(image + 0x72)) ||
+        !CPrec_ReadStockUsings(&graph, cscope_root, CIRStream_ReadWord(image + 0x5e)) ||
+        !CPrec_ReadStockNameTable(
+            &graph, cscope_root, image + 0x40da, CIRStream_ReadWord(image + 0x5a)
+        ) ||
+        !CPrec_ReadStockFriends(&graph, CIRStream_ReadWord(image + 0x82)) ||
+        !CPrec_ReadStockScopeContents(&graph) ||
+        !CPrec_ReadStockStaticData(&graph, CIRStream_ReadWord(image + 0x6a), &definitions) ||
+        !CPrec_ReadStockTentativeData(&graph, CIRStream_ReadWord(image + 0x7e))) {
+        return FALSE;
+    }
+    CParser_SetUniqueID((SInt32)CIRStream_ReadWord(image + 0x6e));
+    if (!CPrec_ReadStockFunctionTemplates(&graph, CIRStream_ReadWord(image + 0x7a)) ||
+        !CPrec_ReadStockInitializers(&graph, CIRStream_ReadWord(image + 0x76))) {
+        return FALSE;
+    }
+    while (graph.pendingDefaults ||
+           graph.pendingScopes ||
+           graph.pendingFunctions ||
+           graph.pendingTemplateClasses) {
+        if (!CPrec_ReadStockDefaults(&graph) ||
+            !CPrec_ReadStockScopeContents(&graph) ||
+            !CPrec_ReadStockFunctions(&graph)) {
+            return FALSE;
+        }
+        if (graph.pendingTemplateClasses) {
+            CPrecStockType* entry = graph.pendingTemplateClasses;
+            const UInt8* record = graph.raw + entry->offset;
+            graph.pendingTemplateClasses = entry->pending;
+            if (IS_TEMPL_CLASS(entry->type)
+                    ? !CPrec_ReadStockClassTemplate(&graph, record, TEMPL_CLASS(entry->type))
+                    : !CPrec_ReadStockClassInstance(
+                          &graph, record, TEMPL_CLASS_INST(entry->type)
+                      )) {
+                return FALSE;
+            }
+        }
+    }
+    if (!CPrec_ReadStockClassClones(&graph) ||
+        graph.dataDefinitions ||
+        graph.functionTemplates ||
+        graph.functionInstances) {
+        return FALSE;
+    }
+    for (; definitions; definitions = definitions->next) {
+        CPrec_DeclareStaticData(definitions);
+    }
+    return TRUE;
+}
+
+static void CPrec_ReadStockHeader(const UInt8* header, SInt32 size) {
+    const void* image = cprec_buffer;
+    void* expanded;
+    size_t expandedSize;
+
+    if (header[8] != 0xe9 ||
+        header[9] != 0xf6 ||
+        header[10] != 2 ||
+        header[0x11] != stwchar.size ||
+        header[0x12] != stbool.size) {
+        CError_ErrorTerm(ERR_ILLEGAL_PRECOMPILED_HEADER_COMPILER_FLAGS_TARGET);
+    }
+    copts.checkprecompflags = header[0x0b];
+    if (!image) {
+        void* data = lalloc(size);
+        CPrec_ReadData(0, data, size);
+        image = data;
+    }
+    expandedSize = PrecompilerExpand(image, size, NULL, 0);
+    if (!expandedSize || expandedSize > 0x7fffffffu) {
+        CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+    }
+    expanded = lalloc(expandedSize);
+    if (PrecompilerExpand(image, size, expanded, expandedSize) != expandedSize ||
+        !CPrec_VisitStockMacros(expanded, expandedSize, CPrec_InstallStockMacro, NULL) ||
+        !CPrec_VisitStockFiles(expanded, expandedSize, CPrep_RememberPrecompiledFile, NULL) ||
+        (!cparamblkptr->preprocess && !CPrec_ReadStockDeclarations(expanded, expandedSize))) {
+        CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+    }
+    freelheap();
+    CPrep_InsertSpecialMacros();
+}
+#else
 static void CPrec_ReadRawBuffer(void) {
     UInt8* buffer;
     UInt8* work;
@@ -4292,7 +7430,23 @@ static void CPrec_ReadRawBuffer(void) {
         CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
     }
 }
+#endif
 
+#if VERSION == VERSION_WII_1_0RC1
+static void CPrec_RelocateRawBuffer(UInt32 imageSize) {
+    UInt32 count = cprec_header->compressedPatchCount;
+    UInt32 size = cprec_header->compressedPatchSize;
+    if (count) {
+        const UInt8* patches =
+            CPrec_ReadRawSection(imageSize, cprec_header->compressedPatchOffset, size);
+        if (!CPrec_RelocateRawData(cprec_rawbuffer, cprec_header->rawsize, patches, size, count,
+                                  (UInt32)cprec_rawbuffer)) {
+            CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+        }
+        freelheap();
+    }
+}
+#else
 static void CPrec_RelocateRawBuffer(void) {
     UInt8* patches;
     UInt32 offset;
@@ -4340,6 +7494,8 @@ static void CPrec_RelocateRawBuffer(void) {
         }
     }
 }
+
+#endif
 
 static void CPrec_RelocateBuiltins(void) {
     UInt32 count;
@@ -4454,7 +7610,11 @@ static void CPrec_RelocateMacroTable(void) {
 #undef CError_LINE_DELTA
 #define CError_LINE_DELTA -7
 #endif
+#if VERSION == VERSION_WII_1_0RC1
+Boolean PrecompilerRead(short refnum, void* buffer, SInt32 size) {
+#else
 void PrecompilerRead(short refnum, void* buffer) {
+#endif
     Header* header;
     SInt32 offset;
     UInt8* base;
@@ -4472,6 +7632,11 @@ void PrecompilerRead(short refnum, void* buffer) {
         CError_ErrorTerm(ERR_ILLEGAL_USE_PRECOMPILED_HEADER);
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (size < (SInt32)sizeof(Header)) {
+        CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+    }
+#endif
     if (cprec_buffer == NULL) {
         cprec_header = galloc(sizeof(Header));
         header = cprec_header;
@@ -4487,11 +7652,14 @@ void PrecompilerRead(short refnum, void* buffer) {
     if (cprec_header->magic != 0xBEEFFACE) {
         CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
     }
-    #if VERSION < VERSION_GC_2_0
-    if (cprec_header->version != 1047) {
-#else
-    if (cprec_header->version != 5145) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (cprec_header->version == 0x042e) {
+        CPrec_ReadStockHeader((const UInt8*)cprec_header, size);
+        cprec_refnum = 0;
+        return cparamblkptr->preprocess;
+    }
 #endif
+    if (cprec_header->version != CPREC_SOURCE_VERSION) {
         CError_ErrorTerm(ERR_ILLEGAL_PRECOMPILED_HEADER_VERSION);
     }
     if (cprec_header->target != 2) {
@@ -4499,8 +7667,13 @@ void PrecompilerRead(short refnum, void* buffer) {
     }
 
     copts.checkprecompflags = cprec_header->check_header_flags;
+#if VERSION == VERSION_WII_1_0RC1
+    CPrec_ReadRawBuffer(size);
+    CPrec_RelocateRawBuffer(size);
+#else
     CPrec_ReadRawBuffer();
     CPrec_RelocateRawBuffer();
+#endif
     CPrec_RelocateBuiltins();
 
     hashEntries = name_hash_nodes;
@@ -4652,6 +7825,12 @@ void PrecompilerRead(short refnum, void* buffer) {
     }
 
     CParser_SetUniqueID(cprec_header->uniqueID);
+#if VERSION == VERSION_WII_1_0RC1
+    cinit_tentative = cprec_header->tentativeData
+        ? (ObjectList*)((UInt8*)cprec_rawbuffer + (UInt32)cprec_header->tentativeData)
+        : NULL;
+    CPrec_ReadBackend(size);
+#endif
     cobjc_selrefcount = cprec_header->cobjc_selrefcount;
     cobjc_classrefcount = cprec_header->cobjc_classrefcount;
     cobjc_stringcount = cprec_header->cobjc_stringcount;
@@ -4670,9 +7849,16 @@ void PrecompilerRead(short refnum, void* buffer) {
         record = cprec_staticdata;
         cprec_staticdata = NULL;
         for (; record != NULL; record = record->next) {
+#if VERSION == VERSION_WII_1_0RC1
+            CPrec_DeclareStaticData(record);
+#else
             CInit_DeclareData(record->object, record->buffer, record->links, record->size);
+#endif
         }
     }
+#if VERSION == VERSION_WII_1_0RC1
+    return FALSE;
+#endif
 }
 #if VERSION == VERSION_GC_1_3_2
 #undef CError_LINE_DELTA

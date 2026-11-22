@@ -85,6 +85,11 @@ struct TypeStruct {
     SInt16 align;
 };
 
+#if VERSION == VERSION_WII_1_0RC1
+enum { SPEBuiltinTypeCount = 8 };
+extern TypeStruct stspevector[SPEBuiltinTypeCount];
+#endif
+
 struct StructMember {
     StructMember* next;
     Type* type;
@@ -108,7 +113,16 @@ enum {
     STRUCT_VECTOR_SINT = 11,
     STRUCT_VECTOR_BINT = 12,
     STRUCT_VECTOR_FLOAT = 13,
-    STRUCT_VECTOR_PIXEL = 14
+    STRUCT_VECTOR_PIXEL = 14,
+#if VERSION == VERSION_WII_1_0RC1
+    STRUCT_SPE_U16 = 15,
+    STRUCT_SPE_S16,
+    STRUCT_SPE_U32,
+    STRUCT_SPE_S32,
+    STRUCT_SPE_U64,
+    STRUCT_SPE_S64,
+    STRUCT_SPE_FS,
+#endif
 };
 
 struct ClassList {
@@ -166,7 +180,18 @@ struct TypeClass {
     SInt8 action;
     SInt16 align;
     UInt8 eflags;
+#if VERSION == VERSION_WII_1_0RC1
+    UInt8 irCopyKind;
+#endif
 };
+
+#if VERSION == VERSION_WII_1_0RC1
+enum {
+    ClassCopyFromDeclaration,
+    ClassCopyNontrivial,
+    ClassCopyTrivial
+};
+#endif
 
 enum {
     CLASS_MODE_STRUCT = 0,
@@ -394,6 +419,13 @@ struct TypeList {
 #define IS_TYPESTRUCT_VECTOR(ty) \
     ((ty)->stype >= STRUCT_VECTOR_UCHAR && (ty)->stype <= STRUCT_VECTOR_PIXEL)
 #define IS_TYPE_VECTOR(ty) ((ty)->type == TYPESTRUCT && IS_TYPESTRUCT_VECTOR(TYPE_STRUCT(ty)))
+#if VERSION == VERSION_WII_1_0RC1
+#define IS_TYPE_SPE(ty) \
+    (IS_TYPE_STRUCT(ty) && TYPE_STRUCT(ty)->stype >= STRUCT_SPE_U16 && \
+     TYPE_STRUCT(ty)->stype <= STRUCT_SPE_FS)
+#else
+#define IS_TYPE_SPE(ty) 0
+#endif
 #define IS_TYPE_NONVECTOR_STRUCT(ty) \
     ((ty)->type == TYPESTRUCT && !IS_TYPESTRUCT_VECTOR(TYPE_STRUCT(ty)))
 #define IS_TYPE_MEMBERPOINTER(ty) ((ty)->type == TYPEMEMBERPOINTER)
@@ -415,6 +447,14 @@ struct TypeList {
     (IS_TYPE_FLOAT(ty) && TYPE_INTEGRAL(ty)->integral == IT_VEC2X32FLOAT)
 #define IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(ty) ((ty)->type == TYPEFLOAT && !IS_TYPE_VEC2X32FLOAT(ty))
 #define TYPE_IS_SOFT_FLOAT(ty) (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(ty))
+#if VERSION == VERSION_WII_1_0RC1
+#define USE_SPE_FLOAT(size) (copts.e500v2_floatingpoint || ((size) == 4 && copts.e500_floatingpoint))
+#define TYPE_REQUIRES_SFPE(ty) (TYPE_IS_SOFT_FLOAT(ty) && !USE_SPE_FLOAT((ty)->size))
+#define TYPE_IS_DPFP(ty) (copts.e500v2_floatingpoint && TYPE_IS_SOFT_FLOAT(ty) && (ty)->size == 8)
+#else
+#define TYPE_REQUIRES_SFPE(ty) TYPE_IS_SOFT_FLOAT(ty)
+#define TYPE_IS_DPFP(ty) 0
+#endif
 #define TYPE_IS_GPR_PAIR(ty) (TYPE_IS_8BYTES(ty) || (TYPE_IS_SOFT_FLOAT(ty) && (ty)->size != 4))
 
 #define OBJ_GET_TARGET_VOLATILE(obj) \

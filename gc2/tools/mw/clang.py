@@ -159,6 +159,14 @@ def output_path(version: Version | str | None) -> Path:
     return get_version(version).build / "clang/mwcceppc.exe"
 
 
+def oracle_output_path(version: Version) -> Path:
+    return version.build / "oracle/mwcceppc.exe"
+
+
+def oracle_object_path(version: Version, source: str) -> Path:
+    return version.build / "oracle/obj" / f"{source}.obj"
+
+
 LINUX = "i386-unknown-linux-gnu"
 LINUX_DIRECTORY = "src/host/linux/"
 LINUX_SOURCES = (
@@ -354,10 +362,33 @@ def link_command(inputs: list[str], output: Path, map_path: Path) -> list[str]:
 def link_compiler(version: Version | str | None) -> Path:
     v = get_version(version)
     objects = [object_path(v, c.source) for c in compilations(v)]
+    return _link_compiler(v, objects, output_path(v))
+
+
+def link_source_oracle(v: Version, tools: Path) -> Path:
+    output = oracle_output_path(v)
+    checkout = ROOT.parent
+    plan = output.with_name("plan.json")
+    units = []
+    objects = {}
+    for c in compilations(v):
+        units.append({"name": c.source, "input": c.source, "arguments": build_arguments(c)[1:]})
+        objects[c.source] = oracle_object_path(v, c.source).relative_to(checkout).as_posix()
+    write_atomic(plan, json.dumps({"version": v.name, "units": units, "objects": objects}))
+    result = subprocess.run([tools, "build-native-oracle-objects", plan], cwd=checkout)
+    if result.returncode:
+        raise Error(f"{v}: building the oracle hook objects exited with code {result.returncode}")
+    paths = json.loads(output.with_name("objects.json").read_text())
+    linked = _link_compiler(v, [checkout / p for p in paths], output)
+    license_dll = output_path(v).with_name(LICENSING.name)
+    shutil.copyfile(license_dll, output.with_name(LICENSING.name))
+    return linked
+
+
+def _link_compiler(v: Version, objects: list[Path], output: Path) -> Path:
     absent = [relative(p) for p in objects if not p.exists()]
     if absent:
         raise Error(f"{v}: not compiled: {', '.join(absent[:5])}{' ...' if len(absent) > 5 else ''}")
-    output = output_path(v)
     map_path = output.with_suffix(".map")
     missing = _unresolved(objects)
     traps = output.parent / "traps.obj"
@@ -385,7 +416,8 @@ def link_compiler(version: Version | str | None) -> Path:
     if live:
         output.unlink(missing_ok=True)
         raise Error(f"{v}: code that runs refers to what nothing defines: {', '.join(live)}")
-    shutil.copy(LICENSING, output.parent / LICENSING.name)
+    if not v.clang_only:
+        shutil.copy(LICENSING, output.parent / LICENSING.name)
     return output
 
 

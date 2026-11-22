@@ -1,6 +1,16 @@
+#if VERSION == VERSION_WII_1_0RC1
+#define OPT_DISABLE "G0-ShPeAiFa|"
+#define OPT_LEVEL4 "G4ShPeAiFa|"
+#define OPT_ALL "G4GpShPeAiFa|"
+#else
+#define OPT_DISABLE "G0-ShPe|"
+#define OPT_LEVEL4 "G4ShPe|"
+#define OPT_ALL "G4GpShPe|"
+#endif
+
 GENERIC_T optlstOptimizer_000 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)"G2Pe", 0};
 Option optlstOptimizer_001 = {"O", 0x100, (PARAM_T *)&optlstOptimizer_000, 0, 0, "same as '~~O2'"};
-GENERIC_T optlstOptimizer_002 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)"G0-ShPe|", 0};
+GENERIC_T optlstOptimizer_002 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)OPT_DISABLE, 0};
 Option optlstOptimizer_003 = {"0", 0x100, (PARAM_T *)&optlstOptimizer_002, 0, 0, "same as '~~opt off'"};
 GENERIC_T optlstOptimizer_004 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)"G1", 0};
 Option optlstOptimizer_005 = {"1", 0x100, (PARAM_T *)&optlstOptimizer_004, 0, 0, "same as '~~opt level=1'"};
@@ -8,7 +18,7 @@ GENERIC_T optlstOptimizer_006 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)"G
 Option optlstOptimizer_007 = {"2", 0x100, (PARAM_T *)&optlstOptimizer_006, 0, 0, "same as '~~opt level=2, peephole'"};
 GENERIC_T optlstOptimizer_008 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)"G3Pe", 0};
 Option optlstOptimizer_009 = {"3", 0x100, (PARAM_T *)&optlstOptimizer_008, 0, 0, "same as '~~opt level=3, peephole'"};
-GENERIC_T optlstOptimizer_010 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)"G4ShPe|", 0};
+GENERIC_T optlstOptimizer_010 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)OPT_LEVEL4, 0};
 Option optlstOptimizer_011 = {"4", 0x100, (PARAM_T *)&optlstOptimizer_010, 0, 0, "same as '~~opt level=4, peephole, schedule'"};
 GENERIC_T optlstOptimizer_012 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)"Gp", 0};
 Option optlstOptimizer_013 = {"p", 0x100, (PARAM_T *)&optlstOptimizer_012, 0, 0, "same as '~~opt speed'"};
@@ -26,11 +36,11 @@ Option *optlstOptimizer_016[] = {
 };
 OptionList optlstOptimizer_017 = {0, 0x100, optlstOptimizer_016};
 Option optlstOptimizer_018 = {"O", 0x8106, 0, &optlstOptimizer_017, 0, "control optimization; you may combine options as in '~~O4,p'"};
-GENERIC_T optlstOptimizer_019 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)"G0-ShPe|", 0};
+GENERIC_T optlstOptimizer_019 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)OPT_DISABLE, 0};
 Option optlstOptimizer_020 = {"off|none", 0x100, (PARAM_T *)&optlstOptimizer_019, 0, 0, "suppress all optimizations; default"};
 GENERIC_T optlstOptimizer_021 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)"G2Pe", 0};
 Option optlstOptimizer_022 = {"on", 0x100, (PARAM_T *)&optlstOptimizer_021, 0, 0, "same as ~~opt level=2, peephole"};
-GENERIC_T optlstOptimizer_023 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)"G4GpShPe|", 0};
+GENERIC_T optlstOptimizer_023 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)OPT_ALL, 0};
 Option optlstOptimizer_024 = {"all|full", 0x100, (PARAM_T *)&optlstOptimizer_023, 0, 0, "same as ~~opt speed,level=4, peephole, schedule"};
 GENERIC_T optlstOptimizer_025 = {13, 0x01, 0, 0, (void *)SetOptFlags, (void *)"Gs", 0};
 Option optlstOptimizer_026 = {"space", 0x100100, (PARAM_T *)&optlstOptimizer_025, 0, 0, "optimize for space"};
@@ -89,10 +99,28 @@ Option *optlstOptimizer_058[] = {
 };
 OptionList optlstOptimizer_059 = {0, 0x102, optlstOptimizer_058};
 Option optlstOptimizer_060 = {"opt", 0x8100, 0, &optlstOptimizer_059, 0, "specify optimization options"};
+#if VERSION == VERSION_WII_1_0RC1
+static SET_T ipaOffSetting = {11, 0x01, 0, 0, 1, 0, (void *)&pGlobalOptimizer.ipa_mode};
+static SET_T ipaFileSetting = {11, 0x01, 0, 0, 1, 1, (void *)&pGlobalOptimizer.ipa_mode};
+static SET_T ipaProgramSetting = {11, 0x01, 0, 0, 1, 2, (void *)&pGlobalOptimizer.ipa_mode};
+static Option ipaOff = {"function|off", 0x100, (PARAM_T *)&ipaOffSetting, 0, 0, "optimize each function on its own"};
+static Option ipaFile = {"file", 0x100, (PARAM_T *)&ipaFileSetting, 0, 0, "optimize across functions in a file"};
+static Option ipaProgram = {"program", 0x100, (PARAM_T *)&ipaProgramSetting, 0, 0, "write interprocedural analysis data for the whole program"};
+static Option *ipaChoices[] = {&ipaOff, &ipaFile, &ipaProgram, 0};
+static OptionList ipaOptions = {0, 0x101, ipaChoices};
+static Option ipaOption = {"ipa", 0x8100, 0, &ipaOptions, 0, "control interprocedural analysis"};
+#endif
 Option *optlstOptimizer_061[] = {
     &optlstOptimizer_001,
     &optlstOptimizer_018,
     &optlstOptimizer_060,
+#if VERSION == VERSION_WII_1_0RC1
+    &ipaOption,
+#endif
     0
 };
 OptionList optlstOptimizer = {"Optimizer Options\n\tNote that all options besides '-opt off|on|all|space|speed|level=...' (marked with 'compatibility') are for backwards compatibility or special needs only; other optimization options may be superceded by use of '~~opt level=xxx'.\b", 0x100, optlstOptimizer_061};
+
+#undef OPT_DISABLE
+#undef OPT_LEVEL4
+#undef OPT_ALL

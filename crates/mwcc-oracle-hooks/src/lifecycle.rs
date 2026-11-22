@@ -769,6 +769,12 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
             crate::source_arenas::checkpoint(state.id);
             let (scalar_passes, scalar_bindings, scalar_first, scalar_last) =
                 scalar.unwrap_or((0, 0, 0, 0));
+            let mut final_counts = state.counts;
+            if crate::source_arenas::version() == 6 {
+                for (i, count) in final_counts.iter_mut().enumerate() {
+                    *count = d.counts.add(i).read_unaligned();
+                }
+            }
             OracleTrace_Printf(
                 c"pv.function.end function=%lu births=%lu graphs=%lu ranges=%lu dispatches=%lu dispatch_returns=%lu materializations=%lu array_promotions=%lu call_results=%lu scalarization=%s scalar_passes=%lu scalar_bindings=%lu scalar_first_pass=%lu scalar_last_pass=%lu call_arguments=%s call_count=%lu argument_count=%lu argument_episodes=%lu argument_births=%lu argument_operands=%lu argument_instructions=%lu c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu\n"
                     .as_ptr(),
@@ -785,11 +791,11 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 scalar_passes,scalar_bindings,scalar_first,scalar_last,
                 if state.call_arguments.gaps==0{c"guarded_regular_call_arguments_v1".as_ptr()}else{c"unknown".as_ptr()},
                 state.call_arguments.calls,state.call_arguments.arguments,state.call_arguments.episodes,state.call_arguments.births,state.call_arguments.operands,state.call_arguments.instructions,
-                state.counts[0],
-                state.counts[1],
-                state.counts[2],
-                state.counts[3],
-                state.counts[4],
+                final_counts[0],
+                final_counts[1],
+                final_counts[2],
+                final_counts[3],
+                final_counts[4],
             );
             let depth = ptr::addr_of!(DEPTH).read();
             if depth > 0 {
@@ -927,35 +933,41 @@ struct CounterGlobals {
     last: *const i32,
 }
 // (only the oracle built from gc2's sources has them)
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", feature = "source-probes"))]
 unsafe extern "C" {
     #[link_name = "OracleRust_CounterGlobals"]
     static COUNTER_GLOBALS: CounterGlobals;
 }
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", feature = "source-probes"))]
 unsafe fn counter_globals() -> Option<CounterGlobals> {
     unsafe { Some(ptr::addr_of!(COUNTER_GLOBALS).read()) }
 }
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", feature = "source-probes")))]
 unsafe fn counter_globals() -> Option<CounterGlobals> {
     None
 }
 /// The original's site for ROLE (2 to 9) in VERSION (3 GC 2.7, 4 GC 2.6, 2 GC 1.3.2): counter_probe::plan's.
 pub fn counter_site(version: u32, role: u32) -> Option<u32> {
-    let sites: [u32; 8] = match version {
-        3 => [
+    let sites: &[u32] = match version {
+        3 => &[
             0x4fe24c, 0x4fe2d8, 0x4fe59a, 0x508657, 0x43348d, 0x4341a4, 0x4d00a1, 0x4d00f2,
         ],
-        4 => [
+        4 => &[
             0x4fe32c, 0x4fe3b8, 0x4fe67a, 0x508737, 0x43348d, 0x4341a4, 0x4d00a1, 0x4d00f2,
         ],
-        2 => [
+        2 => &[
             0x4fd4cc, 0x4fd558, 0x4fd81a, 0x5078d7, 0x4333ad, 0x4340c4, 0x4cf3a1, 0x4cf3f2,
         ],
+        #[cfg(any(target_arch = "wasm32", feature = "source-probes"))]
+        6 => &wii_rc1_register_sites::STRUCTURAL,
         _ => return None,
     };
     sites.get((role as usize).checked_sub(2)?).copied()
 }
+
+#[cfg(any(target_arch = "wasm32", feature = "source-probes"))]
+#[path = "wii_rc1_register_sites.rs"]
+mod wii_rc1_register_sites;
 
 /// gc2's probe (`include/compiler/OracleProbes.h`): the counter site ROLE for RCLASS, in FUNCTION.
 #[unsafe(no_mangle)]
@@ -964,10 +976,17 @@ pub unsafe extern "C" fn OracleProbe_Counter(role: u32, rclass: i32, function: *
         if !enabled() {
             return;
         }
-        let (Some(globals), Some(site)) = (
-            counter_globals(),
-            counter_site(crate::source_arenas::version(), role),
-        ) else {
+        let version = crate::source_arenas::version();
+        if version == 6 && matches!(role, 8 | 9) {
+            let function = ptr::addr_of!(STATE.id).read();
+            OracleTrace_Printf(
+                c"pv.gap reason=counter_category_unavailable function=%lu role=%lu\n".as_ptr(),
+                function,
+                role,
+            );
+            return;
+        }
+        let (Some(globals), Some(site)) = (counter_globals(), counter_site(version, role)) else {
             OracleTrace_Printf(
                 c"pv.gap reason=counter_descriptor role=%lu\n".as_ptr(),
                 role,
@@ -1034,6 +1053,13 @@ unsafe fn unit_of(file: *const core::ffi::c_char) -> u8 {
             .iter()
             .position(|u| {
                 let u = u.as_bytes();
+                // The Windows compiler builds these units with __FILE__ reduced to the basename.
+                #[cfg(any(target_arch = "wasm32", feature = "source-probes"))]
+                if crate::source_arenas::version() == 6
+                    && u.rsplit(|&c| c == b'/').next() == Some(path)
+                {
+                    return true;
+                }
                 path.len() >= u.len()
                     && path[path.len() - u.len()..]
                         .iter()
@@ -1075,10 +1101,44 @@ unsafe fn increment_site(
     unit: u8,
     line: u16,
     version: u32,
+    _rclass: i32,
 ) -> Option<(u32, [u8; 3])> {
     unsafe {
         // (an entry without a site in VERSION is another version's: its inlined call, or its code)
         let find = |inlined: u16| {
+            #[cfg(any(target_arch = "wasm32", feature = "source-probes"))]
+            if version == 6 {
+                let name = *crate::counter_sites::UNITS.get(unit as usize)?;
+                if name == wii_rc1_register_sites::CALL_RESULT_UNIT && inlined == 0 {
+                    let &(_, class, origin, site, aggregate_site) =
+                        wii_rc1_register_sites::CALL_RESULT_WRITES
+                            .iter()
+                            .find(|&&(source_line, ..)| source_line == line)?;
+                    if i32::from(class) != _rclass {
+                        return None;
+                    }
+                    let address = if let Some(aggregate_site) = aggregate_site {
+                        let ty = ptr::addr_of!(BINDING).cast::<u32>().add(2).read() as *const u8;
+                        match (expression::type_id(ty), expression::type_size(ty)) {
+                            (4 | 5, 1..=8) => aggregate_site, // Struct or class.
+                            (1 | 3, 1..=8) | (10 | 11, 4) => site, // Integer, enum or pointer.
+                            // The source reaches a GPR allocation for ordinary floats only in soft-float mode.
+                            (2, 4 | 8) if matches!(read::<u8>(ty, 6), 13..=16) => site,
+                            _ => return None,
+                        }
+                    } else {
+                        site
+                    };
+                    return Some((address, [0, 0, origin]));
+                }
+                let sites = wii_rc1_register_sites::WRITES;
+                let i = sites
+                    .binary_search_by_key(&(name, line, inlined), |s| (s.0, s.1, s.2))
+                    .ok()?;
+                let &(_, _, _, address, class, bindings) = sites.get(i)?;
+                return (class == u8::MAX || i32::from(class) == _rclass)
+                    .then_some((address, bindings));
+            }
             crate::counter_sites::SITES
                 .binary_search_by(|s| (s.0, s.1, s.2).cmp(&(unit, line, inlined)))
                 .ok()
@@ -1151,16 +1211,18 @@ pub unsafe extern "C" fn OracleProbe_CounterIncrement(
     old: i32,
 ) -> i32 {
     unsafe {
-        // (crate::counter_sites has GC 2.7's, 2.6's and 1.3.2's sites)
         let version = crate::source_arenas::version();
-        if !enabled() || !matches!(version, 2..=4) {
+        if !enabled() || !matches!(version, 2..=4 | 6) {
+            return old;
+        }
+        if version == 6 && ptr::addr_of!(STATE.id).read() == 0 {
             return old;
         }
         let unit = unit_of(file);
         let Some(globals) = counter_globals() else {
             return old;
         };
-        match increment_site(file, unit, line as u16, version) {
+        match increment_site(file, unit, line as u16, version, rclass) {
             Some((site, [object, operand, origin])) => {
                 let mut descriptor = globals.descriptor(1, rclass);
                 descriptor.object_binding = object.into();
@@ -1171,14 +1233,21 @@ pub unsafe extern "C" fn OracleProbe_CounterIncrement(
                 ptr::addr_of_mut!(BINDING_ACTIVE).write(false);
             }
             // (a write the original's probes do not cover, or that only another version has an increment for)
-            None if crate::counter_sites::NONE.contains(&(unit, line as u16))
-                || another_versions(unit, line as u16, version) => {}
+            None if version != 6
+                && (crate::counter_sites::NONE.contains(&(unit, line as u16))
+                    || another_versions(unit, line as u16, version)) => {}
             None => {
                 OracleTrace_Printf(
                     c"pv.gap reason=counter_write unit=%lu line=%ld\n".as_ptr(),
                     u32::from(unit),
                     line,
                 );
+                if version == 6 && (0..5).contains(&rclass) {
+                    ptr::addr_of_mut!(STATE.counts)
+                        .cast::<u32>()
+                        .add(rclass as usize)
+                        .write(old.wrapping_add(1) as u32);
+                }
             }
         }
         old

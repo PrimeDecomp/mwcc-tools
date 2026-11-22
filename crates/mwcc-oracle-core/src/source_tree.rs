@@ -73,6 +73,9 @@ impl SourceTree {
             return Ok(ours.clone());
         }
         let theirs = read_json(&root.join(format!("{}/config.json", self.config_dir)))?;
+        if theirs["clang_only"] == true {
+            return Ok(theirs);
+        }
         let state = read_json(&root.join(format!("{}/state.json", self.config_dir)))?;
         let mut config = ours.clone();
         for key in [

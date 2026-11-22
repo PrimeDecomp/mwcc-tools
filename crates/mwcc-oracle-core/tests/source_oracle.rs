@@ -129,6 +129,18 @@ fn traces_compare_without_addresses_or_provenance() {
 }
 
 #[test]
+fn source_node_types_compare_across_windows_image_bases() {
+    let wasm = "pv.source.node type=00b311a2 tag=4 data1=00000003";
+    let windows = "pv.source.node type=001911a2 tag=4 data1=00000003";
+    let streams = &["pv.source."];
+    assert_eq!(corpus::trace_difference_with(wasm, windows, streams), None);
+    let missing = windows.replace("001911a2", "00000000");
+    assert!(corpus::trace_difference_with(wasm, &missing, streams).is_some());
+    let changed = windows.replace("00000003", "00000004");
+    assert!(corpus::trace_difference_with(wasm, &changed, streams).is_some());
+}
+
+#[test]
 fn provenance_records_compare_without_the_order_of_allocations() {
     let request = |id: u32, size: u32, esp: &str| {
         format!(

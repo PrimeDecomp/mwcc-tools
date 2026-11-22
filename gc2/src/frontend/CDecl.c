@@ -5441,12 +5441,21 @@ TypeClass* CDecl_DefineClass(
 #define CError_LINE_DELTA 0
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+void CDecl_ParseClassDeclSpec(UInt8* declspec, Boolean templateDeclaration) {
+#else
 void CDecl_ParseClassDeclSpec(UInt8* declspec) {
+#endif
     DeclInfo declinfo;
 
     if ((tk = lex()) == '(') {
         memclrw(&declinfo, sizeof(DeclInfo));
         CParser_ParseDeclSpec(&declinfo, TRUE);
+#if VERSION == VERSION_WII_1_0RC1
+        if (templateDeclaration && (declinfo.qual & Q_ALIGNED_MASK)) {
+            CError_Error(ERR_ILLEGAL_USE, "__declspec(align)");
+        }
+#endif
         if (declinfo.exportflags & EXPORT_FLAGS_INTERNAL) {
             *declspec |= CLASS_EFLAGS_INTERNAL;
         }
@@ -5514,7 +5523,11 @@ void CDecl_ParseClass(DeclInfo* declinfo, short mode, Boolean lexAfterBody, UInt
         tclass = TYPE_CLASS(declinfo->pendingClass);
     } else {
         if (tk == TK_UU_DECLSPEC) {
+#if VERSION == VERSION_WII_1_0RC1
+            CDecl_ParseClassDeclSpec(&class_declspec, FALSE);
+#else
             CDecl_ParseClassDeclSpec(&class_declspec);
+#endif
         }
 
         switch (tk) {

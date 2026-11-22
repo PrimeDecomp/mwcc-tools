@@ -101,6 +101,54 @@ fn wii_retro_builds_a_native_executable_and_runtime() {
 }
 
 #[test]
+fn wii_rc1_wasm_includes_the_call_graph_and_version_resource() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let version = "Wii_1_0RC1";
+    let request = Request {
+        version: version.into(),
+        mode: None,
+        split_only: false,
+        oracle: false,
+        rust_hooks: false,
+        tools: "mwcc-tools".into(),
+        platform: Platform::Windows,
+    };
+    let generated = build_config::generate(&root, &request).unwrap();
+    for source in ["CCallGraph.c", "CMiddleLayer.c"] {
+        assert!(generated.ninja.contains(&format!(
+            "build build/{version}/wasm/obj/src/frontend/{source}.o: wasm_cc gc2/src/frontend/{source}"
+        )));
+    }
+    assert!(generated.ninja.contains("-DVERSION=6"));
+    assert!(generated.ninja.contains(&format!(
+        "build build/{version}/wasm/mwcceppc.version: wasm_compiler_version"
+    )));
+    assert!(!generated.ninja.contains("build/compilers/"));
+    assert!(
+        !mwcc_oracle_core::wasm_build::version_info(&root, version)
+            .unwrap()
+            .is_empty()
+    );
+    let instrumented = build_config::generate(
+        &root,
+        &Request {
+            oracle: true,
+            rust_hooks: true,
+            ..request
+        },
+    )
+    .unwrap();
+    assert!(instrumented.ninja.contains(&format!(
+        "build build/{version}/wasm/linked/oracle.wasm: wasm_oracle"
+    )));
+    assert!(instrumented.ninja.contains(&format!(
+        "build build/{version}/wasm/linked/mwcc.wasm | build/{version}/wasm/mwcc.version: wasm_module"
+    )));
+    assert!(instrumented.ninja.contains("-DORACLE_PROBES"));
+    assert!(!instrumented.ninja.contains("build/compilers/"));
+}
+
+#[test]
 fn native_configuration_preserves_all_reference_graphs() {
     let root = project();
     let cases: Vec<Value> =

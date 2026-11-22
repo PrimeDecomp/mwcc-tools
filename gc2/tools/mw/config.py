@@ -60,10 +60,14 @@ class Source:
 SOURCES_PATH = ROOT / "config/sources.json"
 
 
-def sources(text: str | None = None) -> dict[str, Source]:
+def sources(text: str | None = None, *, extra: dict | None = None) -> dict[str, Source]:
     raw = _load_json(SOURCES_PATH, text)
     if not isinstance(raw, dict):
         raise ConfigError("config/sources.json: expected an object of sources")
+    if extra:
+        if duplicates := raw.keys() & extra.keys():
+            raise ConfigError(f"version-specific sources duplicate shared sources: {', '.join(sorted(duplicates))}")
+        raw.update(extra)
     out = {}
     for path, settings in raw.items():
         where = f"config/sources.json: {path}"
@@ -90,6 +94,8 @@ def sources(text: str | None = None) -> dict[str, Source]:
 
 
 VERSION_KEYS = {
+    "clang_only": bool,
+    "extra_sources": dict,
     "derived_from": str,
     "defines": list,
     "description": str,

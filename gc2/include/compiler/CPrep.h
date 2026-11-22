@@ -22,7 +22,12 @@ enum {
     TK_MACRO_ARG_PASTED = 2,
     TK_MACRO_ARG_HASH = 3,
     TK_MACRO_NOEXPAND = 4,
-    TK_MACRO_BOUNDARY = 5
+    TK_MACRO_BOUNDARY = 5,
+    TK_MACRO_ARG_GNU_COMMA = 6
+};
+enum {
+    MacroExpanding = 1,
+    MacroGnuVariadic = 2
 };
 #define OPT_FLAG_LIST 0x2000
 #define OPT_FLAG_NOPRAGMA 0x4000
@@ -51,6 +56,12 @@ struct CompilerLinkerParamBlk {
     SInt32 targetOS;
     SInt32 targetCPU;
     char* idetargetname;
+#if VERSION == VERSION_WII_1_0RC1
+    const CWProgramInput* programInputs;
+    UInt32 programInputCount;
+    Boolean deferProgramIPA;
+    Handle programIR;
+#endif
 };
 struct Macro {
     struct Macro* next;
@@ -58,9 +69,14 @@ struct Macro {
     char* text;
     UInt16 nargs;
     Boolean is_special;
-    UInt8 isExpanding;
+    UInt8 flags;
     struct HashNameNode* names[1];
 };
+#if VERSION == VERSION_WII_1_0RC1
+struct CPrecStockFile;
+int CPrep_RememberPrecompiledFile(const struct CPrecStockFile* file, void* context);
+void CPrep_InstallPrecompiledMacro(Macro* macro);
+#endif
 struct TokenStack {
     char* pos;
     char* macrostart;
@@ -145,6 +161,7 @@ extern void popfile(void);
 extern void CPrep_SetSourceFile(FileOffsetInfo* foi);
 extern void CPrep_NewFileOffsetInfo(FileOffsetInfo* foi, TStreamElement* ts);
 extern SInt32 CPrep_GetFileOffsetInfo(FileOffsetInfo* foi);
+extern HashNameNode* CPrep_GetSourceFilePath(CPrepFileInfo* fileinfo);
 extern void CPrep_GetFileOffsetInfo2(FileOffsetInfo* foi, SInt32* pLine, HashNameNode** pName);
 extern void CPrep_ResetFileInfo(CPrepFileInfo* file);
 extern void CPrep_GetPrepPos(CPrepFileInfo** file, SInt32* ppos);

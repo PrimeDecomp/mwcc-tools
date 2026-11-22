@@ -100,7 +100,10 @@ mod source_nodes;
     target_pointer_width = "32",
     not(any(feature = "trace-output", feature = "frontend"))
 ))]
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[cfg_attr(
+    not(any(target_arch = "wasm32", feature = "source-probes")),
+    allow(dead_code)
+)]
 mod temp_sites;
 #[cfg(all(target_pointer_width = "32", feature = "trace-output"))]
 mod trace_output;
@@ -115,7 +118,8 @@ compile_error!("frontend and trace-output are separate objects");
         feature = "frontend-gc13",
         feature = "frontend-gc132",
         feature = "frontend-gc26",
-        feature = "frontend-gc27"
+        feature = "frontend-gc27",
+        feature = "frontend-wii-rc1"
     ))
 ))]
 compile_error!("select exactly one frontend version");
@@ -125,6 +129,15 @@ compile_error!("select exactly one frontend version");
     all(feature = "frontend-gc13", feature = "frontend-gc27"),
     all(feature = "frontend-gc132", feature = "frontend-gc26"),
     all(feature = "frontend-gc132", feature = "frontend-gc27"),
-    all(feature = "frontend-gc26", feature = "frontend-gc27")
+    all(feature = "frontend-gc26", feature = "frontend-gc27"),
+    all(
+        feature = "frontend-wii-rc1",
+        any(
+            feature = "frontend-gc13",
+            feature = "frontend-gc132",
+            feature = "frontend-gc26",
+            feature = "frontend-gc27"
+        )
+    )
 ))]
 compile_error!("frontend versions cannot be combined");

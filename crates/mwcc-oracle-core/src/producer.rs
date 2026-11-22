@@ -122,9 +122,11 @@ pub const SUPPORT: [&str; 51] = [
     "_OracleProbe_Listing",
     "_OracleProbe_ListBlocks",
 ];
-pub const SOURCES: [&str; 20] = [
+pub const SOURCES: [&str; 22] = [
     "source_nodes.rs",
     "source_arenas.rs",
+    "wii_rc1_arena.rs",
+    "wii_rc1_register_sites.rs",
     "lifecycle.rs",
     "call_arguments.rs",
     "backend.rs",
@@ -156,7 +158,9 @@ pub fn frontend_hooks(version: &str) -> Result<[&'static str; 5]> {
             "_CInline_DispatchNextDeferredNode",
         ],
         "GC_1_3_2" => ["_fn_0055ed70", "_fn_0055f350", "_fn_0055a7f0"],
-        "GC_2_6" | "GC_2_7" => ["_fn_00560c80", "_fn_00561260", "_fn_0055c730"],
+        "GC_2_6" | "GC_2_7" | crate::wasm_build::WII_RC1 => {
+            ["_fn_00560c80", "_fn_00561260", "_fn_0055c730"]
+        }
         _ => anyhow::bail!("unsupported Rust frontend version {version}"),
     };
     Ok([names[0], names[1], names[2], "_fn_0055e540", "_fn_0055e600"])
@@ -315,10 +319,26 @@ fn validate_surface(data: &[u8], exports: &[&str], imports: &[&str]) -> Result<(
     Ok(())
 }
 pub fn build(root: &Path, output: &Path, rustc: &Path, timeout: Duration) -> Result<()> {
-    build_object(root, output, rustc, timeout, false, None, false)
+    build_object(
+        root,
+        output,
+        rustc,
+        timeout,
+        false,
+        None,
+        ProducerTarget::Stock,
+    )
 }
 pub fn build_trace(root: &Path, output: &Path, rustc: &Path, timeout: Duration) -> Result<()> {
-    build_object(root, output, rustc, timeout, true, None, false)
+    build_object(
+        root,
+        output,
+        rustc,
+        timeout,
+        true,
+        None,
+        ProducerTarget::Stock,
+    )
 }
 /// The hooks (or VERSION's frontend hooks) for the WebAssembly oracle (crate::wasm_oracle): wasm32 LLVM IR, whose
 /// names the oracle's link takes to gc2's.
@@ -332,7 +352,15 @@ pub fn build_wasm(
     if let Some(version) = frontend {
         frontend_hooks(version)?;
     }
-    build_object(root, output, rustc, timeout, false, frontend, true)
+    build_object(
+        root,
+        output,
+        rustc,
+        timeout,
+        false,
+        frontend,
+        ProducerTarget::Wasm,
+    )
 }
 pub fn build_frontend(
     root: &Path,
@@ -342,8 +370,45 @@ pub fn build_frontend(
     version: &str,
 ) -> Result<()> {
     frontend_hooks(version)?;
-    build_object(root, output, rustc, timeout, false, Some(version), false)
+    build_object(
+        root,
+        output,
+        rustc,
+        timeout,
+        false,
+        Some(version),
+        ProducerTarget::Stock,
+    )
 }
+
+pub(crate) fn build_source_windows(
+    root: &Path,
+    output: &Path,
+    rustc: &Path,
+    timeout: Duration,
+    frontend: Option<&str>,
+) -> Result<()> {
+    if let Some(version) = frontend {
+        frontend_hooks(version)?;
+    }
+    build_object(
+        root,
+        output,
+        rustc,
+        timeout,
+        false,
+        frontend,
+        ProducerTarget::SourceWindows,
+    )
+}
+
+#[derive(PartialEq, Eq)]
+enum ProducerTarget {
+    Stock,
+    Wasm,
+    SourceWindows,
+}
+
 fn build_object(
     root: &Path,
     output: &Path,
@@ -351,7 +416,7 @@ fn build_object(
     timeout: Duration,
     trace: bool,
     frontend: Option<&str>,
-    wasm: bool,
+    target: ProducerTarget,
 ) -> Result<()> {
     ensure!(!timeout.is_zero(), "Rust producer timeout must be positive");
     let root = root.canonicalize()?;
@@ -369,21 +434,27 @@ fn build_object(
     let temporary = tempfile::NamedTempFile::new_in(parent)?;
     let log = crate::temporary::diagnostic_log()?;
     let stream = log.reopen()?;
+    let triple = if target == ProducerTarget::Wasm {
+        "wasm32-unknown-unknown"
+    } else {
+        "i686-pc-windows-msvc"
+    };
+    let llvm_ir = target != ProducerTarget::Stock;
     let mut command = Command::new(rustc);
     command.current_dir(&root).args([
         "--edition",
         "2024",
         "--target",
-        if wasm {
-            "wasm32-unknown-unknown"
-        } else {
-            "i686-pc-windows-msvc"
-        },
+        triple,
         "--crate-name",
         "mwcc_oracle_hooks",
         "--crate-type",
         "lib",
-        if wasm { "--emit=llvm-ir" } else { "--emit=obj" },
+        if llvm_ir {
+            "--emit=llvm-ir"
+        } else {
+            "--emit=obj"
+        },
         "-D",
         "warnings",
         "-C",
@@ -398,12 +469,16 @@ fn build_object(
     if trace {
         command.args(["--cfg", "feature=\"trace-output\""]);
     }
+    if target == ProducerTarget::SourceWindows {
+        command.args(["--cfg", "feature=\"source-probes\""]);
+    }
     if let Some(version) = frontend {
         let feature = match version {
             "GC_1_3" => "frontend-gc13",
             "GC_1_3_2" => "frontend-gc132",
             "GC_2_6" => "frontend-gc26",
             "GC_2_7" => "frontend-gc27",
+            crate::wasm_build::WII_RC1 => "frontend-wii-rc1",
             _ => unreachable!(),
         };
         command.args([
@@ -420,13 +495,8 @@ fn build_object(
         .stdout(Stdio::from(stream.try_clone()?))
         .stderr(Stdio::from(stream));
     process_tree::prepare(&mut command);
-    let target = if wasm {
-        "wasm32-unknown-unknown"
-    } else {
-        "i686-pc-windows-msvc"
-    };
     let mut child = command.spawn().with_context(|| {
-        format!("launch rustc for {target} (install the target with rustup target add {target})")
+        format!("launch rustc for {triple} (install the target with rustup target add {triple})")
     })?;
     let waited = process_tree::wait(&mut child, timeout, &|| false)?;
     if waited.timed_out {
@@ -439,7 +509,7 @@ fn build_object(
         String::from_utf8_lossy(&fs::read(log.path())?)
     );
     let data = fs::read(temporary.path())?;
-    if wasm {
+    if llvm_ir {
         // (its names are checked where the oracle is linked)
     } else if let Some(version) = frontend {
         validate_frontend(&data, version)?;

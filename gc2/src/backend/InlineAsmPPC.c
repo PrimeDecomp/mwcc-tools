@@ -843,7 +843,9 @@ static void memoryoperand(IAOperand* op, InlineAsm* ia, Boolean allowBaseReg, in
     }
 }
 
-static IAOperand* parse_displacement_operand(IAOperand* op, InlineAsm* ia, int effect) {
+static IAOperand* parse_displacement_operand(
+    IAOperand* op, InlineAsm* ia, int effect, SInt32 scale
+) {
     IAExpr expr;
     SInt32 value;
 
@@ -854,7 +856,7 @@ static IAOperand* parse_displacement_operand(IAOperand* op, InlineAsm* ia, int e
     } else {
         value = InlineAsm_GetExprValue(&expr);
     }
-    if (value < -0x800 || value > 0x7FF) {
+    if (scale == 1 && (value < -0x800 || value > 0x7FF)) {
         CError_Error(ERR_NUMBER_OUT_RANGE);
     }
 
@@ -872,10 +874,21 @@ static IAOperand* parse_displacement_operand(IAOperand* op, InlineAsm* ia, int e
             CError_Error(ERR_RPAREN_EXPECTED);
         }
         tk = lex();
+    } else if (scale > 1) {
+        op->type = IAOpnd_Reg;
+        op->u.reg.rclass = RegClass_GPR;
+        op->u.reg.effect = 0;
+        op->u.reg.num = 0;
+        op->u.reg.object = NULL;
+        op++;
+        ia->argcount++;
     } else {
         CError_Error(ERR_LPAREN_EXPECTED);
     }
 
+    if (scale > 1 && (value < 0 || value > 31 * scale || value % scale)) {
+        CError_Error(ERR_NUMBER_OUT_RANGE);
+    }
     op->type = IAOpnd_Imm;
     op->u.imm.value = value;
     return op;
@@ -1464,8 +1477,14 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
                 break;
             }
 
+#if VERSION == VERSION_WII_1_0RC1
+            case 'h':
+#endif
             case 'd': {
                 int effect2;
+#if VERSION == VERSION_WII_1_0RC1
+                code = *format;
+#endif
                 CError_ASSERT(1989, format[1] == '(');
                 format++;
                 effect2 = EffectRead;
@@ -1481,6 +1500,13 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
                 CError_ASSERT(2003, format[2] == ')');
                 format += 2;
 
+#if VERSION == VERSION_WII_1_0RC1
+                if (code == 'h') {
+                    const SPEOpcodeInfo* spe = &spe_opcodeinfo[ia->opcode - PC_EVOR];
+                    op = parse_displacement_operand(op, ia, effect2, spe->memoryWidth);
+                    break;
+                }
+#endif
                 switch (ia->opcode) {
                     case PC_LFS:
                         if (tk == TK_FLOATCONST) {
@@ -1504,7 +1530,7 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
                     case PC_PSQ_STU:
                     case PC_PSQ_STX:
                     case PC_PSQ_STUX:
-                        op = parse_displacement_operand(op, ia, effect2);
+                        op = parse_displacement_operand(op, ia, effect2, 1);
                         break;
                     default:
                         memoryoperand(op, ia, TRUE, effect2);
@@ -1568,6 +1594,17 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
                 }
                 op->u.reg.effect = effect;
                 break;
+
+#if VERSION == VERSION_WII_1_0RC1
+            case 'A':
+            case 'E':
+                op->type = IAOpnd_Reg;
+                op->u.reg.rclass = RegClass_SPR;
+                op->u.reg.object = NULL;
+                op->u.reg.num = *format == 'A' ? SPR_ACC : SPR_SPEFSCR;
+                op->u.reg.effect = effect;
+                break;
+#endif
 
             case 'C':
                 op->type = IAOpnd_Reg;
@@ -1827,6 +1864,17 @@ void InlineAsm_InitializePPC(void) {
         case CPU_PPCGEKKO:
             cpu = CPUMask_Gekko;
             break;
+#if VERSION == VERSION_WII_1_0RC1
+        case CPU_PPCELF:
+            cpu = CPUMask_E500;
+            break;
+        case CPU_PPCe500v2:
+            cpu = CPUMask_E500v2;
+            break;
+        case CPU_PPCZen:
+            cpu = CPUMask_Zen;
+            break;
+#endif
         case CPU_Generic:
             cpu = CPUMask_Generic;
             break;
@@ -2112,6 +2160,11 @@ void InlineAsm_ProcessDirective(SInt32 directive) {
                     case 7400:
                         cpu = CPUMask_74xx;
                         break;
+#if VERSION == VERSION_WII_1_0RC1
+                    case 5565:
+                        cpu = CPUMask_Zen;
+                        break;
+#endif
                     default:
                         CError_Error(ERR_ILLEGAL_OPERAND);
                 }
@@ -2141,6 +2194,20 @@ void InlineAsm_ProcessDirective(SInt32 directive) {
                 } else if (!strcmp(tkidentifier->name, "gekko") ||
                            !strcmp(tkidentifier->name, "gecko")) {
                     cpu = CPUMask_Gekko;
+#if VERSION == VERSION_WII_1_0RC1
+                } else if (!strcmp(tkidentifier->name, "e500") ||
+                           !strcmp(tkidentifier->name, "e500v1") ||
+                           !strcmp(tkidentifier->name, "PPCe500") ||
+                           !strcmp(tkidentifier->name, "PPCe500v1") ||
+                           !strcmp(tkidentifier->name, "PPC85xx")) {
+                    cpu = CPUMask_E500;
+                } else if (!strcmp(tkidentifier->name, "e500v2") ||
+                           !strcmp(tkidentifier->name, "PPCe500v2")) {
+                    cpu = CPUMask_E500v2;
+                } else if (!strcmp(tkidentifier->name, "Zen") ||
+                           !strcmp(tkidentifier->name, "PPCZen")) {
+                    cpu = CPUMask_Zen;
+#endif
                 } else {
                     CError_Error(ERR_ILLEGAL_OPERAND);
                 }
@@ -2747,6 +2814,11 @@ void InlineAsm_TranslateIRtoPCode(Statement* stmt) {
         switch (pc->op) {
             case PC_BLR:
             case PC_RFI:
+#if VERSION == VERSION_WII_1_0RC1
+            case PC_RFCI:
+            case PC_RFDI:
+            case PC_RFMCI:
+#endif
                 if (asm_alloc_flags[3]) {
                     asm_alloc_flags[9] = TRUE;
                 } else {

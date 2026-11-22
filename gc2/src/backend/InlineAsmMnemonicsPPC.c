@@ -1,4 +1,5 @@
 #include "compiler/InlineAsmMnemonicsPPC.h"
+#include "compiler/InlineAsmPPC.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/PCodeInfo.h"
 #include <string.h>
@@ -1065,6 +1066,13 @@ static IAMnemonic mnemonics[] = {
     "ps_madds0.", PC_PS_MADDS0, "=:f,:f,^f,:f;=Z", 0x200FFFFF, 0x1000001D,
     "ps_madds1", PC_PS_MADDS1, "=:f,:f,.f,:f", 0x200FFFFF, 0x1000001E,
     "ps_madds1.", PC_PS_MADDS1, "=:f,:f,.f,:f;=Z", 0x200FFFFF, 0x1000001F,
+#if VERSION == VERSION_WII_1_0RC1
+#define SPE_OPCODE(op, mnemonic, native, format, count, rank, flags, bits, cpus, encoding, width) \
+    #mnemonic, PC_##op, format, cpus, bits,
+#include "compiler/SPEOpcodes.def"
+#undef SPE_OPCODE
+    "evnot", PC_EVNOR, "=:r,:r:&", CPUFLAG_SPE, 0x10000218,
+#endif
     NULL, 0, NULL, 0, 0
 };
 // clang-format on

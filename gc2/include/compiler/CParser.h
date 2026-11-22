@@ -51,8 +51,17 @@ enum {
     CPU_PPCELF,
     CPU_PPC7450,
     CPU_PPC556,
-    CPU_PPC565
+    CPU_PPC565,
+#if VERSION == VERSION_WII_1_0RC1
+    CPU_PPCZen = 0x1C,
+    CPU_PPCe500v2 = 0x26,
+#endif
 };
+
+#if VERSION == VERSION_WII_1_0RC1
+#define CPU_IS_SPE(cpu) \
+    ((cpu) == CPU_PPCELF || (cpu) == CPU_PPCZen || (cpu) == CPU_PPCe500v2)
+#endif
 
 struct CompilerLinkerOptions {
     UInt8 littleendian;
@@ -109,6 +118,10 @@ struct CompilerLinkerOptions {
     UInt8 switch_tables;
     UInt8 prepare_compress;
     char min_struct_alignment;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean legacy_struct_alignment;
+    Boolean ppc_no_fp_blockmove;
+#endif
     UInt8 unsafe_global_reg_vars;
     UInt8 ignore_global_reg_vars;
     UInt32 bc_range;
@@ -118,13 +131,20 @@ struct CompilerLinkerOptions {
 #endif
     Boolean asmsemicolcomment;
     Boolean asmpoundcomment;
-#if VERSION >= VERSION_GC_2_5
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean spe_vector;
+    Boolean spe_addl_vector;
+#elif VERSION >= VERSION_GC_2_5
     UInt8 unknown66[2];
 #endif
     StringPtr oldprefixname;
     SInt16 inlinelevel;
     SInt32 inlinemaxsize;
     SInt32 inlinemaxtotalsize;
+#if VERSION == VERSION_WII_1_0RC1
+    SInt32 inlinemaxautosize;
+    Boolean inlineforsize;
+#endif
     UInt8 inline_bottom_up;
     UInt8 cplusplus;
     UInt8 ecplusplus;
@@ -148,7 +168,13 @@ struct CompilerLinkerOptions {
     Boolean oldalignment;
     UInt8 unsigned_char;
     char multibyteaware;
+#if VERSION == VERSION_WII_1_0RC1
+    UInt8 source_encoding;
+#endif
     UInt8 auto_inline;
+#if VERSION == VERSION_WII_1_0RC1
+    UInt8 ipa_mode;
+#endif
     UInt8 defer_codegen;
     UInt8 direct_to_som;
     UInt8 som_env_check;
@@ -268,6 +294,11 @@ struct CompilerLinkerOptions {
     CWDataType headtype;
     CWDataType texttype;
     struct HashNameNode* cursegmentname;
+#if VERSION == VERSION_WII_1_0RC1
+    UInt8 removeemptyloops;
+    Boolean e500_floatingpoint;
+    Boolean e500v2_floatingpoint;
+#endif
 };
 #pragma pack(pop)
 
@@ -382,6 +413,7 @@ enum {
 
 extern Object* CParser_NewRTFunc(Type* rettype, HashNameNode* name, UInt8 kind, int argcount, ...);
 extern Boolean CParser_IsPublicRuntimeObject(Object* obj);
+extern Object* CParser_FindPublicRuntimeObject(HashNameNode* name);
 extern Boolean CParser_ReInitRuntimeObjects(Boolean is_precompiler);
 extern void CParser_Setup(void);
 extern void CParser_Cleanup(void);
@@ -461,6 +493,9 @@ extern void CParser_CallBackAction(Object* obj);
 extern Object* CParser_ParseObject(void);
 extern void CParser_ParseGlobalDeclaration(void);
 extern void cparser(void);
+#if VERSION == VERSION_WII_1_0RC1
+extern void CParser_FlushIPADefinitions(void);
+#endif
 
 #ifdef __cplusplus
 }

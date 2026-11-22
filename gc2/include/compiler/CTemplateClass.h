@@ -12,6 +12,9 @@ extern void CTemplClass_RegisterUsingDecl(
     TemplClass* tmclass, TypeTemplDep* type, AccessType access
 );
 extern void CTemplClass_RegisterFriend(TemplClass* tmclass, DeclInfo* di);
+#if VERSION == VERSION_WII_1_0RC1
+extern void CTemplClass_ParseFriendClass(NameSpace* scope, TemplParam* params, short mode);
+#endif
 extern void CTemplClass_RegisterBaseClass(
     TemplClass* tmclass, Type* type, AccessType access, Boolean is_virtual
 );

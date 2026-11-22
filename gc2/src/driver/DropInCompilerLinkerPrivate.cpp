@@ -184,6 +184,34 @@ CW_CALLBACK CWStoreObjectData(CWPluginContext context, SInt32 whichfile, CWObjec
     return cl->callbacks->cbStoreObjectData(cl, whichfile, object);
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+CW_CALLBACK CWGetProgramIPAInfo(
+    CWPluginContext context, const CWProgramInput** inputs, UInt32* count, Boolean* defer
+) {
+    CWCompilerLinkerContext* cl = GetContext(context);
+    if (!cl) {
+        return cwErrInvalidCallback;
+    }
+    *inputs = cl->programInputs;
+    *count = cl->programInputCount;
+    *defer = cl->deferProgramIPA;
+    return cwNoErr;
+}
+
+CW_CALLBACK CWGetSuggestedObjectFileSpec(
+    CWPluginContext context, SInt32 whichfile, CWFileSpec* fileSpec
+) {
+    CWCompilerLinkerContext* cl = GetContext(context);
+    if (!fileSpec) {
+        return cwErrInvalidParameter;
+    }
+    if (!cl || !cl->callbacks->cbGetSuggestedObjectFileSpec) {
+        return cwErrInvalidCallback;
+    }
+    return cl->callbacks->cbGetSuggestedObjectFileSpec(cl, whichfile, fileSpec);
+}
+#endif
+
 CW_CALLBACK CWDisplayLines(CWPluginContext context, SInt32 nlines) {
     CWCompilerLinkerContext* cl;
     if (!(cl = GetContext(context))) {

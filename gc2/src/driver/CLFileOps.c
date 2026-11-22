@@ -1,4 +1,7 @@
 #include "driver/CLFileOps.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CMiddleLayer.h"
+#endif
 #include "driver/CLAccessPaths.h"
 #include "driver/CLBrowser.h"
 #include "driver/CLDependencies.h"
@@ -19,6 +22,7 @@
 #include "driver/Generic.h"
 #include "driver/MacSpecs.h"
 #include "driver/Memory.h"
+#include "driver/MemUtils.h"
 #include "driver/MsDos.h"
 #include "driver/oslib.h"
 #include "driver/pref_structs.h"
@@ -502,6 +506,84 @@ static int DisassembleFile(File* file) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean use_program_ipa(void) {
+    return optsCmdLine.state == OptsCmdLineState_CompileAndLink &&
+           pGlobalOptimizer.ipa_mode == IPAProgram;
+}
+
+static Boolean is_program_input(const File* file) {
+    return file->programIR || (file->compiler && file->filetype == 'IROb');
+}
+
+static Boolean has_immediate_code(const File* file) {
+    return file->codesize || file->idatasize || file->udatasize;
+}
+
+static Boolean CompileProgram(void) {
+    File* file;
+    File* first = NULL;
+    File* output = NULL;
+    CWProgramInput* inputs;
+    UInt32 count = 0;
+    UInt32 index = 0;
+    Boolean result;
+
+    for (file = gTarg->files.fileList; file; file = file->next) {
+        if (is_program_input(file)) {
+            ++count;
+            if (!first) {
+                first = file;
+            }
+            if (!output && !has_immediate_code(file)) {
+                output = file;
+            }
+        }
+    }
+    if (!count) {
+        return TRUE;
+    }
+    inputs = xmalloc("program IPA inputs", count * sizeof(*inputs));
+    for (file = first; file; file = file->next) {
+        if (is_program_input(file)) {
+            if (OS_OSSpec_To_FSSpec(&file->srcfss, &inputs[index].spec)) {
+                free(inputs);
+                return FALSE;
+            }
+            inputs[index++].ir = file->programIR;
+        }
+    }
+    if (!output) {
+        output = File_New();
+        output->srcfss = first->srcfss;
+        snprintf(output->srcfilename, sizeof(output->srcfilename), "%.240s.ipa", first->srcfilename);
+        if (OS_NameSpecChangeExtension(&output->srcfss.name, ".ipa", TRUE)) {
+            free(output);
+            free(inputs);
+            return FALSE;
+        }
+        output->compiler = first->compiler;
+        output->dropinflags = first->dropinflags;
+        output->objectflags = first->objectflags;
+        Files_AddFile(&gTarg->files, output);
+    }
+    result = SendProgramIPARequest(output, inputs, count);
+    free(inputs);
+    if (result) {
+        for (file = first; file; file = file->next) {
+            if (is_program_input(file)) {
+                file->sourceUsage &= ~CmdLineStageMask_Cg;
+                if (file != output && !has_immediate_code(file)) {
+                    file->objectUsage &= ~CmdLineStageMask_Cg;
+                }
+            }
+        }
+        output->objectUsage |= CmdLineStageMask_Cg;
+    }
+    return result;
+}
+#endif
+
 static int CompileEntry(File* file, Boolean* compiled) {
     UInt32 beginWork;
     UInt32 endWork;
@@ -516,6 +598,12 @@ static int CompileEntry(File* file, Boolean* compiled) {
         *compiled = TRUE;
         return TRUE;
     }
+#if VERSION == VERSION_WII_1_0RC1
+    if (use_program_ipa() && is_program_input(file)) {
+        *compiled = TRUE;
+        return TRUE;
+    }
+#endif
 
     if (!(file->sourceUsage & CmdLineStageMask_Pp)) {
         if (file->mappingflags & kRsrcfile) {
@@ -788,6 +876,11 @@ int LinkProject(void) {
     if (!SendTargetInfoRequest(gTarg, gTarg->linker, gTarg->linkerDropinFlags)) {
         return Result_Failed;
     }
+#if VERSION == VERSION_WII_1_0RC1
+    if (!optsCmdLine.dryRun && use_program_ipa() && !CompileProgram()) {
+        return Result_Failed;
+    }
+#endif
     if (!SetupTemporaries()) {
         return Result_Failed;
     }

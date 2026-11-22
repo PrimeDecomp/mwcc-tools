@@ -6,6 +6,11 @@
 #include "compiler/CException.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMachine.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CMiddleLayer.h"
+#include "compiler/CPrecTransport.h"
+#include "driver/MsDos.h"
+#endif
 #include "compiler/CodeGen.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
@@ -83,6 +88,10 @@ CompilerOption compileroptions[] = {
     "longlong", OPT_OFFSET(longlong),
     "disable_registers", OPT_OFFSET(disable_registers),
     "fp_contract", OPT_OFFSET(fp_contract),
+#if VERSION == VERSION_WII_1_0RC1
+    "e500_floatingpoint", OPT_OFFSET(e500_floatingpoint),
+    "e500v2_floatingpoint", OPT_OFFSET(e500v2_floatingpoint),
+#endif
     "pool_data", OPT_OFFSET(pool_data),
     "incompatible_return_small_structs", OPT_OFFSET(incompatible_return_small_structs),
     "create_file_object", OPT_OFFSET(create_file_object),
@@ -130,9 +139,16 @@ CompilerOption compileroptions[] = {
     "RTTI", OPT_OFFSET(RTTI),
     "delete_exception", OPT_OFFSET(delete_exception),
     "oldalignment", OPT_OFFSET(oldalignment),
+#if VERSION == VERSION_WII_1_0RC1
+    "legacy_struct_alignment", OPT_OFFSET(legacy_struct_alignment),
+    "ppc_no_fp_blockmove", OPT_OFFSET(ppc_no_fp_blockmove),
+#endif
     "multibyteaware", OPT_OFFSET(multibyteaware),
     "unsigned_char", OPT_OFFSET(unsigned_char),
     "auto_inline", OPT_OFFSET(auto_inline),
+#if VERSION == VERSION_WII_1_0RC1
+    "inlineforsize", OPT_OFFSET(inlineforsize),
+#endif
     "inline_bottom_up", OPT_OFFSET(inline_bottom_up),
     "defer_codegen", OPT_OFFSET(defer_codegen),
     "direct_to_som", OPT_OFFSET(direct_to_som),
@@ -217,6 +233,9 @@ CompilerOption compileroptions[] = {
     "opt_strength_reduction_strict", OPT_OFFSET(strengthreductionstrict),
     "opt_dead_code", OPT_OFFSET(deadcode),
     "opt_dead_assignments", OPT_OFFSET(deadstore),
+#if VERSION == VERSION_WII_1_0RC1
+    "opt_removeemptyloops", OPT_OFFSET(removeemptyloops),
+#endif
     "opt_vectorize_loops", OPT_OFFSET(vectorizeloops),
     "opt_pointer_analysis", OPT_OFFSET(opt_pointer_analysis),
     "exceptions", OPT_OFFSET(exceptions),
@@ -278,6 +297,19 @@ short filesp;
 SInt32 linenumber;
 static CPrepFileInfo* filestack[32];
 static CPrepFileInfoList* cprep_files;
+#if VERSION == VERSION_WII_1_0RC1
+typedef struct StockPCHFile {
+    struct StockPCHFile* next;
+    const char* path;
+    const char* basename;
+    const char* condition;
+    Boolean once;
+    Boolean system;
+} StockPCHFile;
+
+static StockPCHFile* stock_pch_files;
+static Boolean CPrep_SkipPrecompiledFile(const char* path, const char* name, Boolean system);
+#endif
 static CPrepFileInfo* cprep_extrafile;
 static UInt32 linetick;
 static UInt8 waslockedmacro;
@@ -299,7 +331,13 @@ static Macro stchM;
 static Macro casmM;
 static Macro cpplM;
 static Macro MWRSM;
+#if VERSION == VERSION_WII_1_0RC1
+static Macro cwccM;
+static Macro cwbeM;
+static Macro cwbuildM;
+#else
 static Macro dtsomM;
+#endif
 static Macro ecppM;
 static Macro optiM;
 static Macro trgtM;
@@ -354,7 +392,7 @@ static void cannotopenerror(StringPtr filename, Boolean err) {
 static void insertmacro(Macro* macro) {
     macro->next = macrohashtable[macro->name->hashval];
     macrohashtable[macro->name->hashval] = macro;
-    macro->isExpanding = FALSE;
+    macro->flags = 0;
 }
 
 void CPrep_InsertSpecialMacro(Macro* macro, const char* name) {
@@ -374,7 +412,13 @@ void CPrep_InsertSpecialMacros(void) {
     CPrep_InsertSpecialMacro(&casmM, "__CASM__");
     CPrep_InsertSpecialMacro(&cpplM, "__cplusplus");
     CPrep_InsertSpecialMacro(&MWRSM, "__MWERKS__");
+#if VERSION == VERSION_WII_1_0RC1
+    CPrep_InsertSpecialMacro(&cwccM, "__CWCC__");
+    CPrep_InsertSpecialMacro(&cwbeM, "__CWBE__");
+    CPrep_InsertSpecialMacro(&cwbuildM, "__CWBUILD__");
+#else
     CPrep_InsertSpecialMacro(&dtsomM, "__SOM_ENABLED__");
+#endif
     CPrep_InsertSpecialMacro(&ecppM, "__embedded_cplusplus");
     CPrep_InsertSpecialMacro(&optiM, "__option");
     CPrep_InsertSpecialMacro(&trgtM, "__ide_target");
@@ -418,6 +462,9 @@ int setupprep(void) {
     tokenstacklevel = iflevel = 0;
     cprep_cursymfile = NULL;
     cprep_files = NULL;
+#if VERSION == VERSION_WII_1_0RC1
+    stock_pch_files = NULL;
+#endif
 
     CLT_filesp = &filesp;
     CLT_filestack = filestack;
@@ -507,6 +554,16 @@ void cleanupprep(void) {
     ts_first = ts_last = ts_current = NULL;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void CPrep_ReadPrecompiledHeader(
+    short refnum, void* data, SInt32 size, const char* name, Boolean isSystem
+) {
+    if (PrecompilerRead(refnum, data, size)) {
+        CPrep_PreprocessDumpPCH(name, isSystem);
+    }
+}
+#endif
+
 static Boolean setupfile(StringPtr filename, Boolean fullsearch, Boolean isImport) {
     CPrepFileInfo prepinfo;
     OSType file_type;
@@ -547,6 +604,15 @@ static Boolean setupfile(StringPtr filename, Boolean fullsearch, Boolean isImpor
 
         prepinfo.textfile = fileinfo.filespec;
         prepinfo.nameNode = CTool_GetPathName(&fileinfo.filespec, &prepinfo.fileModDate);
+#if VERSION == VERSION_WII_1_0RC1
+        if (stock_pch_files &&
+            CPrep_SkipPrecompiledFile(prepinfo.nameNode->name, myfilename, !fullsearch)) {
+            if (fileinfo.filedatatype == cwFileTypeText) {
+                CWReleaseFileText(cparamblkptr->context, fileinfo.filedata);
+            }
+            return TRUE;
+        }
+#endif
         if (fileinfo.filedata) {
             if (fileinfo.filedatatype == cwFileTypeText) {
                 prepinfo.textbuffer = (char*)fileinfo.filedata;
@@ -554,7 +620,13 @@ static Boolean setupfile(StringPtr filename, Boolean fullsearch, Boolean isImpor
                 prepinfo.fileID = fileinfo.fileID;
                 prepinfo.recordbrowseinfo = fileinfo.recordbrowseinfo;
             } else if (fileinfo.filedatatype == cwFileTypePrecompiledHeader) {
+#if VERSION == VERSION_WII_1_0RC1
+                CPrep_ReadPrecompiledHeader(
+                    0, (void*)fileinfo.filedata, fileinfo.filedatalength, myfilename, !fullsearch
+                );
+#else
                 PrecompilerRead(0, (void*)fileinfo.filedata);
+#endif
                 return TRUE;
             } else {
                 cannotopenerror(filename, FALSE);
@@ -592,11 +664,19 @@ static Boolean setupfile(StringPtr filename, Boolean fullsearch, Boolean isImpor
                     }
                     COS_FileClose(refnum);
                     CWCachePrecompiledHeader(cparamblkptr->context, &prepinfo.textfile, cache_hnd);
+#if VERSION == VERSION_WII_1_0RC1
+                    CPrep_ReadPrecompiledHeader(0, cache, file_size, myfilename, !fullsearch);
+#else
                     PrecompilerRead(0, cache);
+#endif
                     CWUnlockMemHandle(cparamblkptr->context, cache_hnd);
                     return TRUE;
                 } else {
+#if VERSION == VERSION_WII_1_0RC1
+                    CPrep_ReadPrecompiledHeader(refnum, NULL, file_size, myfilename, !fullsearch);
+#else
                     PrecompilerRead(refnum, NULL);
+#endif
                     COS_FileClose(refnum);
                     return TRUE;
                 }
@@ -1701,7 +1781,11 @@ UInt8 C_Compiler(CompilerLinkerParamBlk* param) {
     if (copts.cplusplus) {
         copts.const_strings = TRUE;
     }
+#if VERSION != VERSION_WII_1_0RC1
     copts.inline_bottom_up = TRUE;
+#else
+    copts.new_mangler = TRUE;
+#endif
 
     if (initheaps(&CError_NoMem)) {
         releaseheaps();
@@ -1718,32 +1802,40 @@ UInt8 C_Compiler(CompilerLinkerParamBlk* param) {
             PointerAnalysis_Setup();
             CBrowse_Setup(param);
 
-            setupfile(NULL, TRUE, FALSE);
-            if (copts.oldprefixname[0]) {
-                setupfile(copts.oldprefixname, TRUE, FALSE);
-            }
-
-            coptssave = galloc(sizeof(CompilerLinkerOptions));
-            *coptssave = copts;
-            coptpushs = NULL;
-            coptpush = NULL;
-            preprocessing_only = param->preprocess;
-            if (param->preprocess) {
-                CPrep_Preprocess();
-            } else {
-#ifdef MWCC_PERSIST
-                if (setjmp(persist_marker) == 0) {
-                    cparser();
-                } else {
-                    // (each candidate starts here)
-                    setjmp(persist_restart);
-                    code = 0;
-                    CPrep_PersistCheckpoint();
-                    cparser_resume();
-                }
-#else
-                cparser();
+#if VERSION == VERSION_WII_1_0RC1
+            if (param->programInputCount || (!param->preprocess && !param->precompile &&
+                                             CMid_IsIRFile(&param->sourcefile))) {
+                CMid_CompileEnded();
+            } else
 #endif
+            {
+                setupfile(NULL, TRUE, FALSE);
+                if (copts.oldprefixname[0]) {
+                    setupfile(copts.oldprefixname, TRUE, FALSE);
+                }
+
+                coptssave = galloc(sizeof(CompilerLinkerOptions));
+                *coptssave = copts;
+                coptpushs = NULL;
+                coptpush = NULL;
+                preprocessing_only = param->preprocess;
+                if (param->preprocess) {
+                    CPrep_Preprocess();
+                } else {
+#ifdef MWCC_PERSIST
+                    if (setjmp(persist_marker) == 0) {
+                        cparser();
+                    } else {
+                        // (each candidate starts here)
+                        setjmp(persist_restart);
+                        code = 0;
+                        CPrep_PersistCheckpoint();
+                        cparser_resume();
+                    }
+#else
+                    cparser();
+#endif
+                }
             }
 
             if (CWDisplayLines(param->context, lines) != cwNoErr) {
@@ -1800,12 +1892,38 @@ UInt8 C_Compiler(CompilerLinkerParamBlk* param) {
     }
 
     param->object.compiledlines = lines;
+#if VERSION == VERSION_WII_1_0RC1
+    if (code != 1 && param->programIR) {
+        COS_FreeHandle(param->programIR);
+        param->programIR = NULL;
+    }
+#endif
     if (cprep_nomem_exit) {
         CompilerGetCString(7, string);
         CWReportMessage(cparamblkptr->context, NULL, string, NULL, messagetypeError, 0);
     }
 
     return code;
+}
+
+static inline Boolean CPrep_MacroIsExpanding(const Macro* macro) {
+#if VERSION == VERSION_WII_1_0RC1
+    return (macro->flags & MacroExpanding) != 0;
+#else
+    return macro->flags;
+#endif
+}
+
+static inline void CPrep_SetMacroExpanding(Macro* macro, Boolean expanding) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (expanding) {
+        macro->flags |= MacroExpanding;
+    } else {
+        macro->flags &= ~MacroExpanding;
+    }
+#else
+    macro->flags = expanding;
+#endif
 }
 
 static void pushtokenseq(Macro* macro) {
@@ -1817,7 +1935,7 @@ static void pushtokenseq(Macro* macro) {
         tokenstack[tokenstacklevel].macrostart = macrostart;
         tokenstack[tokenstacklevel].macro = macro;
         if (macro) {
-            macro->isExpanding = TRUE;
+            CPrep_SetMacroExpanding(macro, TRUE);
         }
         tokenstack[tokenstacklevel].macrocheck = macrocheck;
         tokenstacklevel++;
@@ -1832,7 +1950,7 @@ void poptokenseq(void) {
     pos = tokenstack[tokenstacklevel].pos;
     macrostart = tokenstack[tokenstacklevel].macrostart;
     if (tokenstack[tokenstacklevel].macro) {
-        tokenstack[tokenstacklevel].macro->isExpanding = FALSE;
+        CPrep_SetMacroExpanding(tokenstack[tokenstacklevel].macro, FALSE);
     }
     macrocheck = tokenstack[tokenstacklevel].macrocheck;
     spaceskip = TRUE;
@@ -1889,7 +2007,7 @@ static Macro* ismacroname(void) {
                 }
             }
 
-            if (scan->isExpanding) {
+            if (CPrep_MacroIsExpanding(scan)) {
                 waslockedmacro = TRUE;
                 return NULL;
             }
@@ -1917,7 +2035,7 @@ static Macro* ismacroname2(char* str) {
 
     for (scan = macrohashtable[name->hashval]; scan; scan = scan->next) {
         if (scan->name == name) {
-            if (scan->isExpanding) {
+            if (CPrep_MacroIsExpanding(scan)) {
                 waslockedmacro = TRUE;
                 return NULL;
             }
@@ -1944,7 +2062,7 @@ static Macro* ismacroname5(char* str) {
 
     for (scan = macrohashtable[name->hashval]; scan; scan = scan->next) {
         if (scan->name == name) {
-            if (scan->isExpanding) {
+            if (CPrep_MacroIsExpanding(scan)) {
                 waslockedmacro = TRUE;
                 return NULL;
             }
@@ -2011,6 +2129,129 @@ static Macro* ismacroname4(HashNameNode* name) {
 
     return scan;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static const char* CPrep_IncludeBasename(const char* path) {
+    const char* name = path + strlen(path);
+    while (name > path && !strchr("/\\:", name[-1])) {
+        --name;
+    }
+    return name;
+}
+
+int CPrep_RememberPrecompiledFile(const CPrecStockFile* file, void* context) {
+    StockPCHFile* record = galloc(sizeof(*record));
+
+    (void)context;
+    record->path = GetHashNameNodeExport(file->path)->name;
+    record->basename = file->includeName
+        ? GetHashNameNodeExport(CPrep_IncludeBasename(file->includeName))->name : NULL;
+    record->condition = NULL;
+    if (file->condition) {
+        size_t length = strlen(file->condition) + 1;
+        char* condition = galloc(length);
+        memcpy(condition, file->condition, length);
+        record->condition = condition;
+    }
+    record->once = file->includeOnce;
+    record->system = file->systemInclude;
+    record->next = stock_pch_files;
+    stock_pch_files = record;
+    return 1;
+}
+
+static Boolean CPrep_PrecompiledConditionIsEmpty(const char* condition) {
+    struct {
+        Boolean parentActive;
+        Boolean hasElse;
+    } levels[32];
+    const char* end;
+    int depth = 0;
+    Boolean active = TRUE;
+
+    if (!condition) {
+        return FALSE;
+    }
+    end = condition + strlen(condition);
+    while (*condition) {
+        if (*condition == '$') {
+            if (active) {
+                return FALSE;
+            }
+            ++condition;
+            continue;
+        }
+        if (*condition++ != '#') {
+            return FALSE;
+        }
+        switch (*condition++) {
+            case 'd':
+            case 'n': {
+                Boolean ifDefined = condition[-1] == 'd';
+                size_t length = 0;
+                char name[256];
+                if (depth == sizeof(levels) / sizeof(levels[0])) {
+                    return FALSE;
+                }
+                while (*condition >= '0' && *condition <= '9') {
+                    length = length * 10 + (*condition++ - '0');
+                    if (length >= sizeof(name)) {
+                        return FALSE;
+                    }
+                }
+                if (!length || length > (size_t)(end - condition)) {
+                    return FALSE;
+                }
+                memcpy(name, condition, length);
+                name[length] = 0;
+                condition += length;
+                levels[depth].parentActive = active;
+                levels[depth].hasElse = FALSE;
+                ++depth;
+                if (active) {
+                    Boolean defined = ismacroname4(GetHashNameNodeExport(name)) != NULL;
+                    active = defined == ifDefined;
+                }
+                break;
+            }
+            case 'e':
+                if (!depth || levels[depth - 1].hasElse) {
+                    return FALSE;
+                }
+                levels[depth - 1].hasElse = TRUE;
+                active = levels[depth - 1].parentActive && !active;
+                break;
+            case 'f':
+                if (!depth) {
+                    return FALSE;
+                }
+                active = levels[--depth].parentActive;
+                break;
+            default:
+                // Conditional expressions still run through the regular preprocessor.
+                return FALSE;
+        }
+    }
+    return depth == 0;
+}
+
+static Boolean CPrep_SkipPrecompiledFile(const char* path, const char* name, Boolean system) {
+    const StockPCHFile* file;
+    const char* basename = CPrep_IncludeBasename(name);
+
+    for (file = stock_pch_files; file; file = file->next) {
+        if (OS_EqualPath(file->path, path)) {
+            return file->once || CPrep_PrecompiledConditionIsEmpty(file->condition);
+        }
+        if (file->once && file->system == system && file->basename &&
+            (!file->condition || file->condition[0] == '$') &&
+            OS_EqualPath(file->basename, basename)) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+#endif
 
 void foundnl(void) {
     if (!tokenstacklevel) {
@@ -2120,6 +2361,28 @@ static void CPrep_MacroRedefError(char* name, Boolean* reported) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+void CPrep_InstallPrecompiledMacro(Macro* macro) {
+    Macro** slot = &macrohashtable[macro->name->hashval];
+    while (*slot && (*slot)->name != macro->name) {
+        slot = &(*slot)->next;
+    }
+    if (*slot) {
+        const Macro* old = *slot;
+        Boolean reported = FALSE;
+        if (old->nargs != macro->nargs ||
+            (old->text != macro->text &&
+             (!old->text || !macro->text || strcmp(old->text, macro->text)))) {
+            CPrep_MacroRedefError(macro->name->name, &reported);
+        }
+        macro->next = old->next;
+    } else {
+        macro->next = NULL;
+    }
+    *slot = macro;
+}
+#endif
+
 static void goendofline(void) {
     if (notendofline()) {
         CPrep_Error(ERR_END_LINE_EXPECTED);
@@ -2140,6 +2403,9 @@ static void CPrep_Define(void) {
     Boolean hasVarArgs;
     Boolean isPrecedingTokenAnArg;
     Boolean tokenPasteFlag;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean commaBeforePaste = FALSE;
+#endif
     Boolean error_flag;
     HashNameNode* myNameList[128];
 
@@ -2255,7 +2521,11 @@ static void CPrep_Define(void) {
     macro->name = name;
     macro->nargs = hasVarArgs ? (argCount | 0x8000) : argCount;
     macro->is_special = FALSE;
-    macro->isExpanding = FALSE;
+#if VERSION == VERSION_WII_1_0RC1
+    macro->flags = hasVarArgs && copts.gcc_extensions ? MacroGnuVariadic : 0;
+#else
+    macro->flags = 0;
+#endif
 
     for (i = 1; i < argCount; i++) {
         macro->names[i - 1] = myNameList[i - 1];
@@ -2324,6 +2594,14 @@ innerLoop:
                         }
 
                         if (i < argCount) {
+#if VERSION == VERSION_WII_1_0RC1
+                            if (tokenPasteFlag && commaBeforePaste && i == argCount - 1 &&
+                                (macro->flags & MacroGnuVariadic)) {
+                                (*mlist.data)[mlist.size - 1] = TK_MACRO_ARG_GNU_COMMA;
+                                AppendGListByte(&mlist, i);
+                                break;
+                            }
+#endif
                             AppendGListByte(
                                 &mlist, tokenPasteFlag ? TK_MACRO_ARG_PASTED : TK_MACRO_ARG_EXPANDED
                             );
@@ -2350,6 +2628,9 @@ innerLoop:
                     (*mlist.data)[mlist.size - 2] = TK_MACRO_ARG_PASTED;
                 }
                 tokenPasteFlag = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+                commaBeforePaste = t == ',';
+#endif
                 goto innerLoop;
             }
             pos = save_pos;
@@ -2616,7 +2897,7 @@ static void poptokenseqInline(void) {
     pos = tokenstack[tokenstacklevel].pos;
     macrostart = tokenstack[tokenstacklevel].macrostart;
     if ((macro = tokenstack[tokenstacklevel].macro)) {
-        macro->isExpanding = FALSE;
+        CPrep_SetMacroExpanding(macro, FALSE);
     }
     macrocheck = tokenstack[tokenstacklevel].macrocheck;
     spaceskip = TRUE;
@@ -2958,12 +3239,23 @@ do_string:
         goto do_string;
     } else if (macro == &stdcM) {
         return "1";
+#if VERSION == VERSION_WII_1_0RC1
+    } else if (macro == &casmM || macro == &MWRSM || macro == &cwccM) {
+        return "0x4201";
+    } else if (macro == &cwbeM) {
+        return "0x0";
+    } else if (macro == &cwbuildM) {
+        return "140";
+#else
     } else if (macro == &casmM || macro == &MWRSM) {
         return "0x2407";
+#endif
     } else if (macro == &cpplM) {
         return "199711L";
+#if VERSION != VERSION_WII_1_0RC1
     } else if (macro == &dtsomM) {
         return copts.direct_to_som ? "1" : "0";
+#endif
     } else if (macro == &ecppM) {
         return copts.ecplusplus ? "1" : "0";
     } else if (macro == &stcvM) {
@@ -2987,6 +3279,9 @@ static char* XpandMacro(Macro* macro) {
     SInt32 argumentCount;
     SInt32 parameterCount;
     Boolean variadic;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean omittedVariadic = FALSE;
+#endif
     UInt16 nargs;
     SInt16 argumentIndex;
     char* result;
@@ -3053,6 +3348,16 @@ static char* XpandMacro(Macro* macro) {
                                 if (depth < 0) {
                                     argument++;
                                     if (argument < argumentCount) {
+#if VERSION == VERSION_WII_1_0RC1
+                                        if (variadic && argument == parameterCount &&
+                                            (copts.gcc_extensions ||
+                                             (macro->flags & MacroGnuVariadic))) {
+                                            arguments[parameterCount - 1] = NULL;
+                                            expandedArguments[parameterCount - 1] = NULL;
+                                            omittedVariadic = TRUE;
+                                            goto argumentFinished;
+                                        }
+#endif
                                         macropos = pos;
                                         CPrep_Error(ERR_COMMA_EXPECTED);
                                         return "";
@@ -3099,6 +3404,11 @@ argumentFinished:
                         CPrep_Error(ERR_MACROS_TOO_COMPLEX);
                     }
                 }
+#if VERSION == VERSION_WII_1_0RC1
+                if (omittedVariadic) {
+                    break;
+                }
+#endif
             }
         } else {
             gotonexttoken();
@@ -3177,6 +3487,15 @@ argumentFinished:
                 }
                 AppendGListByte(&mlist, '"');
                 continue;
+#if VERSION == VERSION_WII_1_0RC1
+            case TK_MACRO_ARG_GNU_COMMA:
+                if (!arguments[(UInt8)*text - 1]) {
+                    ++text;
+                    continue;
+                }
+                AppendGListByte(&mlist, ',');
+                // Fall through to normal argument prescan when the argument has tokens.
+#endif
             case TK_MACRO_ARG_EXPANDED: {
                 char* savedText;
                 SInt32 savedLength;
@@ -3539,11 +3858,24 @@ static void CPrep_PragmaInlineDepth(void) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void CPrep_PragmaInlineMaxSize(SInt32* limit) {
+#else
 static void CPrep_PragmaInlineMaxSize(void) {
+#endif
     if (notendofline() && plex() == '(' && notendofline()) {
         switch (plex()) {
             case TK_INTCONST:
+#if VERSION == VERSION_WII_1_0RC1
+                if (CInt64_GetULong(&tkintconst) > 0x7fffffff) {
+                    CPrep_Warning(ERR_ILLEGAL_PRAGMA);
+                    skipendofline();
+                    return;
+                }
+                *limit = CInt64_GetULong(&tkintconst);
+#else
                 copts.inlinemaxsize = CInt64_GetULong(&tkintconst);
+#endif
                 break;
             default:
                 CPrep_Warning(ERR_ILLEGAL_PRAGMA);
@@ -4113,8 +4445,16 @@ static void preppragma(void) {
             CPrep_PragmaUnused();
         } else if (!strcmp(tkidentifier->name, "inline_depth")) {
             CPrep_PragmaInlineDepth();
+#if VERSION == VERSION_WII_1_0RC1
+        } else if (!strcmp(tkidentifier->name, "inline_max_auto_size")) {
+            CPrep_PragmaInlineMaxSize(&copts.inlinemaxautosize);
+#endif
         } else if (!strcmp(tkidentifier->name, "inline_max_size")) {
+#if VERSION == VERSION_WII_1_0RC1
+            CPrep_PragmaInlineMaxSize(&copts.inlinemaxsize);
+#else
             CPrep_PragmaInlineMaxSize();
+#endif
         } else if (!strcmp(tkidentifier->name, "inline_max_total_size")) {
             CPrep_PragmaInlineMaxTotalSize();
         } else if (!strcmp(tkidentifier->name, "opt_pointer_analysis_mode")) {

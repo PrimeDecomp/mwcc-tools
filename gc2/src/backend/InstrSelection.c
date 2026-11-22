@@ -1448,6 +1448,30 @@ void gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
         return;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_TYPE_SPE(type)) {
+        short reg = 0;
+        if (ENODE_IS(left, EOBJREF)) {
+            reg = OBJECT_REG(left->data.objref);
+        }
+        GEN_NODE_TO_REG(right, reg, 0, &opright);
+        Coerce_to_spe_register(&opright, right->rtype, reg);
+        if (reg) {
+            if (opright.reg != reg) {
+                emitpcode(PC_EVMR, reg, opright.reg);
+            }
+        } else {
+            GEN_NODE(left, &opleft);
+            indirect(&opleft, expr);
+            store_spe(opright.reg, &opleft, type);
+            reg = opright.reg;
+        }
+        output->optype = OpndType_GPR;
+        output->reg = reg;
+        return;
+    }
+#endif
+
     if (ENODE_IS(left, EOBJREF) && OBJECT_REG(left->data.objref)) {
         vi = Registers_GetVarInfo(left->data.objref);
         GEN_NODE_TO_REG(right, vi->reg, 0, &opright);
@@ -1593,6 +1617,10 @@ void gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
         GEN_NODE(left, output);
 
         indirect(output, expr);
+#if VERSION == VERSION_WII_1_0RC1
+        align = CMach_GetCopyAlignment(type, output->object);
+        align2 = CMach_GetCopyAlignment(type, opright.object);
+#else
         if (output->object) {
             if (output->object->datatype == DLOCAL &&
                 (output->object->u.var.info->flags & VarInfoFlag_ParamArea)) {
@@ -1613,6 +1641,7 @@ void gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
         } else {
             align2 = CMach_AllocationAlignment(type, 0);
         }
+#endif
 
         if (align2 < align) {
             align = align2;
@@ -2593,7 +2622,29 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
 
         output->optype = OpndType_GPR;
         output->reg = reg1;
-    } else if (IS_TYPE_VECTOR(type)) {
+    }
+#if VERSION == VERSION_WII_1_0RC1
+    else if (IS_TYPE_SPE(type)) {
+        reg1 = outputReg && !expr1->hascall && !expr2->hascall ? outputReg : ALLOC_GPR();
+        GEN_NODE_TO_REG(expr1, reg1, 0, &op1);
+        Coerce_to_spe_register(&op1, type, reg1);
+        if (op1.reg != reg1) {
+            emitpcode(PC_EVMR, reg1, op1.reg);
+        }
+
+        branch_always(label3);
+        branch_label(label2);
+
+        GEN_NODE_TO_REG(expr2, reg1, 0, &op2);
+        Coerce_to_spe_register(&op2, type, reg1);
+        if (op2.reg != reg1) {
+            emitpcode(PC_EVMR, reg1, op2.reg);
+        }
+        output->optype = OpndType_GPR;
+        output->reg = reg1;
+    }
+#endif
+    else if (IS_TYPE_VECTOR(type)) {
         if (expr1->hascall || expr2->hascall) {
             reg1 = ALLOC_VR();
         } else {
@@ -2624,6 +2675,10 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
 
         GEN_NODE(expr1, &op1);
 
+#if VERSION == VERSION_WII_1_0RC1
+        align = CMach_GetCopyAlignment(type, op1.object);
+        max_align = CMach_GetCopyAlignment(type, NULL);
+#else
         if (op1.object) {
             if (op1.object->datatype == DLOCAL &&
                 (op1.object->u.var.info->flags & VarInfoFlag_ParamArea)) {
@@ -2636,6 +2691,7 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
         }
 
         max_align = CMach_AllocationAlignment(type, 0);
+#endif
         if (align > max_align) {
             align = max_align;
         }
@@ -2658,6 +2714,9 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
 
         GEN_NODE(expr2, &op2);
 
+#if VERSION == VERSION_WII_1_0RC1
+        align = CMach_GetCopyAlignment(type, op2.object);
+#else
         if (op2.object) {
             if (op2.object->datatype == DLOCAL &&
                 (op2.object->u.var.info->flags & VarInfoFlag_ParamArea)) {
@@ -2668,6 +2727,7 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
         } else {
             align = CMach_AllocationAlignment(type, 0);
         }
+#endif
 
         if (align > max_align) {
             align = max_align;
@@ -7445,6 +7505,21 @@ void gen_VECTOR128CONST(ENode* expr, short outputReg, short outputRegHi, Operand
     int gpr;
     int vr;
     COVCResult result;
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_TYPE_SPE(expr->rtype)) {
+        gpr = outputReg ? outputReg : ALLOC_GPR();
+        CError_ASSERT(9706, canoptimizevectorconst(&expr->data.vector128val, expr->rtype, &result));
+        if (result.op1 == PC_EVMERGELO) {
+            load_imm_vector(gpr, expr->data.vector128val.ul);
+        } else {
+            emitpcode(result.op1, gpr, result.arg);
+        }
+        output->optype = OpndType_GPR;
+        output->reg = gpr;
+        return;
+    }
+#endif
 
     vr = outputReg ? outputReg : ALLOC_VR();
     if (!canoptimizevectorconst(&expr->data.vector128val, expr->rtype, &result)) {

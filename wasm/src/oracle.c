@@ -1,9 +1,9 @@
-/* The oracle's C side in the WebAssembly module (crates/mwcc-oracle-core/src/wasm_oracle.rs): what the x86 oracle's
- * Rust trace shim and the probes' islands give the hooks. */
+/* C entries for the source-linked oracle. */
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef __wasm__
 /* The host's trace sink (crates/mwcc-wasm): whether this run traces, and a record's bytes, appended to the run's
  * trace. */
 __attribute__((import_module("env"), import_name("oracle_tracing"))) int oracle_tracing(void);
@@ -56,6 +56,7 @@ void OracleTrace_Printf(const char* format, ...)
         free(text);
     }
 }
+#endif
 
 /* IroDump_Print's hook takes its arguments as a va_list, a pointer to them; this is its variadic entry, under gc2's
  * name for the function. */

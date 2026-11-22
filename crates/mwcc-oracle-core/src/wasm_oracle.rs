@@ -9,6 +9,7 @@
 //!   `H`, for the other units' calls;
 //! - a static variable the hooks read is given a global alias.
 //!
+//! The Windows source oracle uses the same bindings and IR edits with i386 Clang and Rust objects.
 //! In the Rust IR, the names the hooks read become gc2's (an offset into a variable, as `copts+0xf8`, a constant
 //! address), and a name the hooks define that gc2 also defines (`initheaps`) is renamed. `wasm/src/oracle.c` has the
 //! trace writer, the variadic entry of `IroDump_Print`, and the stand-ins for the probes' islands that the source-built
@@ -304,6 +305,7 @@ struct Place {
 }
 
 struct Resolver {
+    version: String,
     ours: BTreeMap<String, Symbol>,
     theirs: BTreeMap<String, Vec<Symbol>>,
     splits: executable::Splits,
@@ -313,6 +315,16 @@ struct Resolver {
     variables: BTreeMap<String, Vec<Symbol>>,
 }
 
+// RC1's source port keeps the shared 2.7 hook targets and their C names. The
+// addresses in these tables join the two 2.7 symbol maps, never the RC1 image.
+fn binding_version(version: &str) -> &str {
+    if version == wasm_build::WII_RC1 {
+        "GC_2_7"
+    } else {
+        version
+    }
+}
+
 impl Resolver {
     fn new(root: &Path, version: &str) -> Result<Self> {
         let read = |path: String| -> Result<Vec<Symbol>> {
@@ -320,11 +332,12 @@ impl Resolver {
                 fs::read_to_string(root.join(&path)).with_context(|| format!("read {path}"))?;
             executable::read_symbols(&text)
         };
-        let ours = read(format!("config/{version}/symbols.txt"))?
+        let bindings = binding_version(version);
+        let ours = read(format!("config/{bindings}/symbols.txt"))?
             .into_iter()
             .map(|s| (s.name.clone(), s))
             .collect();
-        let config_dir = format!("gc2/config/{version}");
+        let config_dir = format!("gc2/config/{bindings}");
         let mut theirs: BTreeMap<String, Vec<Symbol>> = BTreeMap::new();
         let mut names = BTreeSet::new();
         let mut variables: BTreeMap<String, Vec<Symbol>> = BTreeMap::new();
@@ -342,6 +355,7 @@ impl Resolver {
             root.join(format!("{config_dir}/splits.txt")),
         )?)?;
         Ok(Self {
+            version: version.into(),
             ours,
             theirs,
             splits,
@@ -383,7 +397,12 @@ impl Resolver {
                 })
             })
             .with_context(|| format!("{name}: gc2 has no symbol at {address:#x}"))?;
-        let offset = address - theirs.address;
+        let offset = if self.version == wasm_build::WII_RC1 && name == "iro_pointer_analysis" {
+            // offsetof(CompilerLinkerOptions, opt_pointer_analysis) in the RC1 source ABI.
+            0x101
+        } else {
+            address - theirs.address
+        };
         ensure!(
             !function || offset == 0,
             "{name} ({address:#x}) is inside gc2's {}",
@@ -419,7 +438,7 @@ impl Resolver {
 }
 
 /// Run PROGRAM in ROOT; its diagnostics.
-fn run_tool(root: &Path, program: &str, arguments: &[String]) -> Result<String> {
+pub(crate) fn run_tool(root: &Path, program: &str, arguments: &[String]) -> Result<String> {
     let output = Command::new(program)
         .args(arguments)
         .current_dir(root)
@@ -436,7 +455,26 @@ fn run_tool(root: &Path, program: &str, arguments: &[String]) -> Result<String> 
 }
 
 /// The arguments that compile IR to an object of the module.
-fn codegen_arguments(input: &str, output: &str) -> Vec<String> {
+fn codegen_arguments(input: &str, output: &str, wasm: bool, rust: bool) -> Vec<String> {
+    if !wasm {
+        return [
+            if rust {
+                "--target=i686-pc-windows-msvc"
+            } else {
+                "--target=i386-pc-windows-gnu"
+            },
+            "-O2",
+            "-ffunction-sections",
+            "-fdata-sections",
+            "-Wno-override-module",
+            "-c",
+            input,
+            "-o",
+            output,
+        ]
+        .map(String::from)
+        .to_vec();
+    }
     [
         "--target=wasm32-unknown-unknown",
         "-O2",
@@ -799,31 +837,44 @@ fn imports(module: &[u8]) -> Result<BTreeSet<String>> {
     Ok(out)
 }
 
-/// Link VERSION's oracle module: its stock objects built (`wasm_build`) and the Rust IR (`rust_ir`). COMBINED: the
-/// module every run uses ([`wasm_build::module_output`]), with persist's units compiled with `MWCC_PERSIST` (their
-/// objects built too) and the stack pointer exported. The link goes to [`wasm_build::linked`]'s path, which the
-/// build's wasm-opt makes the module of; the version information is the module's.
-pub fn run(
-    root: &Path,
-    version: &str,
-    clang: &str,
-    wasm_ld: &str,
-    combined: bool,
-) -> Result<Outcome> {
-    let module = if combined {
-        wasm_build::module_output(version)
-    } else {
-        wasm_build::oracle_output(version)
-    };
-    let output = wasm_build::linked(&module);
-    let work = work(version, combined);
-    fs::create_dir_all(root.join(&work))?;
-    if let Some(parent) = root.join(&output).parent() {
-        fs::create_dir_all(parent)?;
-    }
+/// The C bindings and Rust hooks compiled to objects for the source oracle.
+pub(crate) struct HookObjects {
+    pub outcome: Outcome,
+    pub replaced: BTreeMap<String, String>,
+    pub extra: Vec<String>,
+    pub variadic: (String, String),
+}
+
+pub(crate) struct HookBuild<'a> {
+    pub root: &'a Path,
+    pub source_root: &'a Path,
+    pub version: &'a str,
+    pub work: &'a str,
+    pub output: &'a str,
+    pub clang: &'a str,
+    pub units: &'a [wasm_build::Unit],
+    pub rust_ir: &'a [String],
+    pub wasm: bool,
+    pub combined: bool,
+}
+
+pub(crate) fn compile_hooks(build: HookBuild<'_>) -> Result<HookObjects> {
+    let HookBuild {
+        root,
+        source_root,
+        version,
+        work,
+        output,
+        clang,
+        units,
+        rust_ir,
+        wasm,
+        combined,
+    } = build;
+    fs::create_dir_all(root.join(work))?;
     let resolver = Resolver::new(root, version)?;
-    let rust: Vec<(String, String)> = rust_ir(version)
-        .into_iter()
+    let rust: Vec<(&String, String)> = rust_ir
+        .iter()
         .map(|path| {
             let text =
                 fs::read_to_string(root.join(&path)).with_context(|| format!("read {path}"))?;
@@ -838,8 +889,9 @@ pub fn run(
         wanted.extend(declared);
     }
     // (the hooks: the oracle's, as for the source-built oracle)
+    let bindings = binding_version(version);
     let config: Value = serde_json::from_slice(&fs::read(
-        root.join(format!("config/{version}/config.json")),
+        root.join(format!("config/{bindings}/config.json")),
     )?)?;
     let mut hooks: Vec<String> = config["oracle"]["hooks"]
         .as_array()
@@ -891,10 +943,9 @@ pub fn run(
             .get(name)
             .map_or(name.to_owned(), |r| r.trim_start_matches('@').to_owned())
     };
-    let units = wasm_build::units(root, version)?;
     let mut edits: BTreeMap<String, UnitEdit> = BTreeMap::new();
     let mut outcome = Outcome {
-        output: output.clone(),
+        output: output.into(),
         hooks: vec![],
         imports: vec![],
         renamed,
@@ -965,6 +1016,14 @@ pub fn run(
     }
     let mut thunks: Vec<String> = vec![];
     let mut replaced: BTreeMap<String, String> = BTreeMap::new();
+    // Create shared unit directories before starting clang. Concurrent
+    // creation of the same Windows directory can return access denied.
+    for name in edits.keys() {
+        let path = root.join(format!("{work}/{name}.ll"));
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+        }
+    }
     let compiled: Vec<Result<(String, String)>> = std::thread::scope(|scope| {
         let tasks: Vec<_> = edits
             .keys()
@@ -975,13 +1034,12 @@ pub fn run(
                     let unit =
                         unit.with_context(|| format!("{name} is not a unit of the module"))?;
                     let path = format!("{work}/{name}.ll");
-                    if let Some(parent) = root.join(&path).parent() {
-                        fs::create_dir_all(parent)?;
-                    }
                     let mut arguments = unit.arguments.clone();
                     if combined && wasm_build::PERSIST_UNITS.contains(&unit.name.as_str()) {
                         arguments.push(wasm_build::PERSIST.into());
                     }
+                    let output_path = std::path::absolute(root.join(&path))?;
+                    let output_path = output_path.to_str().context("the IR path is not UTF-8")?;
                     arguments.extend(
                         [
                             wasm_build::PROBES,
@@ -991,11 +1049,11 @@ pub fn run(
                             "-disable-llvm-passes",
                             &unit.input,
                             "-o",
-                            &path,
+                            output_path,
                         ]
                         .map(String::from),
                     );
-                    run_tool(root, clang, &arguments)?;
+                    run_tool(source_root, clang, &arguments)?;
                     Ok((name.clone(), fs::read_to_string(root.join(&path))?))
                 })
             })
@@ -1072,7 +1130,7 @@ pub fn run(
         let path = format!("{work}/{name}.oracle.ll");
         fs::write(root.join(&path), ir)?;
         let object = format!("{work}/{name}.o");
-        jobs.push(codegen_arguments(&path, &object));
+        jobs.push(codegen_arguments(&path, &object, wasm, false));
         replaced.insert(name.clone(), object);
     }
     let mut extra = vec![];
@@ -1081,31 +1139,25 @@ pub fn run(
         let edited = format!("{work}/rust-{name}.ll");
         fs::write(root.join(&edited), edit_rust(ir, &renames))?;
         let object = format!("{work}/rust-{name}.o");
-        jobs.push(codegen_arguments(&edited, &object));
+        jobs.push(codegen_arguments(&edited, &object, wasm, true));
         extra.push(object);
     }
-    // (oracle.c, with the arguments of the C library's sources)
+    build_objects(root, clang, &jobs)?;
+    // The C variadic entry forwards its va_list to Rust.
     ensure!(
         thunks.len() <= 1 && thunks.iter().all(|g| places[VARIADIC.0].name == *g),
         "variadic hooks other than {}: {thunks:?}",
         VARIADIC.0
     );
-    let like = units
-        .iter()
-        .find(|u| u.name == "wasm/libc/extras.c")
-        .context("wasm/libc/extras.c is not a unit")?;
-    let object = format!("{work}/oracle.c.o");
-    let mut arguments = like.arguments.clone();
-    arguments.extend([
-        format!("-DORACLE_IRO_DUMP={}", places[VARIADIC.0].name),
-        format!("-DORACLE_IRO_DUMP_ARGUMENTS={}", linked(VARIADIC.1)),
-        "-c".into(),
-        ORACLE_C.into(),
-        "-o".into(),
-        object.clone(),
-    ]);
-    jobs.push(arguments);
-    extra.push(object);
+    Ok(HookObjects {
+        outcome,
+        replaced,
+        extra,
+        variadic: (places[VARIADIC.0].name.clone(), linked(VARIADIC.1)),
+    })
+}
+
+fn build_objects(root: &Path, clang: &str, jobs: &[Vec<String>]) -> Result<()> {
     std::thread::scope(|scope| -> Result<()> {
         let tasks: Vec<_> = jobs
             .iter()
@@ -1115,7 +1167,66 @@ pub fn run(
             t.join().unwrap_or_else(|_| bail!("a compile panicked"))?;
         }
         Ok(())
+    })
+}
+
+/// Link VERSION's oracle module: its stock objects built (`wasm_build`) and the Rust IR (`rust_ir`). COMBINED: the
+/// module every run uses ([`wasm_build::module_output`]), with persist's units compiled with `MWCC_PERSIST` (their
+/// objects built too) and the stack pointer exported. The link goes to [`wasm_build::linked`]'s path, which the
+/// build's wasm-opt makes the module of; the version information is the module's.
+pub fn run(
+    root: &Path,
+    version: &str,
+    clang: &str,
+    wasm_ld: &str,
+    combined: bool,
+) -> Result<Outcome> {
+    let module = if combined {
+        wasm_build::module_output(version)
+    } else {
+        wasm_build::oracle_output(version)
+    };
+    let output = wasm_build::linked(&module);
+    let work = work(version, combined);
+    fs::create_dir_all(root.join(&work))?;
+    if let Some(parent) = root.join(&output).parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let units = wasm_build::units(root, version)?;
+    let HookObjects {
+        outcome,
+        replaced,
+        mut extra,
+        variadic,
+    } = compile_hooks(HookBuild {
+        root,
+        source_root: root,
+        version,
+        work: &work,
+        output: &output,
+        clang,
+        units: &units,
+        rust_ir: &rust_ir(version),
+        wasm: true,
+        combined,
     })?;
+    // (oracle.c, with the arguments of the C library's sources)
+    let like = units
+        .iter()
+        .find(|u| u.name == "wasm/libc/extras.c")
+        .context("wasm/libc/extras.c is not a unit")?;
+    let object = format!("{work}/oracle.c.o");
+    let mut arguments = like.arguments.clone();
+    arguments.extend([
+        format!("-DORACLE_IRO_DUMP={}", variadic.0),
+        format!("-DORACLE_IRO_DUMP_ARGUMENTS={}", variadic.1),
+        "-c".into(),
+        ORACLE_C.into(),
+        "-o".into(),
+        object.clone(),
+    ]);
+    run_tool(root, clang, &arguments)?;
+    extra.push(object);
     // (the link: the oracle's objects, the edited units in their place, and the hooks')
     let mut objects: Vec<String> = wasm_build::objects(root, version, true)?
         .into_iter()
@@ -1201,7 +1312,8 @@ pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
         .iter()
         .map(|unit| wasm_build::oracle_persist_object(version, unit))
         .collect();
-    let gc2 = format!("gc2/config/{version}");
+    let bindings = binding_version(version);
+    let gc2 = format!("gc2/config/{bindings}");
     Ok(vec![
         "rule wasm_rust_hooks".into(),
         "  command = $tools build-hooks $out --wasm".into(),
@@ -1223,7 +1335,7 @@ pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
         ),
         "  description = WASM-LD (oracle) $out".into(),
         format!(
-            "build {}: wasm_oracle {hooks} {frontend} | {} {ORACLE_C} config/{version}/symbols.txt config/{version}/config.json {gc2}/symbols.txt {gc2}/splits.txt $tools_dep",
+            "build {}: wasm_oracle {hooks} {frontend} | {} {ORACLE_C} config/{bindings}/symbols.txt config/{bindings}/config.json {gc2}/symbols.txt {gc2}/splits.txt $tools_dep",
             wasm_build::linked(&wasm_build::oracle_output(version)),
             objects.join(" ")
         ),
@@ -1233,7 +1345,7 @@ pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
         ),
         "  description = WASM-LD (module) $out".into(),
         format!(
-            "build {} | {}: wasm_module {hooks} {frontend} | {} {} {ORACLE_C} config/{version}/symbols.txt config/{version}/config.json {gc2}/symbols.txt {gc2}/splits.txt $tools_dep",
+            "build {} | {}: wasm_module {hooks} {frontend} | {} {} {ORACLE_C} config/{bindings}/symbols.txt config/{bindings}/config.json {gc2}/symbols.txt {gc2}/splits.txt $tools_dep",
             wasm_build::linked(&wasm_build::module_output(version)),
             wasm_build::module_output(version).replace(".wasm", ".version"),
             objects.join(" "),

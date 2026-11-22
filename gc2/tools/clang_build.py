@@ -15,6 +15,9 @@ def main():
     command.add_argument("version", metavar="VERSION")
     command = commands.add_parser("native", help="link build/VERSION/native/mwcceppc, the Linux build, with ld.lld")
     command.add_argument("version", metavar="VERSION")
+    command = commands.add_parser("oracle", help="link the instrumented Windows compiler from the Clang build")
+    command.add_argument("version", metavar="VERSION")
+    command.add_argument("tools", type=Path, metavar="MWCC_TOOLS")
     command = commands.add_parser(
         "case", help="make the lowercase links to lib/'s headers a case-sensitive file system needs, then touch STAMP"
     )
@@ -24,6 +27,9 @@ def main():
         if args.command in ("link", "native"):
             link = clang.link_compiler if args.command == "link" else clang.link_native
             output = link(project.version(args.version))
+            print(f"{args.version}: {project.relative(output)}")
+        elif args.command == "oracle":
+            output = clang.link_source_oracle(project.version(args.version), args.tools.resolve())
             print(f"{args.version}: {project.relative(output)}")
         else:
             clang.make_case_shims([c for v in project.ALL_VERSIONS for c in build.compilations(v)])

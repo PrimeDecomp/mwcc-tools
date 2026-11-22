@@ -80,6 +80,13 @@ ninja Wii_Retro
 Use `build/Wii_Retro/mwcceppc.exe` with the DLL beside it. See the [Wii_Retro guide](docs/wii-retro-compiler.md)
 for the current patches and the [research notes](docs/wii-retro-compiler-research.md) for validation.
 
+The [Wii 1.0RC1 source port](gc2/README.md#wii-10rc1-source-port) builds in `gc2/` and
+supports Gekko C and C++ compilation with file and program IPA. Its Windows driver can
+run program IPA across source files and sidecars before invoking the external linker.
+Stock PCH interchange remains in progress. For RC1, `gc2/configure.py --oracle-tools PATH`
+adds the source-built Windows oracle. The RC1 WebAssembly build accepts `--oracle`
+to build the instrumented modules.
+
 The native oracle
 -----------------
 

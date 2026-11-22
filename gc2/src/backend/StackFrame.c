@@ -89,6 +89,11 @@ Boolean uses_globals;
 Boolean dynamic_stack;
 Boolean large_stack;
 Boolean StackFrame_has_vectors;
+#if VERSION == VERSION_WII_1_0RC1
+#define SAVE_PAIRED_FPRS (StackFrame_has_vectors && !CPU_IS_SPE(copts.processor))
+#else
+#define SAVE_PAIRED_FPRS StackFrame_has_vectors
+#endif
 
 static SInt32 out_param_alignment;
 static SInt32 in_parameter_size;
@@ -111,6 +116,14 @@ static SInt32 r11_save_offset;
 static SInt32 r0_save_offset;
 static SInt32 interrupt_saved_count[RegClassMax];
 static UInt32 interrupt_saved_mask[RegClassMax];
+
+#if VERSION == VERSION_WII_1_0RC1
+enum {
+    InterruptSPR_XER = 1 << 0,
+    InterruptSPR_LR = 1 << 1,
+    InterruptSPR_CTR = 1 << 2
+};
+#endif
 static SInt32 save_slot_size[RegClassMax];
 static SInt32 interrupt_save_offset;
 static SInt32 interrupt_save_size;
@@ -135,7 +148,11 @@ static PCode* loadvrsave;
 static PCode* storevrsave;
 Object* dummyvaparam;
 Object* dummyvalocal;
+#if VERSION == VERSION_WII_1_0RC1
+UInt16 interrupt_routine_flags;
+#else
 InterruptGenerationRecord* interrupt_routine_flags;
+#endif
 FixupRTOSStack* fixup_rtos_stacks;
 
 static void insert_local_object(UInt8 oclass, Object* obj);
@@ -191,6 +208,13 @@ void init_stack_globals(Object* funcobj) {
     frame_alignment = 8;
     out_param_alignment = 8;
     in_param_alignment = 8;
+#if VERSION == VERSION_WII_1_0RC1
+    if (CPU_IS_SPE(copts.processor)) {
+        frame_alignment = 16;
+        out_param_alignment = 16;
+        in_param_alignment = 16;
+    }
+#endif
     alloca_alignment = 0;
     has_varargs = FALSE;
     frame_sizes_computed = FALSE;
@@ -216,6 +240,11 @@ void init_stack_globals(Object* funcobj) {
     save_slot_size[RegClass_CRFIELD] = 0;
     save_slot_size[RegClass_VR] = 16;
     save_slot_size[RegClass_GPR] = 4;
+#if VERSION == VERSION_WII_1_0RC1
+    if (copts.e500v2_floatingpoint) {
+        save_slot_size[RegClass_GPR] = 8;
+    }
+#endif
     save_slot_size[RegClass_FPR] = 8;
     r11_save_offset = -1;
     r0_save_offset = -1;
@@ -223,7 +252,11 @@ void init_stack_globals(Object* funcobj) {
     linkage_area_size = 0;
 
     dummyvalocal = NULL;
+#if VERSION == VERSION_WII_1_0RC1
+    interrupt_routine_flags = 0;
+#else
     interrupt_routine_flags = NULL;
+#endif
     dummyvaparam = NULL;
     dummylocal = NULL;
 
@@ -374,14 +407,25 @@ void compute_frame_sizes(void) {
     SInt32 altivec_offset;
     SInt32 delta;
 
-    save_slot_size[RegClass_FPR] = StackFrame_has_vectors ? 16 : 8;
+    save_slot_size[RegClass_FPR] = SAVE_PAIRED_FPRS ? 16 : 8;
+#if VERSION == VERSION_WII_1_0RC1
+    if (CPU_IS_SPE(copts.processor)) {
+        Boolean wide = StackFrame_has_vectors;
+        if (interrupt_routine_flags &&
+            ((CURRENT_INTERRUPT_FLAGS & Interrupt_SPE) ||
+             (copts.e500v2_floatingpoint && need_link_register()))) {
+            wide = TRUE;
+        }
+        save_slot_size[RegClass_GPR] = wide ? 8 : 4;
+    }
+#endif
     CError_ASSERT(913, alloca_alignment == 0 || alloca_alignment == frame_alignment);
 
     if (interrupt_routine_flags) {
-        if (!(interrupt_routine_flags->flags & Interrupt_VRs) || !copts.altivec_model) {
+        if (!(CURRENT_INTERRUPT_FLAGS & Interrupt_VRs) || !copts.altivec_model) {
             save_slot_size[RegClass_VR] = 0;
         }
-        if (!(interrupt_routine_flags->flags & Interrupt_FPRs) ||
+        if (!(CURRENT_INTERRUPT_FLAGS & Interrupt_FPRs) ||
             copts.soft_float ||
             !copts.use_fp) {
             save_slot_size[RegClass_FPR] = 0;
@@ -712,7 +756,11 @@ void generate_epilogue(PCodeBlock* block, Boolean add_blr) {
         offset = frame_size;
     }
 
-    if (used_nonvolatile_registers[RegClass_CRFIELD]) {
+    if (used_nonvolatile_registers[RegClass_CRFIELD]
+#if VERSION == VERSION_WII_1_0RC1
+        && !interrupt_routine_flags
+#endif
+    ) {
         load_store_register(
             PC_LWZ, 12, reg, NULL, non_volatile_save_offset[RegClass_CRFIELD] + offset
         );
@@ -742,7 +790,11 @@ void generate_epilogue(PCodeBlock* block, Boolean add_blr) {
         }
         restore_interrupt_registers();
         if (add_blr) {
+#if VERSION == VERSION_WII_1_0RC1
+            emitpcode(interrupt_return_opcode());
+#else
             emitpcode(PC_RFI);
+#endif
             setpcodeflags(fIsVolatile);
         }
     } else {
@@ -800,7 +852,7 @@ static void save_nonvolatile_FPRs(int reg, SInt32 offset) {
 
     if (!use_helper_function(RegClass_FPR)) {
         for (i = 1; i <= used_nonvolatile_registers[RegClass_FPR]; i++) {
-            if (StackFrame_has_vectors) {
+            if (SAVE_PAIRED_FPRS) {
                 if (used_nonvolatile_registers[RegClass_FPR] * save_slot_size[RegClass_FPR] +
                         offset <
                     0x1000) {
@@ -887,7 +939,7 @@ static void restore_nonvolatile_FPRs(int reg, SInt32 offset) {
 
     if (!use_helper_function(RegClass_FPR)) {
         for (i = 1; i <= used_nonvolatile_registers[RegClass_FPR]; i++) {
-            if (StackFrame_has_vectors) {
+            if (SAVE_PAIRED_FPRS) {
                 if (used_nonvolatile_registers[RegClass_FPR] * save_slot_size[RegClass_FPR] +
                         offset <
                     0x1000) {
@@ -970,10 +1022,37 @@ static void restore_nonvolatile_VRs(int reg, SInt32 offset) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void save_restore_spe_GPRs(short opcode, int base, SInt32 offset) {
+    int count = used_nonvolatile_registers[RegClass_GPR];
+    int i;
+    for (i = 1; i <= count; i++) {
+        SInt32 displacement = offset + (count - i) * save_slot_size[RegClass_GPR];
+        if (FITS_IN_SHORT(displacement)) {
+            emitpcode(PC_LI, 0, displacement);
+        } else {
+            emitpcode(PC_LIS, 0, 0, (short)((UInt32)displacement >> 16));
+            if (LOW_PART(displacement)) {
+                emitpcode(PC_ORI, 0, 0, (UInt16)displacement);
+            }
+        }
+        emitpcode(opcode, 32 - i, base, 0);
+        setpcodeflags(fIsVolatile);
+    }
+}
+#endif
+
 static void save_nonvolatile_GPRs(int reg, SInt32 offset) {
     int i;
 
     offset += non_volatile_save_offset[RegClass_GPR];
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (StackFrame_has_vectors && CPU_IS_SPE(copts.processor)) {
+        save_restore_spe_GPRs(PC_EVSTDDX, reg, offset);
+        return;
+    }
+#endif
 
     if (!use_helper_function(RegClass_GPR)) {
         SInt32 n;
@@ -1006,6 +1085,13 @@ static void restore_nonvolatile_GPRs(int reg, SInt32 offset) {
 
     offset += non_volatile_save_offset[RegClass_GPR];
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (StackFrame_has_vectors && CPU_IS_SPE(copts.processor)) {
+        save_restore_spe_GPRs(PC_EVLDDX, reg, offset);
+        return;
+    }
+#endif
+
     if (!use_helper_function(RegClass_GPR)) {
         SInt32 n;
         if (copts.use_lmw_stmw &&
@@ -1021,7 +1107,12 @@ static void restore_nonvolatile_GPRs(int reg, SInt32 offset) {
                     32 - i,
                     reg,
                     0,
-                    offset + (used_nonvolatile_registers[RegClass_GPR] - i) * 4
+                    offset + (used_nonvolatile_registers[RegClass_GPR] - i) *
+#if VERSION == VERSION_WII_1_0RC1
+                        save_slot_size[RegClass_GPR]
+#else
+                        4
+#endif
                 );
                 setpcodeflags(fIsVolatile);
             }
@@ -1163,7 +1254,7 @@ void check_dynamic_aligned_frame(void) {
         requires_frame = TRUE;
     } else if (need_link_register() &&
                interrupt_routine_flags &&
-               (interrupt_routine_flags->flags & Interrupt_VRs)) {
+               (CURRENT_INTERRUPT_FLAGS & Interrupt_VRs)) {
         update_frame_align(16);
         requires_frame = TRUE;
     }
@@ -1282,7 +1373,7 @@ void assign_arguments_to_memory(Object* func, UInt8 oldStyleParameters, Boolean 
                 }
                 if (TYPE_IS_GPR_PAIR(type)) {
                     gpr += 2;
-                } else if (TYPE_FITS_IN_REGISTER(type) ||
+                } else if (TYPE_FITS_IN_REGISTER(type) || IS_TYPE_SPE(type) ||
                            (TYPE_IS_SOFT_FLOAT(type) && type->size == 4)) {
                     gpr++;
                 } else {
@@ -1367,7 +1458,8 @@ SInt32 set_out_param_displ(
         return displ;
     }
 
-    if (TYPE_IS_8BYTES(type) || (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(type) && type->size != 4)) {
+    if (TYPE_IS_8BYTES(type) || IS_TYPE_SPE(type) ||
+        (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(type) && type->size != 4)) {
         update_out_param_align(8);
         displ = ALIGN(displ, 8);
     } else {
@@ -1461,7 +1553,11 @@ SInt32 local_offset_32(Object* obj) {
     }
 
     if (large_stack) {
+#if VERSION == VERSION_WII_1_0RC1
+        base = ALIGN_REMAINDER(linkage_area_size, frame_alignment);
+#else
         base = 0;
+#endif
     } else if (frame_sizes_computed) {
         base = parameter_area_size;
     } else {
@@ -1597,6 +1693,11 @@ static Boolean use_helper_function(char rclass) {
 
     switch (rclass) {
         case RegClass_GPR:
+#if VERSION == VERSION_WII_1_0RC1
+            if (save_slot_size[RegClass_GPR] == 8 && CPU_IS_SPE(copts.processor)) {
+                return FALSE;
+            }
+#endif
             if (copts.use_lmw_stmw && !copts.littleendian) {
                 return FALSE;
             }
@@ -1604,7 +1705,7 @@ static Boolean use_helper_function(char rclass) {
                 (copts.optimizesize && used_nonvolatile_registers[RegClass_GPR] > 2);
             break;
         case RegClass_FPR:
-            if (StackFrame_has_vectors) {
+            if (SAVE_PAIRED_FPRS) {
                 return FALSE;
             }
             return (used_nonvolatile_registers[RegClass_FPR] > 3) ||
@@ -1800,18 +1901,89 @@ static void allocate_valocal(void) {
     assign_local_memory(dummyvalocal);
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+short interrupt_return_opcode(void) {
+    switch (CURRENT_INTERRUPT_FLAGS & Interrupt_Mode) {
+        case Interrupt_Critical: return PC_RFCI;
+        case Interrupt_Machine: return PC_RFMCI;
+        case Interrupt_Debug: return PC_RFDI;
+        default: return PC_RFI;
+    }
+}
+
+static int interrupt_srr0(void) {
+    switch (CURRENT_INTERRUPT_FLAGS & Interrupt_Mode) {
+        case Interrupt_Critical: return 58;
+        case Interrupt_Machine: return 570;
+        case Interrupt_Debug: return 574;
+        default: return 26;
+    }
+}
+
+static void save_interrupt_temporary(int reg, SInt32 offset) {
+    emitpcode(PC_STW, reg, 1, 0, offset);
+    setpcodeflags(fIsPtrOp | fIsArgInit);
+    if (save_slot_size[RegClass_GPR] == 8) {
+        if (reg == 0) {
+            emitpcode(PC_MFMSR, 0);
+            emitpcode(PC_ORIS, 0, 0, 0x200);
+            emitpcode(PC_MTMSR, 0);
+        }
+        emitpcode(PC_EVMERGELOHI, reg, reg, reg);
+        emitpcode(PC_STW, reg, 1, 0, offset + 4);
+        setpcodeflags(fIsPtrOp | fIsArgInit);
+    }
+}
+
+static void access_interrupt_gpr(Boolean restore, int reg, int base, SInt32 offset, int index) {
+    if (save_slot_size[RegClass_GPR] != 8) {
+        emitpcode(restore ? PC_LWZ : PC_STW, reg, base, 0, offset);
+    } else if (offset >= 0 && offset <= 248 && !(offset & 7)) {
+        emitpcode(restore ? PC_EVLDD : PC_EVSTDD, reg, base, 0, offset);
+    } else {
+        emitpcode(PC_LI, index, offset);
+        emitpcode(restore ? PC_EVLDDX : PC_EVSTDDX, reg, base, index);
+    }
+}
+
+static void copy_interrupt_stack_slot(SInt32 offset) {
+    SInt32 word;
+
+    for (word = 0; word < save_slot_size[RegClass_GPR]; word += 4) {
+        emitpcode(PC_LWZ, 0, 11, 0, offset + word - frame_size);
+        setpcodeflags(fIsArgInit);
+        emitpcode(PC_STW, 0, 1, 0, offset + word);
+        setpcodeflags(fIsArgInit);
+    }
+}
+#endif
+
 static void save_interrupt_registers(void) {
     SInt32 offset;
     int i;
     int reg;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (interrupt_saved_count[RegClass_GPR] || interrupt_saved_count[RegClass_VR] ||
+        interrupt_saved_count[RegClass_FPR]) {
+        emitpcode(PC_STWU, 1, 1, 0, -frame_size);
+        setpcodeflags(fIsPtrOp | fIsArgInit);
+    }
+#else
     emitpcode(PC_STWU, 1, 1, 0, -frame_size);
     setpcodeflags(fIsPtrOp | fIsArgInit);
+#endif
     if (dynamic_align_stack) {
+#if VERSION == VERSION_WII_1_0RC1
+        save_interrupt_temporary(0, r0_save_offset);
+        access_interrupt_gpr(FALSE, 11, 1, r11_save_offset, 0);
+        setpcodeflags(fIsPtrOp | fIsArgInit);
+#else
         emitpcode(PC_STW, 0, 1, 0, r0_save_offset);
         setpcodeflags(fIsPtrOp | fIsArgInit);
         emitpcode(PC_STW, 11, 1, 0, r11_save_offset);
         setpcodeflags(fIsPtrOp | fIsArgInit);
+#endif
         emitpcode(PC_RLWINM, 0, 1, 0, align_bits(frame_alignment, 1), 31);
         setpcodeflags(fIsArgInit);
         emitpcode(PC_NEG, 0, 0);
@@ -1820,6 +1992,10 @@ static void save_interrupt_registers(void) {
         setpcodeflags(fIsArgInit);
         emitpcode(PC_STWUX, 11, 1, 0);
         setpcodeflags(fIsArgInit);
+#if VERSION == VERSION_WII_1_0RC1
+        copy_interrupt_stack_slot(r0_save_offset);
+        copy_interrupt_stack_slot(r11_save_offset);
+#else
         emitpcode(PC_LWZ, 0, 11, 0, r0_save_offset - frame_size);
         setpcodeflags(fIsArgInit);
         emitpcode(PC_STW, 0, 1, 0, r0_save_offset);
@@ -1828,17 +2004,51 @@ static void save_interrupt_registers(void) {
         setpcodeflags(fIsArgInit);
         emitpcode(PC_STW, 0, 1, 0, r11_save_offset);
         setpcodeflags(fIsArgInit);
+#endif
     } else if (r11_save_offset != -1) {
+#if VERSION == VERSION_WII_1_0RC1
+        save_interrupt_temporary(0, r0_save_offset);
+        save_interrupt_temporary(11, r11_save_offset);
+#else
         emitpcode(PC_STW, 0, 1, 0, r0_save_offset);
         setpcodeflags(fIsArgInit);
         emitpcode(PC_STW, 11, 1, 0, r11_save_offset);
         setpcodeflags(fIsPtrOp | fIsArgInit);
+#endif
     } else {
+#if VERSION == VERSION_WII_1_0RC1
+        if (r0_save_offset != -1) {
+            save_interrupt_temporary(0, r0_save_offset);
+        }
+#else
         emitpcode(PC_STW, 0, 1, 0, r0_save_offset);
         setpcodeflags(fIsArgInit);
+#endif
     }
 
     offset = interrupt_save_offset;
+#if VERSION == VERSION_WII_1_0RC1
+    if (interrupt_saved_mask[RegClass_SPR] & InterruptSPR_CTR) {
+        emitpcode(PC_MFCTR, 0);
+        emitpcode(PC_STW, 0, 1, 0, offset);
+        offset += 4;
+    }
+    if (interrupt_saved_mask[RegClass_SPR] & InterruptSPR_XER) {
+        emitpcode(PC_MFXER, 0);
+        emitpcode(PC_STW, 0, 1, 0, offset);
+        offset += 4;
+    }
+    if (interrupt_saved_count[RegClass_CRFIELD]) {
+        emitpcode(PC_MFCR, 0);
+        emitpcode(PC_STW, 0, 1, 0, offset);
+        offset += 4;
+    }
+    if (interrupt_saved_mask[RegClass_SPR] & InterruptSPR_LR) {
+        emitpcode(PC_MFLR, 0);
+        emitpcode(PC_STW, 0, 1, 0, offset);
+        offset += 4;
+    }
+#else
     emitpcode(PC_MFCTR, 0);
     emitpcode(PC_STW, 0, 1, 0, offset);
     emitpcode(PC_MFXER, 0);
@@ -1847,9 +2057,12 @@ static void save_interrupt_registers(void) {
     emitpcode(PC_STW, 0, 1, 0, offset + 8);
     emitpcode(PC_MFLR, 0);
     emitpcode(PC_STW, 0, 1, 0, offset + 12);
+#endif
     if (interrupt_saved_count[RegClass_VR] || interrupt_saved_count[RegClass_FPR]) {
         emitpcode(PC_MFMSR, 0);
+#if VERSION != VERSION_WII_1_0RC1
         offset += 16;
+#endif
         emitpcode(PC_STW, 0, 1, 0, offset);
     }
 
@@ -1857,11 +2070,20 @@ static void save_interrupt_registers(void) {
         offset = interrupt_class_offset[RegClass_GPR];
         for (i = 0; i < n_scratch_registers[RegClass_GPR]; i++) {
             reg = scratch_registers[RegClass_GPR][i];
+#if VERSION == VERSION_WII_1_0RC1
+            if (interrupt_saved_mask[RegClass_GPR] & (1u << reg)) {
+                if (reg != 0 && (reg != 11 || r11_save_offset == -1)) {
+                    access_interrupt_gpr(FALSE, reg, 1, offset, 0);
+                }
+                offset += save_slot_size[RegClass_GPR];
+            }
+#else
             if (reg != 0 &&
                 (reg != 11 || r11_save_offset == -1) &&
                 (interrupt_saved_mask[RegClass_GPR] & (1 << reg))) {
                 emitpcode(PC_STW, reg, 1, 0, offset + i * save_slot_size[RegClass_GPR]);
             }
+#endif
         }
     }
 
@@ -1892,29 +2114,39 @@ static void save_interrupt_registers(void) {
         for (i = 0; i < n_scratch_registers[RegClass_FPR]; i++) {
             reg = scratch_registers[RegClass_FPR][i];
             if (interrupt_saved_mask[RegClass_FPR] & (1 << reg)) {
+#if VERSION == VERSION_WII_1_0RC1
+                emitpcode(PC_STFD, reg, 1, 0, offset);
+                offset += save_slot_size[RegClass_FPR];
+#else
                 emitpcode(PC_STFD, reg, 1, 0, offset + i * save_slot_size[RegClass_FPR]);
+#endif
             }
         }
     }
 
     offset = interrupt_save_offset + interrupt_spr_offset;
-    if (interrupt_routine_flags->flags & Interrupt_SRR) {
-        emitpcode(PC_MFSPR, 0, 26);
+    if (CURRENT_INTERRUPT_FLAGS & Interrupt_SRR) {
+#if VERSION == VERSION_WII_1_0RC1
+        int srr0 = interrupt_srr0();
+#else
+        const int srr0 = 26;
+#endif
+        emitpcode(PC_MFSPR, 0, srr0);
         emitpcode(PC_STW, 0, 1, 0, offset);
-        emitpcode(PC_MFSPR, 0, 27);
+        emitpcode(PC_MFSPR, 0, srr0 + 1);
         emitpcode(PC_STW, 0, 1, 0, offset + 4);
         offset += 8;
     }
-    if (interrupt_routine_flags->flags & Interrupt_DAR) {
+    if (CURRENT_INTERRUPT_FLAGS & Interrupt_DAR) {
         emitpcode(PC_MFSPR, 0, 19);
         emitpcode(PC_STW, 0, 1, 0, offset);
         offset += 4;
     }
-    if (interrupt_routine_flags->flags & Interrupt_DSISR) {
+    if (CURRENT_INTERRUPT_FLAGS & Interrupt_DSISR) {
         emitpcode(PC_MFSPR, 0, 18);
         emitpcode(PC_STW, 0, 1, 0, offset);
     }
-    if (interrupt_routine_flags->flags & Interrupt_Enable) {
+    if (CURRENT_INTERRUPT_FLAGS & Interrupt_Enable) {
         emitpcode(PC_MFMSR, 0);
         emitpcode(PC_ORI, 0, 0, 0x8002);
         emitpcode(PC_MTMSR, 0);
@@ -1927,7 +2159,7 @@ static void restore_interrupt_registers(void) {
     int i;
     int reg;
 
-    if (interrupt_routine_flags->flags & Interrupt_Enable) {
+    if (CURRENT_INTERRUPT_FLAGS & Interrupt_Enable) {
         emitpcode(PC_MFMSR, 0);
         emitpcode(PC_ADDIS, 11, 0, 0, 1);
         emitpcode(PC_ADDI, 11, 11, 0, -0x7FFE);
@@ -1943,19 +2175,24 @@ static void restore_interrupt_registers(void) {
     }
 
     offset = interrupt_save_offset + interrupt_spr_offset;
-    if (interrupt_routine_flags->flags & Interrupt_SRR) {
+    if (CURRENT_INTERRUPT_FLAGS & Interrupt_SRR) {
+#if VERSION == VERSION_WII_1_0RC1
+        int srr0 = interrupt_srr0();
+#else
+        const int srr0 = 26;
+#endif
         emitpcode(PC_LWZ, 0, base, 0, offset);
-        emitpcode(PC_MTSPR, 26, 0);
+        emitpcode(PC_MTSPR, srr0, 0);
         emitpcode(PC_LWZ, 0, base, 0, offset + 4);
-        emitpcode(PC_MTSPR, 27, 0);
+        emitpcode(PC_MTSPR, srr0 + 1, 0);
         offset += 8;
     }
-    if (interrupt_routine_flags->flags & Interrupt_DAR) {
+    if (CURRENT_INTERRUPT_FLAGS & Interrupt_DAR) {
         emitpcode(PC_LWZ, 0, base, 0, offset);
         emitpcode(PC_MTSPR, 19, 0);
         offset += 4;
     }
-    if (interrupt_routine_flags->flags & Interrupt_DSISR) {
+    if (CURRENT_INTERRUPT_FLAGS & Interrupt_DSISR) {
         emitpcode(PC_LWZ, 0, base, 0, offset);
         emitpcode(PC_MTSPR, 18, 0);
     }
@@ -1989,7 +2226,11 @@ static void restore_interrupt_registers(void) {
             reg = scratch_registers[RegClass_GPR][i];
             if (interrupt_saved_mask[RegClass_GPR] & (1 << reg)) {
                 if (reg != 0 && (reg != 11 || r11_save_offset == -1)) {
+#if VERSION == VERSION_WII_1_0RC1
+                    access_interrupt_gpr(TRUE, reg, base, offset, 0);
+#else
                     emitpcode(PC_LWZ, reg, base, 0, offset);
+#endif
                 }
                 offset += save_slot_size[RegClass_GPR];
             }
@@ -1997,6 +2238,28 @@ static void restore_interrupt_registers(void) {
     }
 
     offset = interrupt_save_offset;
+#if VERSION == VERSION_WII_1_0RC1
+    if (interrupt_saved_mask[RegClass_SPR] & InterruptSPR_CTR) {
+        emitpcode(PC_LWZ, 0, base, 0, offset);
+        emitpcode(PC_MTCTR, 0);
+        offset += 4;
+    }
+    if (interrupt_saved_mask[RegClass_SPR] & InterruptSPR_XER) {
+        emitpcode(PC_LWZ, 0, base, 0, offset);
+        emitpcode(PC_MTXER, 0);
+        offset += 4;
+    }
+    if (interrupt_saved_count[RegClass_CRFIELD]) {
+        emitpcode(PC_LWZ, 0, base, 0, offset);
+        emitpcode(PC_MTCRF, 255, 0);
+        offset += 4;
+    }
+    if (interrupt_saved_mask[RegClass_SPR] & InterruptSPR_LR) {
+        emitpcode(PC_LWZ, 0, base, 0, offset);
+        emitpcode(PC_MTLR, 0);
+        offset += 4;
+    }
+#else
     emitpcode(PC_LWZ, 0, base, 0, offset);
     emitpcode(PC_MTCTR, 0);
     emitpcode(PC_LWZ, 0, base, 0, offset + 4);
@@ -2005,20 +2268,45 @@ static void restore_interrupt_registers(void) {
     emitpcode(PC_MTCRF, 255, 0);
     emitpcode(PC_LWZ, 0, base, 0, offset + 12);
     emitpcode(PC_MTLR, 0);
+#endif
     if (interrupt_saved_count[RegClass_VR] || interrupt_saved_count[RegClass_FPR]) {
+#if VERSION != VERSION_WII_1_0RC1
         offset += 16;
+#endif
         emitpcode(PC_LWZ, 0, base, 0, offset);
         emitpcode(PC_MTMSR, 0);
     }
 
     if (r11_save_offset != -1) {
+#if VERSION == VERSION_WII_1_0RC1
+        access_interrupt_gpr(TRUE, 0, base, r0_save_offset, 0);
+        setpcodeflags(fIsArgInit);
+        access_interrupt_gpr(TRUE, 11, base, r11_save_offset, 11);
+#else
         emitpcode(PC_LWZ, 0, base, 0, r0_save_offset);
         setpcodeflags(fIsArgInit);
         emitpcode(PC_LWZ, 11, base, 0, r11_save_offset);
+#endif
     } else {
+#if VERSION == VERSION_WII_1_0RC1
+        if (r0_save_offset != -1) {
+            access_interrupt_gpr(TRUE, 0, base, r0_save_offset, 0);
+        }
+#else
         emitpcode(PC_LWZ, 0, base, 0, r0_save_offset);
+#endif
     }
+#if VERSION == VERSION_WII_1_0RC1
+    if (r0_save_offset != -1) {
+        setpcodeflags(fIsArgInit);
+    }
+    if (!interrupt_saved_count[RegClass_GPR] && !interrupt_saved_count[RegClass_VR] &&
+        !interrupt_saved_count[RegClass_FPR]) {
+        return;
+    }
+#else
     setpcodeflags(fIsArgInit);
+#endif
 
     if (dynamic_align_stack || dynamic_stack) {
         emitpcode(PC_LWZ, 1, 1, 0, 0);
@@ -2039,6 +2327,12 @@ static void compute_interrupt_frame(void) {
     PCode* pc;
 
     if (need_link_register()) {
+#if VERSION == VERSION_WII_1_0RC1
+        interrupt_saved_mask[RegClass_SPR] = InterruptSPR_XER | InterruptSPR_LR | InterruptSPR_CTR;
+        interrupt_saved_count[RegClass_SPR] = 3;
+        interrupt_saved_mask[RegClass_CRFIELD] = 0xFF;
+        interrupt_saved_count[RegClass_CRFIELD] = 1;
+#endif
         for (rclass = 0; rclass < RegClassMax; rclass++) {
             if (save_slot_size[rclass] > 0) {
                 interrupt_saved_count[rclass] = n_scratch_registers[rclass];
@@ -2055,7 +2349,7 @@ static void compute_interrupt_frame(void) {
             } else if (reg == 11 &&
                        (dynamic_stack ||
                         dynamic_align_stack ||
-                        (interrupt_routine_flags->flags & Interrupt_Enable))) {
+                        (CURRENT_INTERRUPT_FLAGS & Interrupt_Enable))) {
                 r11_save_offset = offset;
             }
             offset += size;
@@ -2064,21 +2358,47 @@ static void compute_interrupt_frame(void) {
     } else {
         if (dynamic_stack ||
             dynamic_align_stack ||
-            (interrupt_routine_flags->flags & Interrupt_Enable)) {
+            (CURRENT_INTERRUPT_FLAGS & Interrupt_Enable)) {
             interrupt_saved_mask[RegClass_GPR] = (1 << 11) | (1 << 0);
+#if VERSION != VERSION_WII_1_0RC1
         } else {
             interrupt_saved_mask[RegClass_GPR] = 1 << 0;
+#endif
         }
         for (block = pcbasicblocks; block; block = block->nextBlock) {
             for (pc = block->firstPCode; pc; pc = pc->nextPCode) {
                 for (i = 0; i < pc->argCount; i++) {
+#if VERSION == VERSION_WII_1_0RC1
+                    const PCodeArg* arg = &pc->args[i];
+                    if (arg->kind == PCOp_REGISTER && (arg->data.reg.effect & EffectWrite) &&
+                        (UInt8)arg->arg < RegClassMax && (UInt16)arg->data.reg.reg < 32) {
+                        interrupt_saved_mask[arg->arg] |= 1u << arg->data.reg.reg;
+                    } else if (arg->kind == PCOp_SYSREG && (arg->data.reg.effect & EffectWrite) &&
+                               (arg->data.reg.reg == SPR_ACC || arg->data.reg.reg == SPR_SPEFSCR)) {
+                        interrupt_saved_mask[RegClass_GPR] |= 1;
+                    }
+#else
                     if (pc->args[i].kind == PCOp_REGISTER &&
                         (pc->args[i].data.reg.effect & EffectWrite)) {
                         interrupt_saved_mask[pc->args[i].arg] |= 1 << pc->args[i].data.reg.reg;
                     }
+#endif
                 }
             }
         }
+#if VERSION == VERSION_WII_1_0RC1
+        for (i = 0; i < 3; i++) {
+            if (interrupt_saved_mask[RegClass_SPR] & (1u << i)) {
+                interrupt_saved_count[RegClass_SPR]++;
+            }
+        }
+        if (interrupt_saved_mask[RegClass_CRFIELD]) {
+            interrupt_saved_count[RegClass_CRFIELD] = 1;
+        }
+        if (interrupt_saved_mask[RegClass_SPR] || interrupt_saved_mask[RegClass_CRFIELD]) {
+            interrupt_saved_mask[RegClass_GPR] |= 1;
+        }
+#endif
         for (rclass = 0; rclass < RegClassMax; rclass++) {
             if (save_slot_size[rclass] > 0) {
                 count = 0;
@@ -2091,7 +2411,7 @@ static void compute_interrupt_frame(void) {
                             } else if (reg == 11 &&
                                        (dynamic_stack ||
                                         dynamic_align_stack ||
-                                        (interrupt_routine_flags->flags & Interrupt_Enable))) {
+                                        (CURRENT_INTERRUPT_FLAGS & Interrupt_Enable))) {
                                 r11_save_offset = count * save_slot_size[rclass];
                             }
                         }
@@ -2104,18 +2424,23 @@ static void compute_interrupt_frame(void) {
     }
 
     interrupt_save_offset = 0;
+#if VERSION == VERSION_WII_1_0RC1
+    interrupt_save_size = (interrupt_saved_count[RegClass_SPR] +
+                           interrupt_saved_count[RegClass_CRFIELD]) * 4;
+#else
     interrupt_save_size = 16;
+#endif
     if (interrupt_saved_count[RegClass_VR] || interrupt_saved_count[RegClass_FPR]) {
         interrupt_save_size += 4;
     }
     interrupt_spr_offset = interrupt_save_size;
-    if (interrupt_routine_flags->flags & Interrupt_SRR) {
+    if (CURRENT_INTERRUPT_FLAGS & Interrupt_SRR) {
         interrupt_save_size += 8;
     }
-    if (interrupt_routine_flags->flags & Interrupt_DAR) {
+    if (CURRENT_INTERRUPT_FLAGS & Interrupt_DAR) {
         interrupt_save_size += 4;
     }
-    if (interrupt_routine_flags->flags & Interrupt_DSISR) {
+    if (CURRENT_INTERRUPT_FLAGS & Interrupt_DSISR) {
         interrupt_save_size += 4;
     }
     interrupt_save_size = ALIGN(interrupt_save_size, 4);

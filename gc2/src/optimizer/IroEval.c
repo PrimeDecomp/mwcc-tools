@@ -102,6 +102,30 @@ void IRO_InitializeIsAssociativeENodeTypeArray(void) {
     IsAssociativeENodeType[ECONDASS] = FALSE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+CInt64 IRO_MaxValueOfIntegerType(Type* type) {
+    CInt64 value = cint64_negone;
+
+    if (!is_unsigned(type)) {
+        CInt64 shift = IRO_MakeLong(type->size * 8 - 1);
+        value = CInt64_Sub(CInt64_Shl(cint64_one, shift), cint64_one);
+    }
+    IRO_TruncateValueToType(&value, type);
+    return value;
+}
+
+CInt64 IRO_MinValueOfIntegerType(Type* type) {
+    CInt64 value;
+
+    if (is_unsigned(type)) {
+        return cint64_zero;
+    }
+    value = CInt64_Shl(cint64_one, IRO_MakeLong(type->size * 8 - 1));
+    IRO_TruncateValueToType(&value, type);
+    return value;
+}
+#endif
+
 void IRO_TruncateValueToType(CInt64* val, Type* type) {
     if (is_unsigned(type)) {
         switch (type->size) {

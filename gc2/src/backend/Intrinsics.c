@@ -2272,6 +2272,33 @@ int is_intrinsic_function_call(ENode* funccall) {
         (TYPE_FUNC(funcref->data.objref->type)->flags & FUNC_INTRINSIC);
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void count_trailing_word(short input, short result) {
+    short scratch = ALLOC_GPR();
+    emitpcode(PC_ADDI, scratch, input, 0, -1);
+    emitpcode(PC_ANDC, scratch, scratch, input);
+    emitpcode(PC_CNTLZW, scratch, scratch);
+    emitpcode(PC_SUBFIC, result, scratch, 32);
+}
+
+static void count_trailing_zero64(ENode* expr, Operand* output) {
+    Operand input;
+    short result = ALLOC_GPR();
+    PCodeLabel* done = makepclabel();
+
+    GEN_NODE(expr, &input);
+    coerce_to_register_pair(&input, expr->rtype, 0, 0);
+    count_trailing_word(input.reg, result);
+    emitpcode(PC_CMPI, 0, input.reg, 0);
+    branch_conditional(0, EEQU, 0, done);
+    count_trailing_word(input.regHi, result);
+    emitpcode(PC_ADDI, result, result, 0, 32);
+    branch_label(done);
+    output->optype = OpndType_GPR;
+    output->reg = result;
+}
+#endif
+
 static void abs_intrinsic(ENode* expr, short outputReg, Operand* output) {
     int signReg;
     int resultReg;
@@ -2426,11 +2453,15 @@ static void data_cache_block_intrinsic(short opcode, ENode* expr1, ENode* expr2)
 static void memcpy_intrinsic(
     ENode* destexpr, ENode* srcexpr, SInt32 size, Boolean ignored, Operand* output
 ) {
+#if VERSION != VERSION_WII_1_0RC1
     UInt32 qual;
+#endif
     Operand destOp;
     Operand srcOp;
 
+#if VERSION != VERSION_WII_1_0RC1
     qual = 0;
+#endif
 
     memclrw(&destOp, sizeof(destOp));
     memclrw(&srcOp, sizeof(srcOp));
@@ -2442,6 +2473,14 @@ static void memcpy_intrinsic(
     destOp = *output;
     indirect(&destOp, destexpr);
 
+#if VERSION == VERSION_WII_1_0RC1
+    move_block(
+        &destOp,
+        &srcOp,
+        size,
+        destexpr->rtype || destOp.object ? CMach_GetCopyAlignment(destexpr->rtype, destOp.object) : 1
+    );
+#else
     if (destOp.object) {
         qual = destOp.object->qual;
     }
@@ -2452,6 +2491,7 @@ static void memcpy_intrinsic(
         size,
         destexpr->rtype ? CMach_AllocationAlignment(destexpr->rtype, qual) : 1
     );
+#endif
 }
 
 static SInt32 checkconstintarg(ENode* expr, char* name, SInt32 min, SInt32 max, int argnum) {
@@ -3993,6 +4033,11 @@ void call_intrinsic_function(ENode* funccall, short outputReg, Operand* output) 
         case Intrinsic_cntlzw:
             unary_operator(PC_CNTLZW, args->node, outputReg, output);
             break;
+#if VERSION == VERSION_WII_1_0RC1
+        case Intrinsic_count_trailing_zero64:
+            count_trailing_zero64(args->node, output);
+            break;
+#endif
         case Intrinsic_lhbrx:
         case Intrinsic_lwbrx:
             load_bytereversed_intrinsic(
@@ -4839,6 +4884,9 @@ void Intrinsics_SetupRuntimeObjects(void) {
     intrinsics[Intrinsic_rtos_pop_stack] = CParser_NewRTFunc(&stvoid, GetHashNameNodeExport("__rtos_pop_stack"), 0, 0);
     intrinsics[Intrinsic_va_setup] = CParser_NewRTFunc(&stvoid, GetHashNameNodeExport("__va_setup"), 0, 1, &void_ptr);
     intrinsics[Intrinsic_builtin_va_info] = CParser_NewRTFunc(&stvoid, GetHashNameNodeExport("__builtin_va_info"), 0, 1, &void_ptr);
+#if VERSION == VERSION_WII_1_0RC1
+    intrinsics[Intrinsic_count_trailing_zero64] = CParser_NewRTFunc(TYPE(&stsignedint), GetHashNameNodeExport("__builtin___count_trailing_zero64"), 0, 1, TYPE(&stunsignedlonglong));
+#endif
     // clang-format on
     for (i = 0; i < MaxIntrinsics; i++) {
         CError_ASSERT(6644, intrinsics[i]);
@@ -5790,6 +5838,12 @@ Boolean Intrinsics_ReInitRuntimeObjects(Boolean isPrecompiler) {
         if (!(intrinsics[Intrinsic_builtin_va_info] = CheckRuntimeObject("__builtin_va_info"))) {
             return FALSE;
         }
+#if VERSION == VERSION_WII_1_0RC1
+        if (!(intrinsics[Intrinsic_count_trailing_zero64] =
+                  CheckRuntimeObject("__builtin___count_trailing_zero64"))) {
+            return FALSE;
+        }
+#endif
     }
     return TRUE;
 }
@@ -5805,6 +5859,18 @@ Boolean Intrinsics_IsPublicRuntimeObject(Object* object) {
 
     return FALSE;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+Object* Intrinsics_FindRuntimeObject(HashNameNode* name) {
+    unsigned i;
+    for (i = 0; i < MaxIntrinsics; ++i) {
+        if (intrinsics[i]->name == name) {
+            return intrinsics[i];
+        }
+    }
+    return NULL;
+}
+#endif
 
 static void va_info_intrinsic(short opcode, ENode* expr, short outputReg, Operand* output) {
     Operand op;

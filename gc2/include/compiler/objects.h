@@ -71,8 +71,19 @@ enum {
     OBJECT_INTERNAL = 0x10,
     OBJECT_IMPORT = 0x20,
     OBJECT_EXPORT = 0x40,
-    OBJECT_LIB_EXPORT = 0x60
+    OBJECT_LIB_EXPORT = 0x60,
+#if VERSION == VERSION_WII_1_0RC1
+    OBJECT_IPA_ROOT = 0x80,
+    OBJECT_TENTATIVE = 0x200
+#endif
 };
+#if VERSION == VERSION_WII_1_0RC1
+#define OBJECT_IS_TENTATIVE(obj) ((obj)->flags & OBJECT_TENTATIVE)
+#define OBJECT_MARK_TENTATIVE(obj) ((obj)->flags |= OBJECT_TENTATIVE)
+#else
+#define OBJECT_IS_TENTATIVE(obj) ((obj)->qual & Q_TENTATIVE)
+#define OBJECT_MARK_TENTATIVE(obj) ((obj)->qual |= Q_TENTATIVE)
+#endif
 #pragma pack(push, 2)
 struct ObjectList {
     ObjectList* next;
@@ -149,7 +160,11 @@ struct Object {
     Type* type;
     UInt32 qual;
     SInt16 sclass;
+#if VERSION == VERSION_WII_1_0RC1
+    UInt16 flags;
+#else
     UInt8 flags;
+#endif
     struct ExtendedParam* extParam;
     union {
         struct Object* toc;
@@ -195,7 +210,11 @@ struct Object {
             TemplFuncInstance* inst;
             struct PTFList* ptfList;
             ObjectList* argList;
+#if VERSION == VERSION_WII_1_0RC1
+            UInt16 interruptflags;
+#else
             UInt8 interruptflags;
+#endif
         } func;
         struct {
             VarInfo* info;

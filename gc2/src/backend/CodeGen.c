@@ -55,6 +55,10 @@
 static Macro powcM;
 static Macro __powcM;
 static Macro ppc_cpu;
+#if VERSION == VERSION_WII_1_0RC1
+static Macro broadwayM;
+static Macro motIselM, motSpeM, motZenM, spePimM;
+#endif
 static Macro profM;
 static Macro hostM;
 static Macro bendM;
@@ -200,6 +204,22 @@ Object* maketemporary(Type* type) {
     return obj;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+Object* maketemporarynoreuse(Type* type) {
+    Object* obj = lalloc(sizeof(Object));
+    memclrw(obj, sizeof(Object));
+    obj->otype = OT_OBJECT;
+    obj->access = ACCESSPUBLIC;
+    obj->datatype = DLOCAL;
+    obj->type = type;
+    obj->name = CParser_GetUniqueName();
+    obj->u.var.info = CodeGen_GetNewVarInfo();
+    obj->u.var.info->flags |= VarInfoFlag_TempInUse;
+    assign_local_memory(obj);
+    return obj;
+}
+#endif
+
 static void free_temporaries(void) {
     ObjectList* list;
 
@@ -242,8 +262,8 @@ void process_arguments(ArgumentProcessor func, Boolean hasVarargs) {
             vr++;
         } else {
             func(list->object, (gpr <= GPRLimit) ? gpr : 0);
-            if (TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type)) {
-                if (type->size <= 4) {
+            if (TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type) || IS_TYPE_SPE(type)) {
+                if (type->size <= 4 || IS_TYPE_SPE(type)) {
                     gpr += 1;
                 } else {
                     gpr += 2;
@@ -279,8 +299,8 @@ static void retain_argument_register(Object* obj, short reg) {
     Type* type = obj->type;
 
     if (reg && !vi->noregister && vi->used) {
-        if (TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type)) {
-            if (type->size <= 4) {
+        if (TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type) || IS_TYPE_SPE(type)) {
+            if (type->size <= 4 || IS_TYPE_SPE(type) || TYPE_IS_DPFP(type)) {
                 retain_register(obj, RegClass_GPR, reg);
             } else if (reg < GPRLimit) {
                 if (copts.littleendian) {
@@ -403,8 +423,9 @@ static void allocate_local_GPRs(void) {
                     if (!OBJ_GET_TARGET_VOLATILE(obj) &&
                         vi->usage >= winning_usage &&
                         vi->usage >= 2) {
-                        if ((TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type)) &&
-                            (!TYPE_IS_GPR_PAIR(type) || assignable_registers[RegClass_GPR] >= 2)) {
+                        if ((TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type) ||
+                             IS_TYPE_SPE(type)) &&
+                            (!TYPE_IS_GPR_PAIR(type) || TYPE_IS_DPFP(type) || assignable_registers[RegClass_GPR] >= 2)) {
                             winning_obj = obj;
                             winning_usage = vi->usage;
                         }
@@ -424,8 +445,9 @@ static void allocate_local_GPRs(void) {
                     if (!OBJ_GET_TARGET_VOLATILE(obj) &&
                         vi->usage >= winning_usage &&
                         vi->usage >= 2) {
-                        if ((TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type)) &&
-                            (!TYPE_IS_GPR_PAIR(type) || assignable_registers[RegClass_GPR] >= 2)) {
+                        if ((TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type) ||
+                             IS_TYPE_SPE(type)) &&
+                            (!TYPE_IS_GPR_PAIR(type) || TYPE_IS_DPFP(type) || assignable_registers[RegClass_GPR] >= 2)) {
                             winning_obj = obj;
                             winning_usage = vi->usage;
                         }
@@ -658,6 +680,40 @@ void move_assigned_argument(Object* obj, short reg) {
     if (!vi->used) {
         return;
     }
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (TYPE_IS_DPFP(type) && vi->reg) {
+        if (reg) {
+            CError_ASSERT(929, reg < GPRLimit);
+            emitpcode(PC_EVMERGELO, vi->reg, reg + copts.littleendian, reg + !copts.littleendian);
+        } else {
+            Operand opnd;
+            memclrw(&opnd, sizeof(opnd));
+            symbol_operand(&opnd, obj);
+            indirect(&opnd, NULL);
+            Coerce_to_spe_register(&opnd, type, vi->reg);
+        }
+        return;
+    }
+    if (IS_TYPE_SPE(type)) {
+        if (reg && vi->reg) {
+            if (vi->reg != reg) {
+                emitpcode(PC_EVMR, vi->reg, reg);
+            }
+        } else if (reg || vi->reg) {
+            Operand opnd;
+            memclrw(&opnd, sizeof(opnd));
+            symbol_operand(&opnd, obj);
+            indirect(&opnd, NULL);
+            if (reg) {
+                store_spe(reg, &opnd, type);
+            } else {
+                Coerce_to_spe_register(&opnd, type, vi->reg);
+            }
+        }
+        return;
+    }
+#endif
 
     if (reg) {
         if (vi->reg) {
@@ -1059,6 +1115,15 @@ static void returnstatement(ENode* expr, Boolean dont_branch) {
 
     if (expr) {
         type = expr->rtype;
+#if VERSION == VERSION_WII_1_0RC1
+        if (IS_TYPE_SPE(type)) {
+            cgdispatch[expr->type](expr, 3, 0, &opnd);
+            Coerce_to_spe_register(&opnd, type, 3);
+            if (opnd.reg != 3) {
+                emitpcode(PC_EVMR, 3, opnd.reg);
+            }
+        } else
+#endif
         if (TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type)) {
             if (TYPE_IS_GPR_PAIR(type)) {
                 cgdispatch[expr->type](expr, low_reg, high_reg, &opnd);
@@ -1274,6 +1339,68 @@ static inline UInt32 paired_single_mask(PCodeArg* op, UInt32* gprs, UInt32* fprs
     return 0;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean set_spe_reg_flags(void) {
+    ObjectList* lists[] = {arguments, locals};
+    PCodeBlock* block;
+    Boolean usesVectors = FALSE;
+    Boolean* vectorRegisters;
+    SInt32 registerCount = used_virtual_registers[RegClass_GPR];
+    int listIndex;
+
+    for (block = pcbasicblocks; block && !usesVectors; block = block->nextBlock) {
+        PCode* instr;
+        for (instr = block->firstPCode; instr && !usesVectors; instr = instr->nextPCode) {
+            int i;
+            for (i = 0; i < instr->argCount; ++i) {
+                PCodeArg* arg = &instr->args[i];
+                if (arg->kind == PCOp_REGISTER && arg->arg == RegClass_GPR &&
+                    (arg->data.reg.effect & EffectPS1)) {
+                    usesVectors = TRUE;
+                    break;
+                }
+            }
+        }
+    }
+    if (!usesVectors) {
+        return copts.e500v2_floatingpoint && !interrupt_routine_flags;
+    }
+
+    vectorRegisters = lalloc(registerCount * sizeof(*vectorRegisters));
+    memset(vectorRegisters, 0, registerCount * sizeof(*vectorRegisters));
+    for (listIndex = 0; listIndex < 2; ++listIndex) {
+        ObjectList* list;
+        for (list = lists[listIndex]; list; list = list->next) {
+            Object* object = list->object;
+            if (IS_TYPE_SPE(object->type) || TYPE_IS_DPFP(object->type)) {
+                VarInfo* info = Registers_GetVarInfo(object);
+                if (info->rclass == RegClass_GPR && info->reg > 0 && info->reg < registerCount) {
+                    vectorRegisters[info->reg] = TRUE;
+                }
+            }
+        }
+    }
+
+    for (block = pcbasicblocks; block; block = block->nextBlock) {
+        PCode* instr;
+        for (instr = block->firstPCode; instr; instr = instr->nextPCode) {
+            int i;
+            for (i = 0; i < instr->argCount; ++i) {
+                PCodeArg* arg = &instr->args[i];
+                if (arg->kind == PCOp_REGISTER && arg->arg == RegClass_GPR &&
+                    (arg->data.reg.effect & (EffectWrite | EffectPS1)) == EffectWrite &&
+                    arg->data.reg.reg >= 0 && arg->data.reg.reg < registerCount &&
+                    vectorRegisters[arg->data.reg.reg]) {
+                    arg->data.reg.effect |= EffectRead | EffectPS0 | EffectPS1;
+                    instr->flags &= ~(fIsCSE | fIsMove);
+                }
+            }
+        }
+    }
+    return TRUE;
+}
+#endif
+
 #if VERSION == VERSION_GC_1_3_2
 #undef CError_LINE_DELTA
 #define CError_LINE_DELTA -1
@@ -1289,6 +1416,12 @@ Boolean set_vr_reg_flags(void) {
     PCodeBlock* block2;
     PCode* instr;
     UInt32 mask;
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (CPU_IS_SPE(copts.processor)) {
+        return set_spe_reg_flags();
+    }
+#endif
 
     gprs = lalloc(used_virtual_registers[RegClass_GPR] * 4);
     fprs = lalloc(used_virtual_registers[RegClass_FPR] * 4);
@@ -1410,6 +1543,9 @@ void CodeGen_Generator(
     current_statement = NULL;
     current_linenumber = 0;
     precomputedoperands = NULL;
+#if VERSION == VERSION_WII_1_0RC1
+    ppc32_addr_loads = NULL;
+#endif
     switchtables = NULL;
     temps = NULL;
     initializeexceptiontables();
@@ -1458,6 +1594,9 @@ void CodeGen_Generator(
         callprofiler(CMangler_GetLinkName(func)->name);
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    setup_floating_conversion(num_int_to_float_converts);
+#endif
     assign_labels(statements->next);
     open_temp_registers();
 
@@ -1936,6 +2075,29 @@ void CodeGen_SOMStub(Object* stub, Object* glue, Object* classdata, SInt32 offse
 #define CError_LINE_DELTA 0
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean parse_interrupt_option(const char* name, UInt16* flags) {
+    if (!strcmp(name, "save_fprs")) {
+        *flags |= Interrupt_FPRs;
+    } else if (!strcmp(name, "save_altivec")) {
+        *flags |= Interrupt_VRs;
+    } else if (!strcmp(name, "save_spe")) {
+        *flags |= Interrupt_SPE;
+    } else if (!strcmp(name, "noncritical")) {
+        *flags = (*flags & ~Interrupt_Mode) | Interrupt_Noncritical;
+    } else if (!strcmp(name, "critical")) {
+        *flags = (*flags & ~Interrupt_Mode) | Interrupt_Critical;
+    } else if (!strcmp(name, "machine")) {
+        *flags = (*flags & ~Interrupt_Mode) | Interrupt_Machine;
+    } else if (!strcmp(name, "debug")) {
+        *flags = (*flags & ~Interrupt_Mode) | Interrupt_Debug;
+    } else {
+        return FALSE;
+    }
+    return TRUE;
+}
+#endif
+
 void CodeGen_ParseDeclSpec(HashNameNode* identifier, DeclInfo* declinfo) {
     if (!strcmp(identifier->name, "section")) {
         if (cscope_currentfunc) {
@@ -1959,6 +2121,12 @@ void CodeGen_ParseDeclSpec(HashNameNode* identifier, DeclInfo* declinfo) {
                     break;
                 }
                 tk = lex();
+#if VERSION == VERSION_WII_1_0RC1
+                if (parse_interrupt_option(tkidentifier->name, &declinfo->interruptflags)) {
+                    tk = lookahead();
+                    continue;
+                }
+#endif
                 if (!strcmp("enable", tkidentifier->name)) {
                     declinfo->interruptflags |= Interrupt_Enable;
                 } else if (!strcmp("SRR", tkidentifier->name)) {
@@ -2884,6 +3052,11 @@ void CodeGen_ParsePragma(HashNameNode* name) {
             if (plex() != TK_IDENTIFIER) {
                 break;
             }
+#if VERSION == VERSION_WII_1_0RC1
+            if (parse_interrupt_option(tkidentifier->name, &info.flags)) {
+                continue;
+            }
+#endif
             if (!strcmp("enable", tkidentifier->name)) {
                 info.flags |= Interrupt_Enable;
             } else if (!strcmp("SRR", tkidentifier->name)) {
@@ -2956,6 +3129,7 @@ void CodeGen_ParsePragma(HashNameNode* name) {
     }
 }
 
+#if VERSION != VERSION_WII_1_0RC1
 #define INTERRUPT_RECORD(sym, record) \
     if (!((record) = (sym)->interruptInfo)) { \
         (record) = galloc(sizeof(InterruptGenerationRecord)); \
@@ -2966,13 +3140,16 @@ void CodeGen_ParsePragma(HashNameNode* name) {
         (record)->id = --previous_ps_ID; \
         (record)->kind = InterruptRecord_Interrupt; \
     }
+#endif
 
 void CodeGen_UpdateObject(Object* object) {
     ObjRegInfo reginfo;
     RegInfo* scan;
+#if VERSION != VERSION_WII_1_0RC1
     BE_SymNode* sym;
     InterruptGenerationRecord* record;
     InterruptGenerationRecord* funcRecord;
+#endif
 
     if (object->datatype == DDATA && object->u.data.reginfo.reg) {
         reginfo = object->u.data.reginfo;
@@ -2993,6 +3170,16 @@ void CodeGen_UpdateObject(Object* object) {
         object->section = get_current_pseudo_section_info()->id;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (object->name && (object->datatype == DFUNC || object->datatype == DVFUNC)) {
+        if (!object->u.func.interruptflags && copts.interruptOptions) {
+            object->u.func.interruptflags = copts.interruptOptions->flags;
+        }
+        if (object->u.func.interruptflags) {
+            object->qual |= Q_INTERRUPT;
+        }
+    }
+#else
     if ((object->datatype == DFUNC || object->datatype == DVFUNC) &&
         object->u.func.interruptflags) {
         if (!object->name) {
@@ -3011,6 +3198,7 @@ void CodeGen_UpdateObject(Object* object) {
         INTERRUPT_RECORD(sym, record);
         record->flags |= copts.interruptOptions->flags;
     }
+#endif
 }
 
 void CodeGen_UpdateBackEndOptions(void) {
@@ -3576,8 +3764,21 @@ Boolean CodeGen_CollapseVectorExpression(ENode* expr, MWVector128* vec, Type* ty
 void CodeGen_InsertSpecialMacros(void) {
     const char* str;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (copts.processor == CPU_PPCGEKKO) {
+        CPrep_InsertSpecialMacro(&broadwayM, "__PPCBROADWAY__");
+    }
+#endif
     CPrep_InsertSpecialMacro(&vecM, "__VEC__");
     CPrep_InsertSpecialMacro(&altivecM, "__ALTIVEC__");
+#if VERSION == VERSION_WII_1_0RC1
+    CPrep_InsertSpecialMacro(&motIselM, "__MOT_ISEL__");
+    CPrep_InsertSpecialMacro(&motSpeM, "__MOT_SPE__");
+    CPrep_InsertSpecialMacro(&motZenM, "__MOT_ZEN__");
+    if (copts.spe_vector) {
+        CPrep_InsertSpecialMacro(&spePimM, "__SPE__");
+    }
+#endif
     CPrep_InsertSpecialMacro(&powcM, "powerc");
     CPrep_InsertSpecialMacro(&__powcM, "__powerc");
     CPrep_InsertSpecialMacro(&hostM, "__POWERPC__");
@@ -3641,9 +3842,22 @@ char* CodeGen_ExpandSpecialMacro(Macro* macro) {
     if (CMach_GetCPU() && macro == &ppc_cpu) {
         return "1";
     }
+#if VERSION == VERSION_WII_1_0RC1
+    if (macro == &broadwayM || macro == &motIselM || macro == &motSpeM || macro == &motZenM) {
+        return "1";
+    }
+    if (macro == &spePimM) {
+        return CPU_IS_SPE(copts.processor) ? "1" : "0";
+    }
+#endif
 #if VERSION >= VERSION_GC_2_0
     if (macro == &cpuM) {
         cpu = CMach_GetCPU();
+#if VERSION == VERSION_WII_1_0RC1
+        if (!cpu) {
+            return "\"PPCGENERIC\"";
+        }
+#endif
         p = target_cpu;
         *p++ = '"';
         while (*cpu) {

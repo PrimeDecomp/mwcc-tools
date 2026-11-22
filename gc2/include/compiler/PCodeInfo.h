@@ -518,12 +518,48 @@ typedef enum Opcode {
     PC_DOZI = 466,
     PC_RLMI = 467,
     PC_RRIB = 468,
+#if VERSION == VERSION_WII_1_0RC1
+#define SPE_OPCODE(op, mnemonic, native, format, count, rank, flags, bits, cpus, encoding, width) PC_##op,
+#include "compiler/SPEOpcodes.def"
+#undef SPE_OPCODE
+    OPCODE_MAX,
+    PC_PENTRY = OPCODE_MAX,
+    PC_PEXIT
+#else
     OPCODE_MAX = 469,
     PC_PENTRY = 469,
     PC_PEXIT = 470
+#endif
 } Opcode;
 
 extern OpcodeInfo opcodeinfo[];
+
+#if VERSION == VERSION_WII_1_0RC1
+enum {
+    SPE_RRR,
+    SPE_RA,
+    SPE_RB,
+    SPE_I,
+    SPE_RI,
+    SPE_IR,
+    SPE_ADDI,
+    SPE_COMPARE,
+    SPE_SELECT,
+    SPE_DISPLACEMENT,
+    SPE_MR,
+    SPE_NO_OPERANDS
+};
+
+typedef struct SPEOpcodeInfo {
+    UInt16 nativeOpcode;
+    UInt8 encoding;
+    UInt8 memoryWidth;
+} SPEOpcodeInfo;
+
+#define IS_SPE_OPCODE(op) ((op) >= PC_EVOR && (op) < OPCODE_MAX)
+extern const SPEOpcodeInfo spe_opcodeinfo[OPCODE_MAX - PC_EVOR];
+extern Opcode find_spe_opcode(UInt32 nativeOpcode);
+#endif
 
 extern void pcode_get_hi_lo(int bits, char typechar, SInt32* hi, SInt32* lo);
 extern int pcode_check_imm_bits(SInt32 value, int bits, char typechar);

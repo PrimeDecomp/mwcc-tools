@@ -24,14 +24,8 @@ Float one_point_zero_single = {0x3F800000, 0};
 Float int_to_float_cc = {0x43300000, 0x80000000};
 Float uns_to_float_cc = {0x43300000, 0};
 
-void load_immediate(short reg, SInt32 value) {
-    short hiReg = reg;
-
+static void emit_load_immediate(short reg, short hiReg, SInt32 value) {
     if (!FITS_IN_SHORT(value)) {
-        if (copts.optimizationlevel > 1 && LOW_PART(value)) {
-            SInt32 newReg = ALLOC_GPR();
-            hiReg = newReg;
-        }
         emitpcode(PC_LIS, hiReg, 0, (short)HIGH_PART(value));
         if (LOW_PART(value)) {
             emitpcode(PC_ADDI, reg, hiReg, 0, LOW_PART(value));
@@ -41,7 +35,19 @@ void load_immediate(short reg, SInt32 value) {
     }
 }
 
+void load_immediate(short reg, SInt32 value) {
+    short hiReg = reg;
+    if (!FITS_IN_SHORT(value) && copts.optimizationlevel > 1 && LOW_PART(value)) {
+        hiReg = ALLOC_GPR();
+    }
+    emit_load_immediate(reg, hiReg, value);
+}
+
+#if VERSION == VERSION_WII_1_0RC1
+void load_immediate_SFPE(short reg, SInt32 value) {
+#else
 void insert_load_immediate_after(short reg, SInt32 value) {
+#endif
     short hiReg = reg;
     short hi;
 
@@ -58,6 +64,65 @@ void insert_load_immediate_after(short reg, SInt32 value) {
         emitpcode(PC_LI, reg, value);
     }
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+void insert_add_immediate_after(PCode* after, short dst, short base, SInt32 value) {
+    short high_reg = dst;
+    PCode* high;
+
+    if (FITS_IN_SHORT(value)) {
+        insertpcodeafter(after, makepcode(PC_ADDI, dst, base, 0, value));
+        return;
+    }
+
+    if (copts.optimizationlevel > 1 && LOW_PART(value)) {
+        high_reg = ALLOC_GPR();
+    }
+    high = makepcode(PC_ADDIS, high_reg, base, 0, (short)HIGH_PART(value));
+    insertpcodeafter(after, high);
+    if (LOW_PART(value)) {
+        insertpcodeafter(high, makepcode(PC_ADDI, dst, high_reg, 0, LOW_PART(value)));
+    }
+}
+
+void insert_load_immediate_before(PCode* before, short dst, SInt32 value) {
+    short high_reg = dst;
+    PCode* high;
+
+    if (FITS_IN_SHORT(value)) {
+        insertpcodebefore(before, makepcode(PC_LI, dst, value));
+        return;
+    }
+
+    if (copts.optimizationlevel > 1 && LOW_PART(value)) {
+        high_reg = ALLOC_GPR();
+    }
+    high = makepcode(PC_LIS, high_reg, 0, (short)HIGH_PART(value));
+    insertpcodebefore(before, high);
+    if (LOW_PART(value)) {
+        insertpcodeafter(high, makepcode(PC_ADDI, dst, high_reg, 0, LOW_PART(value)));
+    }
+}
+
+void insert_load_immediate_after(PCode* after, short dst, SInt32 value) {
+    short high_reg = dst;
+    PCode* high;
+
+    if (FITS_IN_SHORT(value)) {
+        insertpcodeafter(after, makepcode(PC_LI, dst, value));
+        return;
+    }
+
+    if (copts.optimizationlevel > 1 && LOW_PART(value)) {
+        high_reg = ALLOC_GPR();
+    }
+    high = makepcode(PC_LIS, high_reg, 0, (short)HIGH_PART(value));
+    insertpcodeafter(after, high);
+    if (LOW_PART(value)) {
+        insertpcodeafter(high, makepcode(PC_ADDI, dst, high_reg, 0, LOW_PART(value)));
+    }
+}
+#endif
 
 void set_op_flags(Operand* op, ENode* expr) {
     CError_ASSERT(118, op);
@@ -135,6 +200,57 @@ void indirect(Operand* op, ENode* expr) {
 }
 
 #define COMBO_OP(a, b) (b + (a * 11))
+
+#if VERSION == VERSION_WII_1_0RC1
+typedef struct PPC32AddressLoad {
+    Object* object;
+    short high_reg;
+    short low_reg;
+    PCode* high_load;
+    struct PPC32AddressLoad* next;
+} PPC32AddressLoad;
+
+PPC32AddressLoad* ppc32_addr_loads;
+
+static short load_symbol_low(Object* obj, short base) {
+    PPC32AddressLoad* entry;
+
+    for (entry = ppc32_addr_loads; entry; entry = entry->next) {
+        if (entry->object == obj && entry->high_load->block == pclastblock) {
+            CError_ASSERT(491, entry->high_reg == base);
+            if (!entry->low_reg) {
+                entry->low_reg = ALLOC_GPR();
+            }
+            add_immediate_lo(entry->low_reg, entry->high_reg, obj, 0, TRUE);
+            return entry->low_reg;
+        }
+    }
+    return -1;
+}
+
+static short load_symbol_high_before(PCode* before, Object* obj) {
+    PPC32AddressLoad* entry;
+
+    for (entry = ppc32_addr_loads; entry; entry = entry->next) {
+        if (entry->object == obj && entry->high_load->block == pclastblock) {
+            break;
+        }
+    }
+    if (!entry) {
+        entry = lalloc(sizeof(*entry));
+        entry->object = obj;
+        entry->high_reg = ALLOC_GPR();
+        entry->low_reg = 0;
+        entry->next = ppc32_addr_loads;
+        ppc32_addr_loads = entry;
+    }
+    entry->high_load = op_absolute_ha(entry->high_reg, 0, obj, 0, !before);
+    if (before) {
+        insertpcodebefore(before, entry->high_load);
+    }
+    return entry->high_reg;
+}
+#endif
 
 void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
     Operand* swapOp;
@@ -281,8 +397,20 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
                 opOut->immOffset = LOW_PART(opB->immOffset + opA->immediate);
                 break;
             } else {
-                opOut->reg = output_reg ? output_reg : ALLOC_GPR();
-                add_immediate(opOut->reg, opB->reg, opB->object, opB->immOffset);
+#if VERSION == VERSION_WII_1_0RC1
+                short reg = -1;
+                if (opB->object->datatype == DDATA && !is_16bitdata(opB->object) &&
+                    opB->reg > 0 && !opB->immOffset) {
+                    reg = load_symbol_low(opB->object, opB->reg);
+                }
+                if (reg != -1) {
+                    opOut->reg = reg;
+                } else
+#endif
+                {
+                    opOut->reg = output_reg ? output_reg : ALLOC_GPR();
+                    add_immediate(opOut->reg, opB->reg, opB->object, opB->immOffset);
+                }
                 opB->optype = OpndType_GPR;
                 opB->reg = opOut->reg;
                 swapOp = opA;
@@ -336,7 +464,11 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+void coerce_to_addressable_before(PCode* before, Operand* op) {
+#else
 void coerce_to_addressable(Operand* op) {
+#endif
     UInt32 offset;
     short reg;
     short isIndirect;
@@ -364,7 +496,14 @@ void coerce_to_addressable(Operand* op) {
             if (obj->datatype == DLOCAL) {
                 if (!local_is_16bit_offset(obj)) {
                     reg = ALLOC_GPR();
+#if VERSION == VERSION_WII_1_0RC1
+                    PCode* high = op_absolute_ha(reg, local_base_register(obj), obj, 0, !before);
+                    if (before) {
+                        insertpcodebefore(before, high);
+                    }
+#else
                     op_absolute_ha(reg, local_base_register(obj), obj, 0, 1);
+#endif
                     op->optype = OpndType_GPR_ImmOffset;
                     op->reg = reg;
                     op->object = obj;
@@ -379,15 +518,29 @@ void coerce_to_addressable(Operand* op) {
                     op->reg = 0;
                     op->immOffset = obj->u.address;
                 } else {
+#if VERSION == VERSION_WII_1_0RC1
+                    op->reg = ALLOC_GPR();
+                    PCode* high = makepcode(PC_LIS, op->reg, 0, (short)HIGH_PART(offset));
+                    if (before) {
+                        insertpcodebefore(before, high);
+                    } else {
+                        appendpcode(pclastblock, high);
+                    }
+#else
                     emitpcode(
                         PC_LIS,
                         op->reg = ALLOC_GPR(),
                         0,
                         (short)HIGH_PART(offset)
                     );
+#endif
                     op->immOffset = LOW_PART(obj->u.address);
                 }
+#if VERSION == VERSION_WII_1_0RC1
+                op->object = NULL;
+#else
                 op->object = obj;
+#endif
                 op->optype = OpndType_GPR_ImmOffset;
             } else {
                 if (is_pooled_object(obj)) {
@@ -395,15 +548,35 @@ void coerce_to_addressable(Operand* op) {
                 } else {
                     reg = base_register(obj);
                     if (!is_16bitdata(obj)) {
+#if VERSION == VERSION_WII_1_0RC1
+                        if (!op->immOffset) {
+                            reg = load_symbol_high_before(before, obj);
+                        } else {
+                            hiReg = ALLOC_GPR();
+                            reg = ALLOC_GPR();
+                            PCode* high = op_absolute_ha(hiReg, 0, obj, 0, !before);
+                            PCode* low = add_immediate_lo(reg, hiReg, obj, 0, !before);
+                            if (before) {
+                                insertpcodebefore(before, high);
+                                insertpcodebefore(before, low);
+                            }
+                            op->object = NULL;
+                        }
+#else
                         ORACLE_PROBE(OracleProbe_Binding(op, obj, NULL));
                         hiReg = ALLOC_GPR();
                         reg = ALLOC_GPR();
                         op_absolute_ha(hiReg, 0, obj, 0, 1);
                         add_immediate_lo(reg, hiReg, obj, 0, 1);
                         op->object = NULL;
+#endif
                     } else if (!reg) {
                         reg = ALLOC_GPR();
+#if VERSION == VERSION_WII_1_0RC1
+                        add_immediate_before(before, reg, 0, obj, 0);
+#else
                         add_immediate(reg, 0, obj, 0);
+#endif
                         op->object = NULL;
                     }
                 }
@@ -574,6 +747,21 @@ void coerce_to_register_pair(Operand* op, Type* type, short output_reg, short ou
 
     CError_ASSERT(749, TYPE_IS_GPR_PAIR(type) || (IS_TYPE_STRUCT(type) && type->size == 8));
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (TYPE_IS_DPFP(type) && op->optype != OpndType_GPRPair) {
+        Coerce_to_spe_register(op, type, output_reg);
+        reg = op->reg;
+        if (output_reg && output_reg != reg) {
+            emitpcode(PC_MR, output_reg, reg);
+            op->reg = output_reg;
+        }
+        op->optype = OpndType_GPRPair;
+        op->regHi = output_regHi ? output_regHi : ALLOC_GPR();
+        emitpcode(PC_EVMERGELOHI, op->regHi, reg, reg);
+        return;
+    }
+#endif
+
     coerce_to_addressable(op);
     switch (op->optype) {
         case OpndType_GPRPair:
@@ -670,12 +858,18 @@ void coerce_to_register_pair(Operand* op, Type* type, short output_reg, short ou
             }
             break;
         case OpndType_IndirectGPR_Indexed:
+#if VERSION == VERSION_WII_1_0RC1
+            tmp1 = ALLOC_GPR();
+#endif
             reg = output_reg ? output_reg : ALLOC_GPR();
             regHi = output_regHi ? output_regHi : ALLOC_GPR();
-            emitpcode(PC_ADD, reg, op->reg, op->regOffset);
-            load_store_register(PC_LWZ, regHi, reg, NULL, high_offset);
+#if VERSION != VERSION_WII_1_0RC1
+            tmp1 = reg;
+#endif
+            emitpcode(PC_ADD, tmp1, op->reg, op->regOffset);
+            load_store_register(PC_LWZ, regHi, tmp1, NULL, high_offset);
             setpcodeflags(op->flags);
-            load_store_register(PC_LWZ, reg, reg, NULL, low_offset);
+            load_store_register(PC_LWZ, reg, tmp1, NULL, low_offset);
             setpcodeflags(op->flags);
             break;
         default:
@@ -867,6 +1061,15 @@ void store_pair(short reg, short regHi, Operand* op, Type* type) {
 
     CError_ASSERT(1156, TYPE_IS_GPR_PAIR(type));
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (TYPE_IS_DPFP(type)) {
+        short packed = ALLOC_GPR();
+        emitpcode(PC_EVMERGELO, packed, regHi, reg);
+        store_spe(packed, op, type);
+        return;
+    }
+#endif
+
     coerce_to_addressable(op);
     switch (op->optype) {
         case OpndType_IndirectGPR_ImmOffset:
@@ -967,6 +1170,11 @@ void extend32(Operand* op, Type* type, short output_reg) {
 
     switch (type->size) {
         case 1:
+#if VERSION == VERSION_WII_1_0RC1
+            if (type == TYPE(&stbool)) {
+                return;
+            }
+#endif
             if (is_unsigned(type)) {
                 if (loaded) {
                     return;
@@ -1006,6 +1214,10 @@ void extend32(Operand* op, Type* type, short output_reg) {
                 emitpcode(PC_EXTSH, tmp, op->reg);
             }
             break;
+#if VERSION == VERSION_WII_1_0RC1
+        case 4:
+            return;
+#endif
         default:
             CError_FATAL(1337);
     }
@@ -1067,6 +1279,43 @@ void load_floating_constant(short reg, Type* type, Float* data) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean reuse_float_conversion_slots;
+static Object* float_conversion_slots[2];
+static int next_float_conversion_slot;
+
+void setup_floating_conversion(int num_converts) {
+    Operand temp_op;
+    short reg;
+
+    reuse_float_conversion_slots = copts.use_fp && !copts.soft_float && num_converts >= 4;
+    next_float_conversion_slot = 0;
+    float_conversion_slots[0] = NULL;
+    float_conversion_slots[1] = NULL;
+    if (!reuse_float_conversion_slots) {
+        return;
+    }
+
+    float_conversion_slots[0] = maketemporarynoreuse(TYPE(&stdouble));
+    symbol_operand(&temp_op, float_conversion_slots[0]);
+    coerce_to_addressable(&temp_op);
+    emitpcode(PC_LIS, reg = ALLOC_GPR(), 0, 0x4330);
+    load_store_register(PC_STW, reg, temp_op.reg, temp_op.object, high_offset);
+
+    float_conversion_slots[1] = maketemporarynoreuse(TYPE(&stdouble));
+    symbol_operand(&temp_op, float_conversion_slots[1]);
+    coerce_to_addressable(&temp_op);
+    emitpcode(PC_LIS, reg = ALLOC_GPR(), 0, 0x4330);
+    load_store_register(PC_STW, reg, temp_op.reg, temp_op.object, high_offset);
+}
+
+static Object* next_floating_conversion_slot(void) {
+    Object* slot = float_conversion_slots[next_float_conversion_slot];
+    next_float_conversion_slot ^= 1;
+    return slot;
+}
+#endif
+
 void convert_integer_to_floating(Operand* op, Boolean is_single, short output_reg) {
     Float d;
     Operand temp_op;
@@ -1076,7 +1325,14 @@ void convert_integer_to_floating(Operand* op, Boolean is_single, short output_re
     int result_reg;
     short opcode;
 
-    symbol_operand(&temp_op, maketemporary(TYPE(&stdouble)));
+#if VERSION == VERSION_WII_1_0RC1
+    if (reuse_float_conversion_slots) {
+        symbol_operand(&temp_op, next_floating_conversion_slot());
+    } else
+#endif
+    {
+        symbol_operand(&temp_op, maketemporary(TYPE(&stdouble)));
+    }
     coerce_to_addressable(&temp_op);
     d = int_to_float_cc;
 
@@ -1086,8 +1342,13 @@ void convert_integer_to_floating(Operand* op, Boolean is_single, short output_re
     emitpcode(PC_XORIS, word_reg, op->reg, 0x8000);
     load_store_register(PC_STW, word_reg, temp_op.reg, temp_op.object, low_offset);
 
-    emitpcode(PC_LIS, word_reg = ALLOC_GPR(), 0, 0x4330);
-    load_store_register(PC_STW, word_reg, temp_op.reg, temp_op.object, high_offset);
+#if VERSION == VERSION_WII_1_0RC1
+    if (!reuse_float_conversion_slots)
+#endif
+    {
+        emitpcode(PC_LIS, word_reg = ALLOC_GPR(), 0, 0x4330);
+        load_store_register(PC_STW, word_reg, temp_op.reg, temp_op.object, high_offset);
+    }
 
     load_store_register(
         PC_LFD, work_reg = ALLOC_FPR(), temp_op.reg, temp_op.object, 0
@@ -1114,7 +1375,14 @@ void convert_unsigned_to_floating(Operand* op, Boolean is_single, short output_r
     int result_reg;
     short opcode;
 
-    symbol_operand(&temp_op, maketemporary(TYPE(&stdouble)));
+#if VERSION == VERSION_WII_1_0RC1
+    if (reuse_float_conversion_slots) {
+        symbol_operand(&temp_op, next_floating_conversion_slot());
+    } else
+#endif
+    {
+        symbol_operand(&temp_op, maketemporary(TYPE(&stdouble)));
+    }
     coerce_to_addressable(&temp_op);
     d = uns_to_float_cc;
 
@@ -1122,8 +1390,13 @@ void convert_unsigned_to_floating(Operand* op, Boolean is_single, short output_r
 
     load_store_register(PC_STW, op->reg, temp_op.reg, temp_op.object, low_offset);
 
-    emitpcode(PC_LIS, word_reg = ALLOC_GPR(), 0, 0x4330);
-    load_store_register(PC_STW, word_reg, temp_op.reg, temp_op.object, high_offset);
+#if VERSION == VERSION_WII_1_0RC1
+    if (!reuse_float_conversion_slots)
+#endif
+    {
+        emitpcode(PC_LIS, word_reg = ALLOC_GPR(), 0, 0x4330);
+        load_store_register(PC_STW, word_reg, temp_op.reg, temp_op.object, high_offset);
+    }
 
     load_store_register(
         PC_LFD, work_reg = ALLOC_FPR(), temp_op.reg, temp_op.object, 0
@@ -1396,3 +1669,78 @@ void I8_insert_bitfield(short reg, short regHi, Operand* op, TypeBitfield* tbitf
         emitpcode(PC_RLWIMI, op->reg, reg, 32 - end, offset, end - 1);
     }
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+void load_imm_vector(short reg, const UInt32* words) {
+    short first = ALLOC_GPR();
+    short second = ALLOC_GPR();
+    short high = first;
+    SInt32 value = (SInt32)words[0];
+
+    if (!FITS_IN_SHORT(value) && copts.optimizationlevel > 1 && LOW_PART(value)) {
+        high = ALLOC_GPR();
+    }
+    emit_load_immediate(first, high, value);
+
+    value = (SInt32)words[1];
+    high = second;
+    if (!FITS_IN_SHORT(value) && copts.optimizationlevel > 1 && LOW_PART(value)) {
+        high = ALLOC_GPR();
+    }
+    emit_load_immediate(second, high, value);
+    emitpcode(PC_EVMERGELO, reg, first, second);
+}
+
+short spe_transfer_opcode(Type* type, Boolean store_value) {
+    if (TYPE_IS_SOFT_FLOAT(type) && type->size == 8) {
+        return store_value ? PC_EVSTDDX : PC_EVLDDX;
+    }
+    switch (TYPE_STRUCT(type)->members->type->size) {
+        case 2:
+            return store_value ? PC_EVSTDHX : PC_EVLDHX;
+        case 8:
+            return store_value ? PC_EVSTDDX : PC_EVLDDX;
+        default:
+            return store_value ? PC_EVSTDWX : PC_EVLDWX;
+    }
+}
+
+static void spe_load_store(short reg, Operand* op, Type* type, Boolean store_value) {
+    short base;
+    short index;
+    coerce_to_addressable(op);
+    if (op->optype == OpndType_IndirectGPR_Indexed) {
+        base = op->reg;
+        index = op->regOffset;
+    } else {
+        CError_ASSERT(2040, op->optype == OpndType_IndirectGPR_ImmOffset);
+        base = 0;
+        if (op->object || op->immOffset) {
+            index = ALLOC_GPR();
+            add_immediate(index, op->reg, op->object, op->immOffset);
+        } else {
+            index = op->reg;
+        }
+    }
+    emitpcode(spe_transfer_opcode(type, store_value), reg, base, index);
+    setpcodeflags(op->flags);
+}
+
+void Coerce_to_spe_register(Operand* op, Type* type, short output_reg) {
+    if (op->optype != OpndType_GPR) {
+        short reg = output_reg ? output_reg : ALLOC_GPR();
+        if (TYPE_IS_DPFP(type) && op->optype == OpndType_GPRPair) {
+            emitpcode(PC_EVMERGELO, reg, op->regHi, op->reg);
+        } else {
+            spe_load_store(reg, op, type, FALSE);
+        }
+        op->optype = OpndType_GPR;
+        op->reg = reg;
+        op->object = NULL;
+    }
+}
+
+void store_spe(short reg, Operand* op, Type* type) {
+    spe_load_store(reg, op, type, TRUE);
+}
+#endif

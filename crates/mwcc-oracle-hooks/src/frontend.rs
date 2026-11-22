@@ -8,6 +8,8 @@ const OFFSETS: (usize, usize, usize, usize) = (0xd5, 0x72, 0x68, 0xa0);
 const OFFSETS: (usize, usize, usize, usize) = (0xd8, 0x72, 0x68, 0xa2);
 #[cfg(any(feature = "frontend-gc26", feature = "frontend-gc27"))]
 const OFFSETS: (usize, usize, usize, usize) = (0xdc, 0x76, 0x6c, 0xa4);
+#[cfg(feature = "frontend-wii-rc1")]
+const OFFSETS: (usize, usize, usize, usize) = (0xe5, 0x7d, 0x6e, 0xb4);
 unsafe extern "C" {
     fn OracleRust_LinkName(object: *const u8) -> *const c_char;
     fn OracleRust_OriginFind(reference: *const u8) -> i32;
@@ -24,7 +26,11 @@ unsafe extern "C" {
     #[cfg_attr(feature = "frontend-gc13", link_name = "can_inline__retail")]
     #[cfg_attr(feature = "frontend-gc132", link_name = "fn_0055ed70__retail")]
     #[cfg_attr(
-        any(feature = "frontend-gc26", feature = "frontend-gc27"),
+        any(
+            feature = "frontend-gc26",
+            feature = "frontend-gc27",
+            feature = "frontend-wii-rc1"
+        ),
         link_name = "fn_00560c80__retail"
     )]
     fn decision_retail(node: *const u8) -> u8;
@@ -34,7 +40,11 @@ unsafe extern "C" {
     )]
     #[cfg_attr(feature = "frontend-gc132", link_name = "fn_0055f350__retail")]
     #[cfg_attr(
-        any(feature = "frontend-gc26", feature = "frontend-gc27"),
+        any(
+            feature = "frontend-gc26",
+            feature = "frontend-gc27",
+            feature = "frontend-wii-rc1"
+        ),
         link_name = "fn_00561260__retail"
     )]
     fn expansion_retail(node: *const u8) -> *const u8;
@@ -44,7 +54,11 @@ unsafe extern "C" {
     )]
     #[cfg_attr(feature = "frontend-gc132", link_name = "fn_0055a7f0__retail")]
     #[cfg_attr(
-        any(feature = "frontend-gc26", feature = "frontend-gc27"),
+        any(
+            feature = "frontend-gc26",
+            feature = "frontend-gc27",
+            feature = "frontend-wii-rc1"
+        ),
         link_name = "fn_0055c730__retail"
     )]
     fn dispatch_retail() -> u8;
@@ -115,7 +129,11 @@ unsafe fn candidate(object: *const u8, reference: *const u8) -> bool {
 #[cfg_attr(feature = "frontend-gc13", unsafe(export_name = "can_inline"))]
 #[cfg_attr(feature = "frontend-gc132", unsafe(export_name = "fn_0055ed70"))]
 #[cfg_attr(
-    any(feature = "frontend-gc26", feature = "frontend-gc27"),
+    any(
+        feature = "frontend-gc26",
+        feature = "frontend-gc27",
+        feature = "frontend-wii-rc1"
+    ),
     unsafe(export_name = "fn_00560c80")
 )]
 unsafe extern "C" fn decision(node: *const u8) -> u8 {
@@ -513,7 +531,11 @@ unsafe extern "C" fn fn_0055e600(expr: *const u8, running: i32, depth: i32) -> i
 )]
 #[cfg_attr(feature = "frontend-gc132", unsafe(export_name = "fn_0055f350"))]
 #[cfg_attr(
-    any(feature = "frontend-gc26", feature = "frontend-gc27"),
+    any(
+        feature = "frontend-gc26",
+        feature = "frontend-gc27",
+        feature = "frontend-wii-rc1"
+    ),
     unsafe(export_name = "fn_00561260")
 )]
 unsafe extern "C" fn expansion(expr: *const u8) -> *const u8 {
@@ -571,7 +593,11 @@ unsafe extern "C" fn expansion(expr: *const u8) -> *const u8 {
 )]
 #[cfg_attr(feature = "frontend-gc132", unsafe(export_name = "fn_0055a7f0"))]
 #[cfg_attr(
-    any(feature = "frontend-gc26", feature = "frontend-gc27"),
+    any(
+        feature = "frontend-gc26",
+        feature = "frontend-gc27",
+        feature = "frontend-wii-rc1"
+    ),
     unsafe(export_name = "fn_0055c730")
 )]
 unsafe extern "C" fn dispatch() -> u8 {

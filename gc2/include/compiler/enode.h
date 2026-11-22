@@ -151,6 +151,10 @@ typedef enum ENodeType {
     EASSBLK,
     EVECTOR128CONST,
     ECONDASS,
+#if VERSION == VERSION_WII_1_0RC1
+    // Program IPA defers materializing this pointer-to-member constant.
+    EMEMBERFUNCLITERAL,
+#endif
     MAXEXPR
 } ENodeType;
 enum {

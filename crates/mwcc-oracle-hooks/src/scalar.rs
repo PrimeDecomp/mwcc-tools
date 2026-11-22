@@ -132,7 +132,7 @@ unsafe fn pending_end() {
     }
 }
 
-#[cfg(target_arch = "x86")]
+#[cfg(all(target_arch = "x86", not(feature = "source-probes")))]
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn create_temp_object(_ty: *const u8) -> *const u8 {
@@ -176,7 +176,7 @@ pub unsafe extern "C" fn OracleProbe_TempEnd(previous: *mut u32) {
 
 // (WebAssembly has neither the return address nor EBX: the call is the one gc2's probe names, which crate::temp_sites
 // gives the original's return address of, and the scalarizer's part is the one its probe announced)
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", feature = "source-probes"))]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn create_temp_object(ty: *const u8) -> *const u8 {
     unsafe {

@@ -460,7 +460,7 @@ fn identity(
 fn runtime_destination(path: &Path, oracle: &Path, version: Version) -> Result<String> {
     if let Some(tail) = within(path, oracle)? {
         let oracle_dir = format!("build/{}/oracle/", version.name());
-        let stock_dir = format!("build/compilers/GC/{}/", version.compiler_directory());
+        let stock_dir = format!("{}/", version.stock_directory());
         if tail.starts_with(&oracle_dir) || tail.starts_with(&stock_dir) {
             return Ok(format!("compiler/{tail}"));
         }
@@ -1111,10 +1111,7 @@ pub fn verify(bundle: &Path) -> Result<Verification> {
             "compiler/build/{}/oracle/mwcceppc.exe",
             manifest.version.name()
         );
-        let stock = format!(
-            "compiler/build/compilers/GC/{}/mwcceppc.exe",
-            manifest.version.compiler_directory()
-        );
+        let stock = format!("compiler/{}/mwcceppc.exe", manifest.version.stock_directory());
         ensure!(
             assets
                 .get(oracle.as_str())

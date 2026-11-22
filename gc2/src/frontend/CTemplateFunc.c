@@ -63,9 +63,15 @@ Boolean CTempl_CanDeduceFunc(Object* object, TypeFunc* tfunc, TemplArg* args) {
     return FALSE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static TemplFuncInstance* CTempl_GetCreateFuncInstanceImpl(
+    Object* funcobj, TemplArg* args, Object* object2, Boolean allowSubstitutionFailure
+) {
+#else
 static TemplFuncInstance* CTempl_GetCreateFuncInstance(
     Object* funcobj, TemplArg* args, Object* object2
 ) {
+#endif
     TemplFuncInstance* inst;
     TemplateFunction* templ;
     Object* instobj;
@@ -123,8 +129,10 @@ static TemplFuncInstance* CTempl_GetCreateFuncInstance(
     }
 
     inst->args = arg;
+#if VERSION != VERSION_WII_1_0RC1
     inst->next = templ->instances;
     templ->instances = inst;
+#endif
 
     if (!object2) {
         instobj = CParser_NewFunctionObject(NULL);
@@ -141,7 +149,15 @@ static TemplFuncInstance* CTempl_GetCreateFuncInstance(
             deduce.inst = TEMPL_CLASS_INST(funcobj->nspace->theclass);
         }
 
+#if VERSION == VERSION_WII_1_0RC1
+        deduce.suppressErrors = allowSubstitutionFailure;
+#endif
         instobj->type = CTemplTool_DeduceTypeCopy(&deduce, funcobj->type, &instobj->qual);
+#if VERSION == VERSION_WII_1_0RC1
+        if (deduce.substitutionFailed) {
+            return NULL;
+        }
+#endif
         inst->object = instobj;
 
         if (IS_TYPE_FUNC(instobj->type)) {
@@ -173,9 +189,20 @@ static TemplFuncInstance* CTempl_GetCreateFuncInstance(
         inst->object = object2;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    inst->next = templ->instances;
+    templ->instances = inst;
+#endif
     return inst;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static TemplFuncInstance* CTempl_GetCreateFuncInstance(
+    Object* funcobj, TemplArg* args, Object* object2
+) {
+    return CTempl_GetCreateFuncInstanceImpl(funcobj, args, object2, FALSE);
+}
+#endif
 TemplFuncInstance* CTempl_CheckFuncInstance(
     Object* object1, TypeFunc* tfunc, TemplArg* args, Object* object2
 ) {
@@ -368,10 +395,19 @@ static Type* CTempl_GetSpecifiedType(
     TemplateFunction* templ, Type* type, UInt32 qual, TemplArg* args, UInt32* resultQual
 ) {
     TypeDeduce deduce;
+#if VERSION == VERSION_WII_1_0RC1
+    Type* result;
+#endif
 
     CTemplFunc_SetupTypeDeduce(&deduce, templ, args);
     *resultQual = qual;
+#if VERSION == VERSION_WII_1_0RC1
+    deduce.suppressErrors = TRUE;
+    result = CTemplTool_DeduceTypeCopy(&deduce, type, resultQual);
+    return deduce.substitutionFailed ? NULL : result;
+#else
     return CTemplTool_DeduceTypeCopy(&deduce, type, resultQual);
+#endif
 }
 
 static Boolean CTempl_DeduceTemplateArgs(TemplArg* args1, TemplArg* args2, TemplArg* argArray) {
@@ -1293,12 +1329,21 @@ static Boolean CTempl_MatchTemplFunc(
                 Type* type;
                 UInt32 qual;
 
+#if VERSION == VERSION_WII_1_0RC1
+                type = CTempl_GetSpecifiedType(
+                    CTemplTool_GetFuncTempl(object), args->type, args->qual, info->args, &qual
+                );
+                if (!type || !CExpr_MatchAssign(type, qual, exprs->node, &match)) {
+                    return FALSE;
+                }
+#else
                 if ((type = CTempl_GetSpecifiedType(
                          CTemplTool_GetFuncTempl(object), args->type, args->qual, info->args, &qual
                      )) &&
                     !CExpr_MatchAssign(type, qual, exprs->node, &match)) {
                     return FALSE;
                 }
+#endif
             }
         } else {
             if (copts.old_argmatch &&
@@ -1319,6 +1364,18 @@ static Boolean CTempl_MatchTemplFunc(
     }
     info->args[info->maxCount].next = NULL;
 
+#if VERSION == VERSION_WII_1_0RC1
+    {
+        TypeFunc* func = TYPE_FUNC(object->type);
+        UInt32 qual;
+        if (CTemplTool_IsTemplateArgumentDependentType(func->functype) &&
+            !CTempl_GetSpecifiedType(
+                CTemplTool_GetFuncTempl(object), func->functype, func->qual, info->args, &qual
+            )) {
+            return FALSE;
+        }
+    }
+#endif
     return CExpr_MatchCompare(object, best, &match);
 }
 
@@ -1423,6 +1480,9 @@ Object* CTempl_DeduceFromFunctionCall(Object* funcobj, TemplArg* templargs, ENod
     DeduceInfo info;
     FuncArg* arg;
     int i;
+#if VERSION == VERSION_WII_1_0RC1
+    TemplFuncInstance* inst;
+#endif
 
     CError_ASSERT(1657, IS_TEMPL_FUNC(funcobj->type));
 
@@ -1499,7 +1559,12 @@ Object* CTempl_DeduceFromFunctionCall(Object* funcobj, TemplArg* templargs, ENod
         }
         info.args[info.maxCount].next = NULL;
 
+#if VERSION == VERSION_WII_1_0RC1
+        inst = CTempl_GetCreateFuncInstanceImpl(funcobj, info.args, NULL, TRUE);
+        return inst ? inst->object : NULL;
+#else
         return CTempl_GetCreateFuncInstance(funcobj, info.args, NULL)->object;
+#endif
     } else {
         return NULL;
     }
@@ -1508,6 +1573,9 @@ Object* CTempl_DeduceFromFunctionCall(Object* funcobj, TemplArg* templargs, ENod
 Object* CTempl_DeduceFromConversion(Object* funcobj, Type* type, UInt32 qual) {
     DeduceInfo info;
     int i;
+#if VERSION == VERSION_WII_1_0RC1
+    TemplFuncInstance* inst;
+#endif
 
     CError_ASSERT(1747, IS_TEMPL_FUNC(funcobj->type));
 
@@ -1543,7 +1611,12 @@ Object* CTempl_DeduceFromConversion(Object* funcobj, Type* type, UInt32 qual) {
     }
     info.args[info.maxCount].next = NULL;
 
+#if VERSION == VERSION_WII_1_0RC1
+    inst = CTempl_GetCreateFuncInstanceImpl(funcobj, info.args, NULL, TRUE);
+    return inst ? inst->object : NULL;
+#else
     return CTempl_GetCreateFuncInstance(funcobj, info.args, NULL)->object;
+#endif
 }
 
 static int CTemplFunc_TemplateNestLevel(NameSpace* nspace) {

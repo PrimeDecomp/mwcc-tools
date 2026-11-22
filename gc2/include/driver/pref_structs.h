@@ -144,6 +144,10 @@ typedef struct PFrontEndC {
     Boolean objective_c;
     Boolean defer_codegen;
     Boolean templateparser;
+#if VERSION == VERSION_WII_1_0RC1
+    UInt8 source_encoding;
+    Boolean inline_top_down;
+#endif
 } PFrontEndC;
 
 typedef struct PWarningC {
@@ -166,8 +170,22 @@ typedef struct PGlobalOptimizer {
     SInt16 version;
     UInt8 optimizationlevel;
     UInt8 optfor;
+#if VERSION == VERSION_WII_1_0RC1
+    UInt8 ipa_mode;
+    UInt8 reserved[7];
+#else
     UInt8 reserved[8];
+#endif
 } PGlobalOptimizer;
+
+#if VERSION == VERSION_WII_1_0RC1
+enum {
+    PPCFloatingPointSoftware = 1,
+    PPCFloatingPointHardware = 2,
+    PPCFloatingPointSPFP = 3,
+    PPCFloatingPointDPFP = 4
+};
+#endif
 
 typedef struct PBackEnd {
     SInt16 version;
@@ -189,7 +207,11 @@ typedef struct PBackEnd {
     Boolean fp_contract;
     UInt8 altivec;
     Boolean vrsave;
-#if VERSION < VERSION_GC_2_0
+#if VERSION == VERSION_WII_1_0RC1
+    UInt8 unknown16[0x30 - 0x16];
+    UInt8 spe;
+    UInt8 unknown31[0x3a - 0x31];
+#elif VERSION < VERSION_GC_2_0
     UInt8 unknown16[6];
 #else
     UInt8 unknown16[22];

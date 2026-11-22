@@ -159,6 +159,15 @@ static void addsuccessor(DGNode* a, DGNode* b, Boolean hasLatency) {
 
     if (hasLatency) {
         latency = a->latency;
+#if VERSION == VERSION_WII_1_0RC1
+        if (latency > 0 && (b->instr->flags & (fIsWrite | fOpToMemory)) &&
+            is_same_operand(b->instr->args, a->instr->args)) {
+            latency--;
+        }
+        if (b->instr->flags & fIsBranch) {
+            latency += MI->branch_latency;
+        }
+#endif
     } else {
         latency = 0;
     }
@@ -181,9 +190,11 @@ static void addsuccessor(DGNode* a, DGNode* b, Boolean hasLatency) {
     a->successors = succ;
     succ->latency = latency;
 
+#if VERSION != VERSION_WII_1_0RC1
     if (hasLatency && (succ->node->instr->flags & fIsBranch)) {
         succ->latency += MI->branch_latency;
     }
+#endif
 
     b->predCount++;
 
@@ -303,6 +314,11 @@ static void findsuccessors(DGNode* nodes, DGNode* node) {
                     CError_FATAL(470);
                 }
 
+#if VERSION == VERSION_WII_1_0RC1
+                if (!(op->data.reg.effect & (EffectRead | EffectWrite))) {
+                    break;
+                }
+#else
                 if (op->kind == PCOp_REGISTER && op->arg == RegClass_GPR) {
                     if (op->data.reg.reg == Register2) {
                         break;
@@ -315,6 +331,7 @@ static void findsuccessors(DGNode* nodes, DGNode* node) {
                         break;
                     }
                 }
+#endif
 
                 serializeregister(
                     op->arg,
@@ -341,7 +358,11 @@ static void findsuccessors(DGNode* nodes, DGNode* node) {
         addtolist(&volatile_refs, node);
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (((instr->flags & (fIsCall | fIsBranch)) && (instr->flags & fLink)) ||
+#else
     if ((((instr->flags & fIsCall) | fIsBranch) && (instr->flags & fLink)) ||
+#endif
         (instr->flags & fSideEffects) ||
         MI->serializes(instr)) {
         serializeall(nodes, node);
@@ -399,6 +420,16 @@ static DGNode* selectinstruction(DGNode* nodes, UInt16 counter) {
     if (!node) {
         return NULL;
     }
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (copts.optimizesize) {
+        for (candidate = node->next; candidate; candidate = candidate->next) {
+            if (candidate->predCount == 0 && candidate->earliest <= counter) {
+                MI->can_issue(candidate->instr);
+            }
+        }
+    }
+#endif
 
     for (candidate = node->next; candidate; candidate = candidate->next) {
         if (candidate->predCount == 0 &&
@@ -531,6 +562,9 @@ void scheduleinstructions(Boolean includePrologEpilog) {
         MI = &machine604;
     } else if (cpu == 4) {
         MI = &machine750;
+#if VERSION == VERSION_WII_1_0RC1
+        m750_initialize_timing();
+#endif
     } else if (cpu == 1) {
         MI = &machine601;
     } else if (cpu == 9) {
@@ -543,8 +577,10 @@ void scheduleinstructions(Boolean includePrologEpilog) {
 
     for (block = pcbasicblocks; block; block = block->nextBlock) {
         if (block->pcodeCount > 2 &&
-            (includePrologEpilog || !(block->flags & (fIsProlog | fIsEpilogue))) &&
-            !(block->flags & fScheduled)) {
+#if VERSION != VERSION_WII_1_0RC1
+            !(block->flags & fScheduled) &&
+#endif
+            (includePrologEpilog || !(block->flags & (fIsProlog | fIsEpilogue)))) {
             scheduleblock(block);
             block->flags |= fScheduled;
         }

@@ -38,6 +38,9 @@ static Boolean cexpr_hascall;
 static Boolean cexpr_esearch_bool[MAXEXPR];
 static Boolean cexpr_rsearch_bool[MAXEXPR];
 static CExprSearchCB cexpr_esearch_callback;
+#if VERSION == VERSION_WII_1_0RC1
+static void (*cexpr_ipa_reference)(Object*, Boolean);
+#endif
 static CExprReplaceCB cexpr_rsearch_callback;
 static Type* cexpr_left_conversion_type;
 static Type* cexpr_right_conversion_type;
@@ -53,6 +56,11 @@ restart:
     if (cexpr_esearch_bool[expr->type]) {
         cexpr_esearch_callback(expr);
     }
+#if VERSION == VERSION_WII_1_0RC1
+    if (cexpr_ipa_reference && expr->type == EOBJREF) {
+        cexpr_ipa_reference(expr->data.objref, FALSE);
+    }
+#endif
 
     switch (expr->type) {
         case EPOSTINC:
@@ -126,6 +134,20 @@ restart:
             return;
         case EFUNCCALL:
         case EFUNCCALLP:
+#if VERSION == VERSION_WII_1_0RC1
+            if (cexpr_ipa_reference) {
+                ENode* callee = expr->data.funccall.funcref;
+                if (callee->type == EOBJREF) {
+                    cexpr_ipa_reference(callee->data.objref, TRUE);
+                } else {
+                    CExpr_RecSearchExprTree(callee);
+                }
+                for (list = expr->data.funccall.args; list; list = list->next) {
+                    CExpr_RecSearchExprTree(list->node);
+                }
+                return;
+            }
+#endif
             for (list = expr->data.funccall.args; list; list = list->next) {
                 CExpr_RecSearchExprTree(list->node);
             }
@@ -146,6 +168,11 @@ restart:
             goto restart;
         case ENEWEXCEPTION:
         case ENEWEXCEPTIONARRAY:
+#if VERSION == VERSION_WII_1_0RC1
+            if (cexpr_ipa_reference) {
+                cexpr_ipa_reference(expr->data.newexception.deletefunc, FALSE);
+            }
+#endif
             CExpr_RecSearchExprTree(expr->data.newexception.initexpr);
             expr = expr->data.newexception.tryexpr;
             goto restart;
@@ -173,6 +200,9 @@ void CExpr_SearchExprTree(ENode* expr, CExprSearchCB callback, SInt32 count, ...
     short i;
 
     cexpr_esearch_callback = callback;
+#if VERSION == VERSION_WII_1_0RC1
+    cexpr_ipa_reference = NULL;
+#endif
 
     va_start(ap, count);
     for (i = 0; i < MAXEXPR; i++) {
@@ -187,6 +217,17 @@ void CExpr_SearchExprTree(ENode* expr, CExprSearchCB callback, SInt32 count, ...
 
     CExpr_RecSearchExprTree(expr);
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+void CExpr_SearchIPAReferences(ENode* expr, CExprSearchCB opaque, void (*visit)(Object*, Boolean)) {
+    cexpr_ipa_reference = visit;
+    cexpr_esearch_callback = opaque;
+    memclrw(cexpr_esearch_bool, sizeof(cexpr_esearch_bool));
+    cexpr_esearch_bool[EOBJLIST] = cexpr_esearch_bool[EINSTRUCTION] = TRUE;
+    CExpr_RecSearchExprTree(expr);
+    cexpr_ipa_reference = NULL;
+}
+#endif
 
 static ENode* CExpr_RecSearchExprTreeReplace(ENode* expr) {
     ENodeList* list;
@@ -2828,7 +2869,7 @@ ENode* CExpr_VarArgPromotion(ENode* expr, Boolean toEllipsis) {
             break;
     }
 
-    if (CMach_PassResultInHiddenArg(expr->rtype)) {
+    if (CMach_PassAddressOf(expr->rtype)) {
         expr = argumentpromotion(expr, expr->rtype, expr->flags, TRUE);
     }
 

@@ -618,8 +618,47 @@ static int checkunknownloop(int opcode, int condition, int step, unsigned char* 
     return TRUE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static const PCode* read_loop_bound(const PCode* last, short reg, SInt32* value) {
+    const PCode* high;
+
+    if (!last->argCount || !PC_OP_IS_REGISTER(&last->args[0], RegClass_GPR, reg)) {
+        return NULL;
+    }
+
+    switch (last->op) {
+        case PC_LI:
+        case PC_LIS:
+            if (last->args[1].kind != PCOp_IMMEDIATE) {
+                return NULL;
+            }
+            *value = last->args[1].data.imm.value;
+            if (last->op == PC_LIS) {
+                *value = (SInt32)((UInt32)*value << 16);
+            }
+            return last;
+        case PC_ADDI:
+            high = last->prevPCode;
+            if (!PC_OP_IS_ANY_REGISTER(&last->args[1], RegClass_GPR) || !last->args[1].data.reg.reg ||
+                last->args[2].kind != PCOp_IMMEDIATE || !high || high->op != PC_LIS ||
+                high->args[1].kind != PCOp_IMMEDIATE ||
+                !PC_OP_IS_REGISTER(&high->args[0], RegClass_GPR, last->args[1].data.reg.reg)) {
+                return NULL;
+            }
+            *value = (SInt32)(((UInt32)high->args[1].data.imm.value << 16) +
+                            (UInt32)last->args[2].data.imm.value);
+            return high;
+        default:
+            return NULL;
+    }
+}
+#endif
+
 static void checkcountingloop(Loop* loop) {
     RegUseOrDef* list;
+#if VERSION == VERSION_WII_1_0RC1
+    UInt32* preheader_defs;
+#endif
     PCode* lastpcode;
     PCode* prevpcode;
     PCode* instr;
@@ -695,6 +734,10 @@ static void checkcountingloop(Loop* loop) {
         return;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    // Code motion can place a bound's definition in the preheader.
+    preheader_defs = usedefinfo[loop->preheader->blockIndex].defout;
+#endif
     if (cmpOp == PC_CMPI) {
         if (prevpcode->prevPCode) {
             return;
@@ -709,6 +752,15 @@ static void checkcountingloop(Loop* loop) {
         loop->upperType = LOOP_BOUND_CONSTANT;
     } else if (cmpOp == PC_CMP || cmpOp == PC_CMPL) {
         if (prevpcode->prevPCode) {
+#if VERSION == VERSION_WII_1_0RC1
+            const PCode* bound = read_loop_bound(
+                prevpcode->prevPCode, prevpcode->args[2].data.reg.reg, &loop->upper
+            );
+            if (!bound || bound->prevPCode) {
+                return;
+            }
+            loop->upperType = LOOP_BOUND_CONSTANT;
+#else
             if (prevpcode->prevPCode->op == PC_LI &&
                 prevpcode->prevPCode->args[1].kind == PCOp_IMMEDIATE &&
                 prevpcode->prevPCode->args[0].data.reg.reg == prevpcode->args[2].data.reg.reg &&
@@ -740,6 +792,7 @@ static void checkcountingloop(Loop* loop) {
             } else {
                 return;
             }
+#endif
         } else {
             instr = NULL;
             for (list = reg_Defs[RegClass_GPR][prevpcode->args[2].data.reg.reg]; list;
@@ -750,9 +803,20 @@ static void checkcountingloop(Loop* loop) {
             }
             for (list = reg_Defs[RegClass_GPR][prevpcode->args[2].data.reg.reg]; list;
                  list = list->next) {
+#if VERSION == VERSION_WII_1_0RC1
+                if (bitvectorgetbit(list->id, preheader_defs)) {
+#else
                 if (bitvectorgetbit(list->id, usedefinfo[loop->preheader->blockIndex].defin)) {
+#endif
                     if (!instr) {
                         instr = Defs[list->id].pcode;
+#if VERSION == VERSION_WII_1_0RC1
+                        if (!read_loop_bound(instr, prevpcode->args[2].data.reg.reg, &loop->upper)) {
+                            loop->upperType = LOOP_BOUND_VARIABLE;
+                            break;
+                        }
+                        loop->upperType = LOOP_BOUND_CONSTANT;
+#else
                         if (instr->op == PC_LI && instr->args[1].kind == PCOp_IMMEDIATE) {
                             loop->upper = instr->args[1].data.imm.value;
                             loop->upperType = LOOP_BOUND_CONSTANT;
@@ -774,6 +838,7 @@ static void checkcountingloop(Loop* loop) {
                             loop->upperType = LOOP_BOUND_VARIABLE;
                             break;
                         }
+#endif
                     } else {
                         loop->upperType = LOOP_BOUND_VARIABLE;
                         break;
@@ -833,9 +898,20 @@ static void checkcountingloop(Loop* loop) {
     instr = NULL;
 
     for (list = reg_Defs[RegClass_GPR][ivReg]; list; list = list->next) {
+#if VERSION == VERSION_WII_1_0RC1
+        if (bitvectorgetbit(list->id, preheader_defs)) {
+#else
         if (bitvectorgetbit(list->id, usedefinfo[loop->preheader->blockIndex].defin)) {
+#endif
             if (!instr) {
                 instr = Defs[list->id].pcode;
+#if VERSION == VERSION_WII_1_0RC1
+                if (!read_loop_bound(instr, ivReg, &loop->lower)) {
+                    loop->lowerType = LOOP_BOUND_VARIABLE;
+                    break;
+                }
+                loop->lowerType = LOOP_BOUND_CONSTANT;
+#else
                 if (instr->op == PC_LI && instr->args[1].kind == PCOp_IMMEDIATE) {
                     loop->lower = instr->args[1].data.imm.value;
                     loop->lowerType = LOOP_BOUND_CONSTANT;
@@ -856,6 +932,7 @@ static void checkcountingloop(Loop* loop) {
                     loop->lowerType = LOOP_BOUND_VARIABLE;
                     break;
                 }
+#endif
             } else {
                 loop->lowerType = LOOP_BOUND_INDETERMINATE;
                 break;

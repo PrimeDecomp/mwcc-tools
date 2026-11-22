@@ -481,6 +481,58 @@ void CTemplClass_ParsePartialSpecialization(
 #define CError_LINE_DELTA 0
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+void CTemplClass_ParseFriendClass(NameSpace* scope, TemplParam* params, short mode) {
+    NameResult name;
+    Type* type;
+    TemplClass* templ;
+    TemplParam* param;
+
+    tk = lex();
+    if (!CScope_ParseElaborateName(&name)) {
+        return;
+    }
+    if (!name.name && tk == TK_IDENTIFIER) {
+        name.name = tkidentifier;
+    }
+    if (!name.name || (tk = lex()) != ';') {
+        CError_Error(ERR_ILLEGAL_FRIEND_DECLARATION);
+        return;
+    }
+
+    type = name.type;
+    if (type && IS_TYPE_TEMPLATE(type)) {
+        type = CTemplTool_GetSelfRefTemplate(type);
+    }
+    if (type) {
+        if (!IS_TEMPL_CLASS(type) ||
+            !CTemplTool_EqualParams(TEMPL_CLASS(type)->templ__params, params, FALSE)) {
+            CError_Error(ERR_ILLEGAL_FRIEND_DECLARATION);
+            return;
+        }
+        templ = TEMPL_CLASS(type);
+    } else {
+        if (name.is_qualified) {
+            CError_Error(ERR_UNDEFINED_IDENTIFIER, name.name->name);
+            return;
+        }
+        templ = galloc(sizeof(TemplClass));
+        memclrw(templ, sizeof(TemplClass));
+        templ->next = ctempl_templates;
+        ctempl_templates = templ;
+        templ->templ__params = params;
+        for (param = params; param; param = param->next) {
+            param->pid.nindex = 0;
+        }
+        CDecl_DefineClass(
+            CScope_FindGlobalNS(scope), name.name, TYPE_CLASS(templ), mode, FALSE, TRUE
+        );
+        templ->theclass.flags = CLASS_IS_TEMPL;
+    }
+    CDecl_AddFriend(scope->theclass, NULL, TYPE_CLASS(templ));
+}
+#endif
+
 void CTemplClass_ParseClass(
     TemplateScopeState* templateScope, TemplParam* params, short mode, SInt32* offset
 ) {
@@ -491,7 +543,11 @@ void CTemplClass_ParseClass(
 
     nspace = templateScope->scope;
     if ((tk = lex()) == TK_UU_DECLSPEC) {
+#if VERSION == VERSION_WII_1_0RC1
+        CDecl_ParseClassDeclSpec(&classDeclSpec, TRUE);
+#else
         CDecl_ParseClassDeclSpec(&classDeclSpec);
+#endif
     }
 
     if (tk != TK_IDENTIFIER) {
@@ -1739,6 +1795,9 @@ Boolean CTempl_InstantiateTemplateClass(TypeClass* tclass) {
     TypeDeduce deduce;
     TStreamElement* saveErrorRef;
     TemplArg* inst_args;
+#if VERSION == VERSION_WII_1_0RC1
+    ClassFriend* entry;
+#endif
 
     CError_ASSERT(2000, tclass->flags & CLASS_IS_TEMPL_INST);
 
@@ -1824,7 +1883,17 @@ Boolean CTempl_InstantiateTemplateClass(TypeClass* tclass) {
     CTemplClass_CopyIVars(&deduce, inst, templ);
     CTemplClass_CopyNameSpace(&deduce, inst, templ);
 
+#if VERSION == VERSION_WII_1_0RC1
+    for (entry = templ->theclass.friends; entry; entry = entry->next) {
+        if (entry->isclass) {
+            CDecl_AddFriend(tclass, NULL, entry->u.theclass);
+        } else {
+            CDecl_AddFriend(tclass, entry->u.obj, NULL);
+        }
+    }
+#else
     CError_ASSERT(2116, !templ->theclass.friends);
+#endif
 
     for (action = templ->actions; action; action = action->next) {
         switch (action->type) {

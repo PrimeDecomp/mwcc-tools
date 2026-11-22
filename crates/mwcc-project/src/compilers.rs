@@ -7,6 +7,7 @@ use anyhow::{Context, Result, bail, ensure};
 use mwcc_trace::version::Version;
 use sha1::{Digest, Sha1};
 use std::{
+    borrow::Cow,
     collections::HashMap,
     ffi::OsString,
     fs,
@@ -121,12 +122,9 @@ fn same(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// VERSION's stock compiler in ROOT (`build/compilers/GC/<dir>/mwcceppc.exe`).
+/// VERSION's stock compiler in ROOT.
 pub fn stock_executable(root: &Path, version: Version) -> PathBuf {
-    root.join(format!(
-        "build/compilers/GC/{}/mwcceppc.exe",
-        version.compiler_directory()
-    ))
+    root.join(version.stock_directory()).join("mwcceppc.exe")
 }
 
 /// VERSION's oracle executable in ROOT (what a traced run stands for).
@@ -134,10 +132,41 @@ fn oracle_executable(root: &Path, version: &str) -> PathBuf {
     root.join(format!("build/{version}/oracle/mwcceppc.exe"))
 }
 
+fn wii_oracle_path(root: &Path, executable: &Path) -> bool {
+    same(
+        executable,
+        &oracle_executable(root, Version::Wii10Rc1.name()),
+    )
+}
+
+fn wii_windows_oracle(root: &Path) -> PathBuf {
+    root.join("gc2/build/Wii_1_0RC1/oracle/mwcceppc.exe")
+}
+
+/// The Windows executable that implements a logical oracle path when run as a process.
+pub fn native_executable<'a>(root: &Path, executable: &'a Path) -> Cow<'a, Path> {
+    if !executable.is_file() && wii_oracle_path(root, executable) {
+        let native = wii_windows_oracle(root);
+        if native.is_file() {
+            return Cow::Owned(native);
+        }
+    }
+    Cow::Borrowed(executable)
+}
+
+fn wii_source_oracle(root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
+    let version = Version::Wii10Rc1;
+    let module = root.join(module_output(version.name()));
+    (module.is_file() && wii_oracle_path(root, executable)).then_some((version, module))
+}
+
 /// The module that runs in EXECUTABLE's place, one of ROOT's (a checkout of mwcc) compilers, if it is built.
 pub fn module(root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
     if !enabled() {
         return None;
+    }
+    if let Some(oracle) = wii_source_oracle(root, executable) {
+        return Some(oracle);
     }
     for name in MODULE_VERSIONS {
         let version = Version::parse(name).ok()?;
@@ -153,9 +182,10 @@ pub fn module(root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
 
 /// Whether a run in EXECUTABLE's place traces: EXECUTABLE is one of ROOT's oracles.
 pub fn traces(root: &Path, executable: &Path) -> bool {
-    VERSIONS
-        .iter()
-        .any(|name| same(executable, &oracle_executable(root, name)))
+    wii_oracle_path(root, executable)
+        || VERSIONS
+            .iter()
+            .any(|name| same(executable, &oracle_executable(root, name)))
 }
 
 /// The module that runs in place of EXECUTABLE, a compiler anywhere (a project's own copy): [`module`] where it is
@@ -168,6 +198,9 @@ pub fn module_of_copy(root: &Path, executable: &Path) -> Option<(Version, PathBu
 fn module_of_copy_if(enabled: bool, root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
     if !enabled {
         return None;
+    }
+    if let Some(oracle) = wii_source_oracle(root, executable) {
+        return Some(oracle);
     }
     let identity = identity(root, executable);
     [identity.own, identity.copy]
@@ -217,12 +250,7 @@ fn identity(root: &Path, executable: &Path) -> Identity {
         return *identity;
     }
     let own = MODULE_VERSIONS.into_iter().find(|name| {
-        let stock = Version::parse(name).map(|version| {
-            root.join(format!(
-                "build/compilers/GC/{}/mwcceppc.exe",
-                version.compiler_directory()
-            ))
-        });
+        let stock = Version::parse(name).map(|version| stock_executable(root, version));
         stock.is_ok_and(|stock| same(executable, &stock))
             || same(executable, &oracle_executable(root, name))
     });
@@ -293,7 +321,7 @@ fn trace_route_if(
     mw_version: Option<&str>,
 ) -> Result<TraceRoute> {
     if let Some((version, module)) = module_of_copy_if(in_process, root, compiler)
-        && VERSIONS.contains(&version.name())
+        && (VERSIONS.contains(&version.name()) || version == Version::Wii10Rc1)
     {
         return Ok(TraceRoute::Module { version, module });
     }
@@ -304,6 +332,31 @@ fn trace_route_if(
             oracle_versions(root).join(", ")
         );
     };
+    if version == Version::Wii10Rc1 {
+        let alias = oracle_executable(root, version.name());
+        let native = native_executable(root, &alias);
+        if !wii_oracle_path(root, compiler) && !same(compiler, &native) {
+            let config = root.join(format!("config/{}/config.json", version.name()));
+            let config: serde_json::Value = serde_json::from_slice(&fs::read(&config)?)?;
+            let digest = format!("{:x}", Sha1::digest(fs::read(compiler)?));
+            ensure!(
+                config["sha1"].as_str() == Some(digest.as_str()),
+                "no Wii 1.0RC1 oracle for {} (SHA-1 {digest})",
+                compiler.display()
+            );
+            if in_process && let Some((version, module)) = wii_source_oracle(root, &alias) {
+                return Ok(TraceRoute::Module { version, module });
+            }
+        }
+        ensure!(
+            native.is_file(),
+            "build the Wii 1.0RC1 Windows oracle with gc2/configure.py --oracle-tools"
+        );
+        return Ok(TraceRoute::Native {
+            version,
+            oracle: native.into_owned(),
+        });
+    }
     let name = version.name();
     let config = root.join(format!("config/{name}/config.json"));
     let config: serde_json::Value = serde_json::from_slice(
@@ -354,13 +407,21 @@ fn oracle_versions(root: &Path) -> Vec<String> {
 
 /// The command that runs EXECUTABLE, a Windows program: itself on Windows, else through wibo ([`wibo`], ROOT's).
 pub fn launcher(root: &Path, executable: &Path) -> Result<Command> {
-    launcher_with_override(&[root], executable, std::env::var_os("MWCC_WIBO"))
+    launcher_with_override(
+        &[root],
+        &native_executable(root, executable),
+        std::env::var_os("MWCC_WIBO"),
+    )
 }
 
 /// [`launcher`] for a project's build in PROJECT: the project's own wibo (`build/tools/wibo`, the one its build
 /// downloads) before ROOT's.
 pub fn project_launcher(project: &Path, root: &Path, executable: &Path) -> Result<Command> {
-    launcher_with_override(&[project, root], executable, std::env::var_os("MWCC_WIBO"))
+    launcher_with_override(
+        &[project, root],
+        &native_executable(root, executable),
+        std::env::var_os("MWCC_WIBO"),
+    )
 }
 
 fn launcher_with_override(
@@ -458,6 +519,35 @@ mod tests {
     fn file(path: &Path, bytes: &[u8]) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn wii_rc1_trace_selects_the_source_built_oracle() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        let version = Version::Wii10Rc1;
+        let stock = stock_executable(root, version);
+        let alias = oracle_executable(root, version.name());
+        let native = wii_windows_oracle(root);
+        let module = root.join(module_output(version.name()));
+        configured(root, version.name(), b"RC1", false);
+        file(&stock, b"RC1");
+        file(&native, b"windows oracle");
+        file(&module, b"wasm oracle");
+        assert_eq!(native_executable(root, &alias), native);
+        assert_eq!(
+            trace_route_if(true, root, &stock, Some(version), None).unwrap(),
+            TraceRoute::Module { version, module }
+        );
+        assert_eq!(
+            trace_route_if(false, root, &stock, Some(version), None).unwrap(),
+            TraceRoute::Native {
+                version,
+                oracle: native
+            }
+        );
+        file(&stock, b"modified RC1");
+        assert!(trace_route_if(true, root, &stock, Some(version), None).is_err());
     }
 
     #[test]

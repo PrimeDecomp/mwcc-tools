@@ -63,6 +63,94 @@ without [wibo](https://github.com/decompals/wibo) and supports `MWCC_SJIS=1` the
 
 `configure.py --version GC_2_6` configures only the specified versions to be built using clang.
 
+### Wii 1.0RC1 source port
+
+From `gc2/`, build the opt-in RC1 target with Clang, LLD and Ninja.
+
+```sh
+uv run python configure.py --version Wii_1_0RC1
+ninja
+```
+
+The Windows build emits `build/Wii_1_0RC1/clang/mwcceppc.exe` and builds its
+`lmgr326b.dll` support library from source. The build compiles the shared compiler
+sources and the MSL and runtime sources fetched into `lib/`. The stock RC1 image and
+CodeView layout are reference inputs for recovery and testing.
+
+With a built `mwcc-tools` and the Rust `i686-pc-windows-msvc` target, add
+`--oracle-tools PATH` to `configure.py` to build the native instrumented compiler.
+
+```sh
+uv run python configure.py --version Wii_1_0RC1 --oracle-tools ../target/debug/mwcc-tools.exe
+ninja build/Wii_1_0RC1/oracle/mwcceppc.exe
+```
+
+The oracle links the RC1 source compiler and the shared Rust hooks. Set
+`MWCC_ORACLE_TRACE_FILE` to save its trace. It can also act as the RC1 oracle in
+`mwcc-tools corpus` and other trace commands. Full register provenance requires
+additional native instruction mappings.
+
+The port compiles C and C++ for Gekko. File IPA defers emission, resolves frontend definitions,
+inlines across the translation unit, and removes unreachable functions and data. The call graph
+reads a per-body reference table with direct-call counts and address references. The function bodies
+still use the shared inline function representation.
+The frontend supports Shift-JIS source text and class-template friend declarations.
+The e500, e500v2, and Zen targets support SPE types, arguments, and inline assembly.
+The SPE assembler uses the stock opcode and processor tables, including the accumulator
+and status effects saved in program IPA sidecars. Scalar SPE floating point supports
+`-fp efpu` (also `spfp`) and `-fp dpfp`, including arithmetic, comparisons, conversions
+with 32-bit integers, and the GPR calling convention. DPFP keeps values in packed
+registers between instructions and uses register pairs at the EABI call boundary.
+Some register allocation and scheduling still differs from stock.
+Interrupt handlers use separate save rules for leaf functions and functions that call out.
+The source port supports SPE register saves and the RC1 critical, machine-check, and debug
+interrupt return conventions. Program IPA preserves the function's interrupt attributes.
+`__declspec(align(...))` is supported for objects and members, including local variables
+that require stack realignment. Program IPA and precompiled headers preserve alignment.
+With `-ipa program -c`, the compiler writes an `.irobj` sidecar alongside the object file.
+The Windows driver resolves and optimizes across source files and `.irobj` inputs before
+passing PowerPC objects to `mwldeppc.exe`. It can also replay a single sidecar with
+`-ipa program -c input.irobj -o output.o`. When building from source, entire functions
+written in assembly are emitted into the ordinary object file. Regenerate sidecars
+from older source builds when they contain explicit alignment.
+The source compiler can write and read its own precompiled headers, including custom code,
+data and BSS sections and section assignments on declarations. Regenerate headers from earlier
+source builds to pick up the native alignment and tentative-definition encoding. With `-E`,
+the compiler expands macros from stock RC1 precompiled
+headers, restores include-once state, and retains the PCH include in the resulting
+source. During compilation it can also load stock typedefs, external declarations,
+C structs and unions, enums, C++ namespaces, and class declarations. The reader restores
+recursive type identity, bitfield layouts, overloads, custom sections, and class layouts
+with nonvirtual and virtual bases. It also restores member pointers and vtable ownership.
+Stock function defaults can use literals, object references, operators, conditionals, calls,
+constructor temporaries, allocation expressions, and member pointers. The reader restores
+friend classes and functions, including declared members of other classes. It also restores
+static data, its relocations and read-only placement, and the values of inline data constants.
+Saved C++ inline bodies use the program IPA decoder and can be inlined, emitted out of line,
+or written into a new source-format PCH. The reader preserves C tentative definitions for
+completion by the consumer and restores C++ startup expressions in declaration order,
+including class-array construction and destructor registration. It restores function
+and class templates, including partial class specializations, stored instances and
+specializations, nested template clones, and deferred member and static data definitions.
+The reader restores dependent bases, types and enum values and preserves method
+parameter names when writing a new PCH. Certain class-template actions, serialized
+thunks, and additional dependent expression forms still require symbol-graph recovery.
+Additional source encodings and portions of optimizer and frontend behavior
+also need recovery. See the
+[RC1 CodeView layout and cross-version diff map](research/README.md).
+
+Run `uv run python tools/wii_rc1_smoke.py` on Windows to check the compiler macros,
+inlining switches, aggregate-copy instructions, Shift-JIS literals, PCH round trips, and C and C++ file IPA. The test uses
+`llvm-objcopy` and `llvm-nm`. Pass `--reference PATH` to compare the C file-IPA and other
+instruction-byte fixtures and exercise stock PCH macros, declarations, and function templates.
+Run `uv run python tools/wii_rc1_irobj_smoke.py STOCK_PATH --compiler SOURCE_PATH` to
+check program IPA with source inputs, stock and source-generated sidecars, and the stock linker.
+
+The repository's `mwcc-tools configure --version Wii_1_0RC1` generates the source
+build for the regular and persistent [WebAssembly modules](../docs/wasm.md#wii-10rc1).
+
+### Matching builds
+
 `configure.py --mwcc` sets up the original matching workflow instead, and `ninja` then builds every supported compiler
 and verifies it matches the original binary. It builds `build/VERSION/source-only/mwcceppc.exe` from just the source
 code, which may be equivalent but may be non-matching.

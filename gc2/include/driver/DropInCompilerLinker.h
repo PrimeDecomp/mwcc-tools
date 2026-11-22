@@ -68,7 +68,16 @@ typedef struct CWObjectData {
     struct CWDependencyInfo* dependencies;
     short dependencyCount;
     CWFileSpec* objectfile;
+#if VERSION == VERSION_WII_1_0RC1
+    CWMemHandle programIR;
+#endif
 } CWObjectData;
+#if VERSION == VERSION_WII_1_0RC1
+typedef struct CWProgramInput {
+    CWFileSpec spec;
+    Handle ir;
+} CWProgramInput;
+#endif
 typedef struct CWTargetInfo_V8 {
     short outputType;
     CWFileSpec outfile;
@@ -147,6 +156,14 @@ extern CW_CALLBACK CWGetTargetInfo(CWPluginContext context, CWTargetInfo* target
 extern CW_CALLBACK CWStoreObjectData(
     CWPluginContext context, SInt32 whichfile, CWObjectData* object
 );
+#if VERSION == VERSION_WII_1_0RC1
+extern CW_CALLBACK CWGetSuggestedObjectFileSpec(
+    CWPluginContext context, SInt32 whichfile, CWFileSpec* fileSpec
+);
+extern CW_CALLBACK CWGetProgramIPAInfo(
+    CWPluginContext context, const CWProgramInput** inputs, UInt32* count, Boolean* defer
+);
+#endif
 extern CW_CALLBACK CWDisplayLines(CWPluginContext context, SInt32 nlines);
 extern CW_CALLBACK CWCachePrecompiledHeader(
     CWPluginContext context, const CWFileSpec* filespec, CWMemHandle pchhandle

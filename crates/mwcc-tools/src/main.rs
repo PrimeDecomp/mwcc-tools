@@ -244,8 +244,10 @@ fn run() -> Result<()> {
             | "verify"
             | "gates"
             | "build-hooks"
+            | "build-native-oracle-objects"
             | "wasm-mirror"
             | "wasm-linker-version"
+            | "wasm-compiler-version"
             | "wasm-common"
             | "wasm-stubs",
         ) => build_cli::run(&args[0], &args[1..])?,

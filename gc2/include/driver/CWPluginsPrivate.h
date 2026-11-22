@@ -71,6 +71,11 @@ struct CWCompilerLinkerContext : CWPluginPrivateContext {
     SInt32 workingDirectoryError;
     SInt32 reservedlinker[2];
     CWCompilerLinkerCallbacks* callbacks;
+#if VERSION == VERSION_WII_1_0RC1
+    const CWProgramInput* programInputs;
+    UInt32 programInputCount;
+    Boolean deferProgramIPA;
+#endif
 };
 
 struct CWParserContext : CWPluginPrivateContext {

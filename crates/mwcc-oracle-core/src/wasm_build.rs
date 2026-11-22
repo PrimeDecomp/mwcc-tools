@@ -25,7 +25,8 @@ use anyhow::{Context, Result, ensure};
 use std::path::Path;
 
 /// The versions gc2's sources build (`VERSION`), and so the module.
-pub const VERSIONS: [&str; 3] = mwcc_project::compilers::VERSIONS;
+pub const WII_RC1: &str = "Wii_1_0RC1";
+pub const VERSIONS: [&str; 4] = ["GC_1_3_2", "GC_2_6", "GC_2_7", WII_RC1];
 
 /// Sources the module does without (wasm/ replaces them).
 const SKIP: &[&str] = &["src/driver/LicenseImports.c"];
@@ -134,7 +135,8 @@ pub fn linked(module: &str) -> String {
 pub const PERSIST: &str = "-DMWCC_PERSIST";
 pub const PERSIST_UNITS: &[&str] = &["src/frontend/CPrep.c", "src/frontend/CParser.c"];
 
-/// A source of the module: its name (the object's path under `obj/`), the file and clang's arguments.
+/// A compiler source: its name in the source tree, the file and clang's arguments.
+#[derive(serde::Deserialize)]
 pub struct Unit {
     pub name: String,
     pub input: String,
@@ -430,11 +432,11 @@ pub fn objects(root: &Path, version: &str, oracle: bool) -> Result<Vec<(String, 
 
 /// VERSION's edges: each object, the stock module's and the oracle's, the stock module, and the persistent one (the
 /// stock objects but PERSIST_UNITS', compiled again with PERSIST).
-pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
+pub fn edges(root: &Path, version: &str, has_oracle: bool) -> Result<Vec<String>> {
     let units = units(root, version)?;
     let mut out = vec![];
     let mut stock = vec![];
-    for oracle in [false, true] {
+    for oracle in [false, true].into_iter().filter(|oracle| !oracle || has_oracle) {
         let directory = objects_directory(version, oracle);
         for unit in &units {
             let object = format!("{directory}/{}.o", unit.name);
@@ -511,7 +513,7 @@ pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
     );
     for unit in units
         .iter()
-        .filter(|u| PERSIST_UNITS.contains(&u.name.as_str()))
+        .filter(|u| has_oracle && PERSIST_UNITS.contains(&u.name.as_str()))
     {
         out.push(format!(
             "build {}: wasm_cc {}",

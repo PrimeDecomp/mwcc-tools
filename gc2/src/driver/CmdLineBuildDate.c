@@ -10,6 +10,9 @@ const char* CMDLINE_BUILD_DATE = "Feb 20 2003";
 #elif VERSION == VERSION_GC_2_6
 const char* CMDLINE_BUILD_TIME = "14:19:11";
 const char* CMDLINE_BUILD_DATE = "Jul 14 2003";
+#elif VERSION == VERSION_WII_1_0RC1
+const char* CMDLINE_BUILD_TIME = "02:27:04";
+const char* CMDLINE_BUILD_DATE = "May 28 2008";
 #else
 const char* CMDLINE_BUILD_TIME = "17:19:15";
 const char* CMDLINE_BUILD_DATE = "Jul 22 2004";

@@ -7,6 +7,10 @@
 extern "C" {
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+Object* Intrinsics_FindRuntimeObject(HashNameNode* name);
+#endif
+
 typedef enum Intrinsics {
     Intrinsic_eieio,
     Intrinsic_sync,
@@ -323,6 +327,9 @@ typedef enum Intrinsics {
     Intrinsic_rtos_pop_stack,
     Intrinsic_va_setup,
     Intrinsic_builtin_va_info,
+#if VERSION == VERSION_WII_1_0RC1
+    Intrinsic_count_trailing_zero64,
+#endif
     MaxIntrinsics
 } Intrinsics;
 

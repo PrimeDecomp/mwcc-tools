@@ -431,14 +431,14 @@ pub unsafe extern "C" fn fn_00513040(node: u32, mode: u32) -> u32 {
         result
     }
 }
-#[cfg(target_arch = "x86")]
+#[cfg(all(target_arch = "x86", not(feature = "source-probes")))]
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fn_00513240(_node: u32) -> u32 {
     core::arch::naked_asm!("push dword ptr [esp]","push dword ptr [esp + 8]","call {handler}","add esp, 8","ret",handler=sym clone_node);
 }
 // (WebAssembly has no return address to read)
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", feature = "source-probes"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fn_00513240(node: u32) -> u32 {
     unsafe { clone_node(node, 0) }
@@ -496,6 +496,7 @@ fn source_emission_site(version: u32) -> Option<u32> {
     match version {
         3 => Some(0x4f360e),
         4 => Some(0x4f36ee),
+        6 => Some(0x509cac),
         _ => None,
     }
 }

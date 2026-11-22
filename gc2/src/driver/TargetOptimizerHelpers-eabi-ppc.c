@@ -5,6 +5,14 @@
 
 int TargetSetOptFlags(short val, Boolean set) {
     switch (val) {
+#if VERSION == VERSION_WII_1_0RC1
+        case 'Ai':
+            pFrontEndC.autoinline = set;
+            break;
+        case 'Fa':
+            pBackEnd.funcalign = 2;
+            break;
+#endif
         case 'Pe':
             pBackEnd.peephole = set;
             break;

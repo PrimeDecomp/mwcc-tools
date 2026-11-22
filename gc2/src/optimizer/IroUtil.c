@@ -1202,6 +1202,31 @@ IROLinear* IRO_HasSideEffect(IROLinear* linear) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+Boolean IRO_ExprHasFloatingPointEffects(IROLinear* linear) {
+    if (linear->rtype && IS_TYPE_FLOAT(linear->rtype) &&
+        copts.stdc_fenv_access && !copts.stdc_fp_contract) {
+        return TRUE;
+    }
+
+    switch (linear->type) {
+        case IROLinearOp1Arg:
+            return IRO_ExprHasFloatingPointEffects(linear->u.monadic);
+        case IROLinearOp2Arg:
+            return IRO_ExprHasFloatingPointEffects(linear->u.diadic.left) ||
+                   IRO_ExprHasFloatingPointEffects(linear->u.diadic.right);
+        case IROLinearOp3Arg:
+            return IRO_ExprHasFloatingPointEffects(linear->u.args3.a) ||
+                   IRO_ExprHasFloatingPointEffects(linear->u.args3.b) ||
+                   IRO_ExprHasFloatingPointEffects(linear->u.args3.c);
+        case IROLinearFunccall:
+            return TRUE;
+        default:
+            return FALSE;
+    }
+}
+#endif
+
 IROLinear* IRO_CheckSideEffect(IROLinear* linear) {
     IROLinear* result;
     IROLinear* effect1;

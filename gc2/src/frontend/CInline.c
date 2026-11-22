@@ -31,6 +31,19 @@
 #include "compiler/types.h"
 #include "driver/CWPlugins.h"
 #include "driver/DropInCompilerLinker.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CCallGraph.h"
+#include "compiler/CMiddleLayer.h"
+#endif
+
+#if VERSION == VERSION_WII_1_0RC1 && defined(ORACLE_PROBES)
+#include <stddef.h>
+// Offsets read by the source-linked frontend observer.
+_Static_assert(offsetof(CompilerLinkerOptions, alwaysinline) == 0xe5, "alwaysinline offset");
+_Static_assert(offsetof(CompilerLinkerOptions, inline_bottom_up) == 0x7d, "inline mode offset");
+_Static_assert(offsetof(CompilerLinkerOptions, inlinelevel) == 0x6e, "inlinelevel offset");
+_Static_assert(offsetof(CI_FuncData, can_inline) == 0xb4, "inlineability offset");
+#endif
 
 enum {
     CI_SFLAGS_NoClass = 0,
@@ -113,6 +126,10 @@ static SInt32 inline_max_size;
 static Boolean recursive_inline;
 static Object* expanding_function;
 static Boolean cinline_funccallfound;
+#if VERSION == VERSION_WII_1_0RC1
+static void (*visitGraphReference)(Object*, Boolean);
+static Boolean opaqueGraphReferences;
+#endif
 
 static ENode* CInline_FoldConst(ENode* expr);
 static ENode* CInline_CopyNodes(ENode* node);
@@ -125,6 +142,10 @@ void CInline_Init(void) {
     cinline_actionlist = NULL;
     cinline_tactionlist = NULL;
     cinline_gendeps = FALSE;
+#if VERSION == VERSION_WII_1_0RC1
+    visitGraphReference = NULL;
+    CMid_Setup();
+#endif
 }
 
 static ENode* CInline_MakeNotNot(ENode* expr) {
@@ -3614,7 +3635,11 @@ void CInline_PackIFunctionData(CI_FuncData* funcdata, Statement* stmt, Object* o
 
     funcdata->can_inline = CInline_CanInline(object, stmt->next);
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (copts.filesyminfo || (copts.ipa_mode == IPAProgram && CMid_InIPA())) {
+#else
     if (copts.filesyminfo) {
+#endif
         funcdata->fileoffset = cparser_fileoffset;
         funcdata->fileoffset.is_inline = TRUE;
         funcdata->symdecloffset = symdecloffset;
@@ -3887,7 +3912,13 @@ void CInline_UnpackIFunctionData(Object* object, CI_FuncData* funcdata, Statemen
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void generate_packed_function(
+    Object* object, CI_FuncData* func, UInt8 oldStyleParameters, Boolean expand, Boolean initializer
+) {
+#else
 static void CInline_GenIFunctionCode(Object* object, CI_FuncData* func, UInt8 oldStyleParameters) {
+#endif
     Boolean saveDebugInfo;
     Statement firstStmt;
     CScopeSave saveScope;
@@ -3910,21 +3941,123 @@ static void CInline_GenIFunctionCode(Object* object, CI_FuncData* func, UInt8 ol
     }
 
     ORACLE_SCOPE(1);
+#if VERSION == VERSION_WII_1_0RC1
+    if (expand) {
+        expanding_function = object;
+        recursive_inline = FALSE;
+        CInline_Expand(&firstStmt);
+    }
+#else
     expanding_function = object;
     recursive_inline = FALSE;
     CInline_Expand(&firstStmt);
+#endif
 
     if (!anyerrors) {
         if (copts.filesyminfo) {
             CPrep_SetSourceFile(&cparser_fileoffset);
         }
+#if VERSION == VERSION_WII_1_0RC1
+        CodeGen_Generator(&firstStmt, initializer ? NULL : object, oldStyleParameters, initializer);
+#else
         CodeGen_Generator(&firstStmt, object, oldStyleParameters, FALSE);
+#endif
     }
     ORACLE_SCOPE(0);
 
     CScope_RestoreScope(&saveScope);
     copts.filesyminfo = saveDebugInfo;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static void set_packed_function_options(CI_FuncData* body) {
+    if (body->use_caller_inline_options) {
+        struct CInlineBackendOptions options = body->options;
+
+        options.dontinline = copts.dontinline;
+        options.alwaysinline = copts.alwaysinline;
+        options.warn_notinlined = copts.warn_notinlined;
+        options.inline_bottom_up = copts.inline_bottom_up;
+        options.inlinelevel = copts.inlinelevel;
+        options.inlinemaxsize = copts.inlinemaxsize;
+        options.inlinemaxtotalsize = copts.inlinemaxtotalsize;
+        CMach_SetBackEndOptions(&options);
+    } else {
+        CMach_SetBackEndOptions(&body->options);
+    }
+}
+
+static void CInline_GenIFunctionCode(Object* object, CI_FuncData* func, UInt8 oldStyleParameters) {
+    generate_packed_function(object, func, oldStyleParameters, TRUE, FALSE);
+}
+
+void CInline_GenerateGraphFunction(
+    Object* object, CI_FuncData* body, UInt8 oldStyleParameters, Boolean initializer
+) {
+    struct CInlineBackendOptions options;
+    CMach_GetBackEndOptions(&options);
+    set_packed_function_options(body);
+    generate_packed_function(object, body, oldStyleParameters, FALSE, initializer);
+    CMach_SetBackEndOptions(&options);
+}
+
+static void expand_graph_function(CallGraphNode* node) {
+    Object* object = node->object;
+    CI_FuncData* body = node->definition.function.body;
+    struct CInlineBackendOptions options;
+    CScopeSave scope;
+    Statement firstStmt;
+    CI_FuncData* expanded;
+
+    CMach_GetBackEndOptions(&options);
+    set_packed_function_options(body);
+    CScope_SetFunctionScope(object, &scope);
+    CFunc_FuncGenSetup(&firstStmt, object);
+    CInline_UnpackIFunctionData(object, body, &firstStmt);
+    expanding_function = node->initializer ? NULL : object;
+    recursive_inline = FALSE;
+    CInline_Expand(&firstStmt);
+
+    if (!anyerrors) {
+        Boolean saveDebugInfo = copts.filesyminfo;
+        copts.filesyminfo = body->fileoffset.file != NULL;
+        expanded = galloc(sizeof(CI_FuncData));
+        CInline_PackIFunctionData(expanded, &firstStmt, object);
+        CMid_DefineFunction(object, expanded, node->definition.function.oldStyleParameters);
+        copts.filesyminfo = saveDebugInfo;
+    }
+    CScope_RestoreScope(&scope);
+    CMach_SetBackEndOptions(&options);
+    if (CInline_CanFreeLHeap()) {
+        freelheap();
+    }
+}
+
+static void inline_graph_uses(CallGraphNode* node) {
+    CallGraphEdge* edge;
+
+    node->marked = TRUE;
+    for (edge = node->uses; edge && !anyerrors; edge = edge->next) {
+        if (!edge->node->marked) {
+            inline_graph_uses(edge->node);
+        }
+    }
+    if (!anyerrors && node->kind == CGFunction) {
+        expand_graph_function(node);
+    }
+}
+
+void CInline_CallGraphInlining(void) {
+    CallGraphNode* node;
+
+    CCallGraph_Unmark();
+    for (node = ccallgraph; node && !anyerrors; node = node->next) {
+        if (!node->marked) {
+            inline_graph_uses(node);
+        }
+    }
+}
+#endif
 
 void CInline_AddDefaultFunctionAction(Object* object) {
     CI_Action* action;
@@ -4036,6 +4169,12 @@ void CInline_AddTemplateFunctionAction(Object* object, void* func, void* inst) {
 static void CInline_AddFRefList_Object(Object* object) {
     ObjectList* list;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (visitGraphReference) {
+        visitGraphReference(object, FALSE);
+        return;
+    }
+#endif
     if (!(object->datatype == DFUNC || object->datatype == DVFUNC) ||
         (object->flags & OBJECT_DEFINED) ||
         IS_TEMPL_FUNC(object->type)) {
@@ -4112,7 +4251,22 @@ static void CInline_AddFRefList_ExprCB(ENode* expr) {
     CInline_AddFRefList_Object(expr->data.objref);
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void note_opaque_graph_reference(ENode* expr) {
+    (void)expr;
+    opaqueGraphReferences = TRUE;
+}
+#endif
+
 static void CInline_AddFRefList_Expr(ENode* expr) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (visitGraphReference) {
+        if (expr) {
+            CExpr_SearchIPAReferences(expr, note_opaque_graph_reference, visitGraphReference);
+        }
+        return;
+    }
+#endif
     CExpr_SearchExprTree(expr, CInline_AddFRefList_ExprCB, 1, EOBJREF);
 }
 
@@ -4159,7 +4313,20 @@ static void CInline_AddFRefList_InlineFunc(CI_FuncData* data) {
             case ST_NOP:
             case ST_LABEL:
             case ST_GOTO:
+                break;
             case ST_ASM:
+#if VERSION == VERSION_WII_1_0RC1
+                if (visitGraphReference) {
+                    InlineAsm* assembly = data->statements[i].u.asmdata.data;
+                    SInt32 offset;
+                    SInt32 index;
+                    Object* object;
+                    for (index = 0; (object = InlineAsm_GetObjectOffset(assembly, index, &offset));
+                         index++) {
+                        CInline_AddFRefList_Object(object);
+                    }
+                }
+#endif
                 break;
             case ST_EXPRESSION:
             case ST_BEGINCATCH:
@@ -4202,6 +4369,11 @@ static void CInline_AddFRefList_InlineFunc(CI_FuncData* data) {
                     CInline_AddFRefList_Object(exc->data.destroy_local_array.dtor);
                     break;
                 case EAT_DESTROYPARTIALARRAY:
+#if VERSION == VERSION_WII_1_0RC1
+                    if (visitGraphReference) {
+                        CInline_AddFRefList_Object(exc->data.destroy_partial_array.dtor);
+                    }
+#endif
                     break;
                 case EAT_DESTROYMEMBER:
                 case EAT_DESTROYBASE:
@@ -4221,8 +4393,24 @@ static void CInline_AddFRefList_InlineFunc(CI_FuncData* data) {
                     CInline_AddFRefList_Object(exc->data.delete_pointer_cond.deletefunc);
                     break;
                 case EAT_CATCHBLOCK:
+#if VERSION == VERSION_WII_1_0RC1
+                    if (visitGraphReference) {
+                        CInline_AddFRefList_Object(exc->data.catch_block.catch_typeid);
+                    }
+#endif
+                    break;
                 case EAT_ACTIVECATCHBLOCK:
+                    break;
                 case EAT_SPECIFICATION:
+#if VERSION == VERSION_WII_1_0RC1
+                    if (visitGraphReference) {
+                        SInt32 index;
+                        for (index = 0; index < exc->data.specification.unexp_ids; index++) {
+                            CInline_AddFRefList_Object(exc->data.specification.unexp_id[index]);
+                        }
+                    }
+#endif
+                    break;
                 case EAT_TERMINATE:
                     break;
                 default:
@@ -4231,6 +4419,16 @@ static void CInline_AddFRefList_InlineFunc(CI_FuncData* data) {
         }
     }
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+Boolean CInline_WalkFunctionReferences(CI_FuncData* body, void (*visit)(Object*, Boolean)) {
+    visitGraphReference = visit;
+    opaqueGraphReferences = FALSE;
+    CInline_AddFRefList_InlineFunc(body);
+    visitGraphReference = NULL;
+    return !opaqueGraphReferences;
+}
+#endif
 
 static void CInline_GenerateTemplateInline(Object* object) {
     CI_Action** ptr;
@@ -4265,6 +4463,13 @@ void CInline_ObjectAddrRef(Object* object) {
                 (funcdata = object->u.func.u.ifuncdata) &&
                 !(object->flags & OBJECT_DEFINED) &&
                 !(TYPE_FUNC(object->type)->flags & FUNC_IS_TEMPL)) {
+#if VERSION == VERSION_WII_1_0RC1
+                if (CMid_InIPA()) {
+                    CMid_DefineFunction(object, funcdata, FALSE);
+                    object->flags |= OBJECT_DEFINED;
+                    return;
+                }
+#endif
                 CI_Export* export = galloc(sizeof(CI_Export));
 
                 export->object = object;
@@ -4346,10 +4551,19 @@ static Boolean CInline_IsSmallFunction(Object* object, Statement* stmt) {
 
     statementCount = 0;
     while (stmt) {
+#if VERSION == VERSION_WII_1_0RC1
+        if (stmt->type != ST_NOP && stmt->type != ST_LABEL &&
+            (stmt->type != ST_EXPRESSION ||
+             (stmt->expr->type != EFUNCCALL && stmt->expr->type != EFUNCCALLP))) {
+            statementCount++;
+        }
+        if (statementCount > copts.inlinemaxautosize) {
+#else
         if (stmt->type != ST_NOP && stmt->type != ST_LABEL) {
             statementCount++;
         }
         if (statementCount > 30) {
+#endif
             return FALSE;
         }
         stmt = stmt->next;
@@ -4365,6 +4579,28 @@ static Boolean CInline_IsSmallFunction(Object* object, Statement* stmt) {
 
     return TRUE;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean CInline_CheckInlineability(Object* object, Statement* stmt) {
+    Boolean inlineForSize;
+
+    if (object->qual & Q_ASM) {
+        return FALSE;
+    }
+    if (object->qual & Q_INLINE) {
+        return TRUE;
+    }
+
+    inlineForSize = copts.inlineforsize && copts.optimizesize;
+    if ((!copts.auto_inline && !inlineForSize) || copts.dontinline ||
+        !CInline_CanInline(object, stmt->next) ||
+        (!inlineForSize && !CInline_IsSmallFunction(object, stmt->next))) {
+        return FALSE;
+    }
+    TYPE_FUNC(object->type)->flags |= FUNC_AUTO_INLINE;
+    return TRUE;
+}
+#endif
 
 static Boolean CInline_NoFPLocals(void) {
     ObjectList* list;
@@ -4386,6 +4622,10 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) 
 
     TYPE_FUNC(object->type)->flags |= FUNC_DEFINED;
 
+#if VERSION == VERSION_WII_1_0RC1
+    isInline = CInline_CheckInlineability(object, stmt);
+    isAutoInline = isInline && !(object->qual & Q_INLINE);
+#else
     isInline = isAutoInline = FALSE;
     if (!(object->qual & Q_INLINE)) {
         if (copts.auto_inline &&
@@ -4398,6 +4638,7 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) 
     } else {
         isInline = TRUE;
     }
+#endif
 
     if (isInline) {
         COpt_SimpleOptimizer(object, stmt);
@@ -4407,7 +4648,11 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) 
 
         object->u.func.u.ifuncdata = funcdata;
 
-        if (!isAutoInline && !(object->flags & OBJECT_REFERENCED)) {
+        if (!isAutoInline && !(object->flags & OBJECT_REFERENCED)
+#if VERSION == VERSION_WII_1_0RC1
+            && !CMid_InIPA()
+#endif
+        ) {
             if (cinline_gendeps) {
                 cinline_freflist = NULL;
                 CInline_AddFRefList_Statement(stmt);
@@ -4422,6 +4667,19 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) 
     cinline_freflist = NULL;
     CInline_AddFRefList_Statement(stmt);
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (CMid_InIPA()) {
+        CInline_CheckDependencies(cinline_freflist);
+        if (isInline) {
+            funcdata = object->u.func.u.ifuncdata;
+        } else {
+            funcdata = galloc(sizeof(CI_FuncData));
+            CInline_PackIFunctionData(funcdata, stmt, object);
+        }
+        CMid_DefineFunction(object, funcdata, oldStyleParameters);
+        return;
+    }
+#endif
     if (CInline_CheckDependencies(cinline_freflist) || copts.defer_codegen) {
         if (!isInline) {
             funcdata = galloc(sizeof(CI_FuncData));
@@ -4617,7 +4875,11 @@ Boolean CInline_GenerateDeferredFuncs(void) {
                 export = cinline_exportlist;
                 cinline_exportlist = export->next;
                 CMach_GetBackEndOptions(&saveOptions);
+#if VERSION == VERSION_WII_1_0RC1
+                set_packed_function_options(export->funcdata);
+#else
                 CMach_SetBackEndOptions(&export->funcdata->options);
+#endif
                 CInline_GenIFunctionCode(
                     export->object, export->funcdata, export->oldStyleParameters
                 );
@@ -4709,6 +4971,17 @@ void CInline_Finish(void) {
 
     CFunc_CodeCleanup(&firstStmt);
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (CMid_InIPA()) {
+        CallGraphNode* node = CCallGraph_NewInitCodeNode();
+        CI_FuncData* body = galloc(sizeof(CI_FuncData));
+        CInline_PackIFunctionData(body, &firstStmt, node->object);
+        CMid_DefineFunction(node->object, body, FALSE);
+        cscope_current = nspace->parent;
+        copts.filesyminfo = saveDebugInfo;
+        return;
+    }
+#endif
     ORACLE_SCOPE(1);
     expanding_function = NULL;
     recursive_inline = FALSE;

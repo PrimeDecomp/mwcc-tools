@@ -2492,7 +2492,7 @@ static void CFunc_AdjustOldStyleArgs(void) {
                 list->object, TYPE(&stdouble), list->object->type, FALSE
             );
         }
-        if (CMach_PassResultInHiddenArg(list->object->type)) {
+        if (CMach_PassAddressOf(list->object->type)) {
             list->object->type = CDecl_NewPointerType(list->object->type);
             TPTR_QUAL(list->object->type) = Q_REFERENCE;
         }
@@ -2524,7 +2524,7 @@ void CFunc_SetupNewFuncArgs(Object* func, FuncArg* args) {
             CFunc_SetupLocalVarInfo(obj);
 
             if ((IS_TYPE_CLASS(obj->type) && CClass_ReferenceArgument(TYPE_CLASS(obj->type))) ||
-                CMach_PassResultInHiddenArg(obj->type)) {
+                CMach_PassAddressOf(obj->type)) {
                 obj->type = CDecl_NewPointerType(obj->type);
                 TPTR_QUAL(obj->type) = Q_REFERENCE | Q_RESTRICT;
             }

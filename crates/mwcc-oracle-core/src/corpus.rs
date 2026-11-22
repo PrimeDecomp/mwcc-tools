@@ -298,7 +298,10 @@ pub fn comparable_provenance(line: &str) -> Option<String> {
     Some(
         FIELD
             .replace_all(&line, |c: &regex::Captures| {
+                // A node's type is a pointer and can land below the usual image range on Windows.
+                let node_type = kind == "pv.source.node" && &c[1] == "type" && &c[2] != "00000000";
                 let address = PROVENANCE_ADDRESSES.contains(&&c[1])
+                    || node_type
                     || (!PROVENANCE_SITES.contains(&&c[1])
                         && u32::from_str_radix(&c[2], 16).is_ok_and(is_address));
                 if address {

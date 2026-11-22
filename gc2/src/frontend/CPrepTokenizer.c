@@ -10,11 +10,66 @@
 #include "compiler/types.h"
 #include "driver/COSToolsCLT.h"
 #include "driver/oslib.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "host/ShiftJISTable.h"
+#endif
 #include <string.h>
 
 static Boolean prepnextstringchar_foundnl;
 
 StringPtr CPrep_SkipNewComment(StringPtr str);
+
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean is_sjis_lead(UInt8 byte) {
+    return (byte >= 0x81 && byte <= 0x9F) || (byte >= 0xE0 && byte <= 0xFC);
+}
+
+static Boolean is_sjis_trail(UInt8 byte) {
+    return byte >= 0x40 && byte <= 0xFC && byte != 0x7F;
+}
+
+static Boolean scanner_is_multibyte(const void* start, const void* position) {
+    const UInt8* scan = start;
+    const UInt8* end = position;
+
+    if (copts.source_encoding != SourceEncodingSJIS) {
+        return COS_IsMultiByte(start, position);
+    }
+
+    while (scan < end) {
+        if (is_sjis_lead(scan[0]) && is_sjis_trail(scan[1])) {
+            if (scan + 1 == end) {
+                return TRUE;
+            }
+            scan += 2;
+        } else {
+            scan++;
+        }
+    }
+    return FALSE;
+}
+
+static UInt16 decode_sjis(UInt8 first) {
+    UInt16 encoded;
+    UInt32 i;
+
+    if (first >= 0xA1 && first <= 0xDF) {
+        return 0xFF61 + first - 0xA1;
+    }
+    if (is_sjis_lead(first) && is_sjis_trail((UInt8)*pos)) {
+        encoded = ((UInt16)first << 8) | (UInt8)*pos++;
+        for (i = 0; i < sizeof(ShiftJIS_Table) / sizeof(*ShiftJIS_Table); i++) {
+            if (ShiftJIS_Table[i][1] == encoded) {
+                return ShiftJIS_Table[i][0];
+            }
+        }
+    }
+    CPrep_Error(ERR_ILLEGAL_CHARACTER_CONSTANT);
+    return 0xFFFD;
+}
+#else
+#define scanner_is_multibyte COS_IsMultiByte
+#endif
 
 short prepskipnextchar(void) {
     short c;
@@ -68,7 +123,7 @@ loop:
         case '/':
             pos = (char*)p++;
             if (copts.multibyteaware) {
-                while (p[0] == '\\' && !COS_IsMultiByte(start, p) && p[1] == CR) {
+                while (p[0] == '\\' && !scanner_is_multibyte(start, p) && p[1] == CR) {
                     foundnl();
                     if (p[2] == LF) {
                         p += 3;
@@ -105,7 +160,7 @@ loop:
                         }
                         if (c == '*') {
                             if (copts.multibyteaware) {
-                                while (p[0] == '\\' && !COS_IsMultiByte(start, p) && p[1] == CR) {
+                                while (p[0] == '\\' && !scanner_is_multibyte(start, p) && p[1] == CR) {
                                     foundnl();
                                     if (p[2] == LF) {
                                         p += 3;
@@ -148,7 +203,7 @@ loop:
             pos = (char*)p++;
 mid_backslash:
             if (*p == CR) {
-                if (!copts.multibyteaware || !COS_IsMultiByte(start, p - 1)) {
+                if (!copts.multibyteaware || !scanner_is_multibyte(start, p - 1)) {
                     foundnl();
                     if (p[1] == LF) {
                         p += 2;
@@ -218,7 +273,7 @@ loop:
             return c;
         case '/':
             if (copts.multibyteaware) {
-                while (p[0] == '\\' && !COS_IsMultiByte(start, p) && p[1] == CR) {
+                while (p[0] == '\\' && !scanner_is_multibyte(start, p) && p[1] == CR) {
                     foundnl();
                     if (p[2] == LF) {
                         p += 3;
@@ -254,7 +309,7 @@ loop:
                     }
                     if (c == '*') {
                         if (copts.multibyteaware) {
-                            while (p[0] == '\\' && !COS_IsMultiByte(start, p) && p[1] == CR) {
+                            while (p[0] == '\\' && !scanner_is_multibyte(start, p) && p[1] == CR) {
                                 foundnl();
                                 if (p[2] == LF) {
                                     p += 3;
@@ -289,7 +344,7 @@ loop:
         case '\\':
 backslash:
             if (*p == CR) {
-                if (!copts.multibyteaware || !COS_IsMultiByte(start, p - 1)) {
+                if (!copts.multibyteaware || !scanner_is_multibyte(start, p - 1)) {
                     foundnl();
                     if (p[1] == LF) {
                         p += 2;
@@ -362,7 +417,7 @@ loop:
             return c;
         case '\\':
 backslash:
-            if (p[0] == CR && (!copts.multibyteaware || !COS_IsMultiByte(str, p - 1))) {
+            if (p[0] == CR && (!copts.multibyteaware || !scanner_is_multibyte(str, p - 1))) {
                 if (countNewlines) {
                     foundnl();
                 } else {
@@ -442,7 +497,7 @@ loop:
     }
 
     if (c == CR) {
-        if (!copts.multibyteaware || !COS_IsMultiByte(start, p - 1)) {
+        if (!copts.multibyteaware || !scanner_is_multibyte(start, p - 1)) {
             if (countNewlines) {
                 foundnl();
             }
@@ -476,7 +531,7 @@ loop:
         }
     }
 
-    if (c == '\\' && !haveBackslash && (!copts.multibyteaware || !COS_IsMultiByte(start, p - 1))) {
+    if (c == '\\' && !haveBackslash && (!copts.multibyteaware || !scanner_is_multibyte(start, p - 1))) {
 backslash:
         if (*p == CR) {
             if (countNewlines) {
@@ -522,7 +577,7 @@ loop:
     }
 
     if (c == CR) {
-        if (!copts.multibyteaware || !COS_IsMultiByte(start, p - 1)) {
+        if (!copts.multibyteaware || !scanner_is_multibyte(start, p - 1)) {
             if (countNewlines) {
                 foundnl();
             }
@@ -555,7 +610,7 @@ loop:
         }
     }
 
-    if (c == '\\' && !haveBackslash && (!copts.multibyteaware || !COS_IsMultiByte(start, p - 1))) {
+    if (c == '\\' && !haveBackslash && (!copts.multibyteaware || !scanner_is_multibyte(start, p - 1))) {
 backslash:
         if (*p == CR) {
             if (countNewlines) {
@@ -626,7 +681,7 @@ char* ReadIdentifier(const char* p) {
             p++;
         } else {
             if (copts.multibyteaware) {
-                if ((unsigned char)*p == '\\' && !COS_IsMultiByte(start, p) && p[1] == CR) {
+                if ((unsigned char)*p == '\\' && !scanner_is_multibyte(start, p) && p[1] == CR) {
                     if (p[2] == LF) {
                         p += 3;
                     } else {
@@ -846,7 +901,12 @@ static SInt32 nextchar(StringPtr str) {
     was_escchar = FALSE;
     t = prepnextstringchar(str, TRUE);
 
-    if (t == '\\' && (!copts.multibyteaware || !COS_IsMultiByte(str, pos - 1))) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (widestring && t >= 0x80 && copts.source_encoding == SourceEncodingSJIS) {
+        return decode_sjis(t);
+    }
+#endif
+    if (t == '\\' && (!copts.multibyteaware || !scanner_is_multibyte(str, pos - 1))) {
         was_escchar = TRUE;
         switch ((t = prepnextstringchar(str, TRUE))) {
             case 'a':
@@ -941,7 +1001,7 @@ StringPtr CPrep_SkipNewComment(StringPtr str) {
                 return p;
 
             case '\\':
-                if (copts.multibyteaware && COS_IsMultiByte(str, p - 1)) {
+                if (copts.multibyteaware && scanner_is_multibyte(str, p - 1)) {
                     continue;
                 }
 
@@ -993,7 +1053,7 @@ Boolean skipendoflinematch(StringPtr str, short token) {
                 break;
 
             case '\\':
-                if (copts.multibyteaware && COS_IsMultiByte(start, str - 1)) {
+                if (copts.multibyteaware && scanner_is_multibyte(start, str - 1)) {
                     continue;
                 }
 
@@ -1052,7 +1112,7 @@ void skipendofline(void) {
 
             case '/':
                 if (copts.multibyteaware) {
-                    while (*p == '\\' && !COS_IsMultiByte(start, p) && p[1] == CR) {
+                    while (*p == '\\' && !scanner_is_multibyte(start, p) && p[1] == CR) {
                         foundnl();
                         if (p[2] == LF) {
                             p += 3;
@@ -1095,7 +1155,7 @@ void skipendofline(void) {
 
                         if (ch == '*') {
                             if (copts.multibyteaware) {
-                                while (*p == '\\' && !COS_IsMultiByte(start, p) && p[1] == CR) {
+                                while (*p == '\\' && !scanner_is_multibyte(start, p) && p[1] == CR) {
                                     foundnl();
                                     if (p[2] == LF) {
                                         p += 3;
@@ -1128,7 +1188,7 @@ void skipendofline(void) {
                 break;
 
             case '\\':
-                if (copts.multibyteaware && COS_IsMultiByte(start, p - 1)) {
+                if (copts.multibyteaware && scanner_is_multibyte(start, p - 1)) {
                     continue;
                 }
 
@@ -2348,7 +2408,21 @@ static short tchr_(short c) {
             return TK_U_IMAGINARY;
         }
     }
-    if (!strcmp("__vec2x32float__", tkidentifier->name)) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (CPU_IS_SPE(copts.processor) && !strncmp(tkidentifier->name, "__ev64_", 7)) {
+        int i;
+        for (i = 0; i < SPEBuiltinTypeCount; i++) {
+            if (!strcmp(spe_type_names[i], tkidentifier->name)) {
+                return TK_CUSTOM_TYPE_113 + i;
+            }
+        }
+    }
+#endif
+    if (!strcmp("__vec2x32float__", tkidentifier->name)
+#if VERSION == VERSION_WII_1_0RC1
+        && !CPU_IS_SPE(copts.processor)
+#endif
+    ) {
         return TK_UU_VEC2X32FLOAT_UU;
     }
     if (copts.altivec_model && !strcmp("__vector", tkidentifier->name)) {
@@ -2636,7 +2710,11 @@ short lex(void) {
                         ts_current->data.tkstring.data = tkstring;
                         ts_current->data.tkstring.size = tksize;
                         ts_current->subtype = ispascalstring;
-                        if (!cprep_strconcat) {
+                        if (!cprep_strconcat
+#if VERSION == VERSION_WII_1_0RC1
+                            && !preprocessing_only
+#endif
+                        ) {
                             ts_current++;
                             CPrep_StringConCat(t == TK_STRING_WIDE);
                             return t;

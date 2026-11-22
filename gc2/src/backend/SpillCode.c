@@ -20,6 +20,9 @@
 int last_unused_vreg_before_spilling;
 short rTEMP_for_VR_spill;
 short rTEMP_for_PS_spill;
+#if VERSION == VERSION_WII_1_0RC1
+static short rTEMP_for_SPE_spill;
+#endif
 
 void estimatespillcosts(void) {
     PCodeBlock* block;
@@ -92,6 +95,24 @@ static PCode* rematerialize_spilled_register(short reg, IGNode* node) {
     return instr;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void insert_spe_spill(PCode* instr, Boolean before, short reg, Object* object, Boolean store) {
+    PCode* address;
+    PCode* access;
+    if (!rTEMP_for_SPE_spill) {
+        rTEMP_for_SPE_spill = ALLOC_GPR();
+    }
+    address = makepcode(PC_ADDI, rTEMP_for_SPE_spill, local_base_register(object), object, 0);
+    access = makepcode(spe_transfer_opcode(object->type, store), reg, 0, rTEMP_for_SPE_spill);
+    if (before) {
+        insertpcodebefore(instr, address);
+    } else {
+        insertpcodeafter(instr, address);
+    }
+    insertpcodeafter(address, access);
+}
+#endif
+
 static void insert_load_spilled_register(PCode* instr, short reg, IGNode* node) {
     Type* type;
     Opcode opcode;
@@ -102,6 +123,12 @@ static void insert_load_spilled_register(PCode* instr, short reg, IGNode* node) 
     Operand operand;
 
     type = node->spillTemporary->type;
+#if VERSION == VERSION_WII_1_0RC1
+    if (coloring_class == RegClass_GPR && IS_TYPE_SPE(type)) {
+        insert_spe_spill(instr, TRUE, reg, node->spillTemporary, FALSE);
+        return;
+    }
+#endif
     switch (coloring_class) {
         case RegClass_CRFIELD:
         case RegClass_GPR:
@@ -127,7 +154,11 @@ static void insert_load_spilled_register(PCode* instr, short reg, IGNode* node) 
             operand.object = node->spillTemporary;
             CError_ASSERT(227, node->spillTemporary->datatype == DLOCAL);
 
+#if VERSION == VERSION_WII_1_0RC1
+            coerce_to_addressable_before(instr, &operand);
+#else
             coerce_to_addressable(&operand);
+#endif
 
             CError_ASSERT(238, operand.optype == OpndType_GPR_ImmOffset);
 
@@ -228,6 +259,12 @@ static void insert_store_spilled_register(PCode* instr, Boolean before, short re
 
     object = node->spillTemporary;
     type = object->type;
+#if VERSION == VERSION_WII_1_0RC1
+    if (coloring_class == RegClass_GPR && IS_TYPE_SPE(type)) {
+        insert_spe_spill(instr, before, reg, object, TRUE);
+        return;
+    }
+#endif
 
     switch (coloring_class) {
         case RegClass_CRFIELD:
@@ -476,6 +513,12 @@ static void assign_spill_locations(void) {
         if (!node->spillTemporary) {
             switch (coloring_class) {
                 case RegClass_GPR:
+#if VERSION == VERSION_WII_1_0RC1
+                    if (CPU_IS_SPE(copts.processor) && (node->flags & fPairedSingle1)) {
+                        type = TYPE(&stspevector[STRUCT_SPE_U64 - STRUCT_SPE_U16]);
+                        break;
+                    }
+#endif
                     type = TYPE(&stunsignedlong);
                     break;
                 case RegClass_CRFIELD:
@@ -522,12 +565,20 @@ void insertspillcode(void) {
 
     rTEMP_for_VR_spill = 0;
     rTEMP_for_PS_spill = 0;
+#if VERSION == VERSION_WII_1_0RC1
+    rTEMP_for_SPE_spill = 0;
+#endif
 
     for (block = pcbasicblocks; block; block = block->nextBlock) {
         for (instr = block->firstPCode; instr; instr = instr->nextPCode) {
             for (i = 0; i < (UInt32)instr->argCount; i++) {
                 arg = &instr->args[i];
-                if (PC_OP_IS_ANY_REGISTER(arg, coloring_class) && is_paired_single_operand(*arg)) {
+                if (PC_OP_IS_ANY_REGISTER(arg, coloring_class) &&
+                    (is_paired_single_operand(*arg)
+#if VERSION == VERSION_WII_1_0RC1
+                     || (coloring_class == RegClass_GPR && CPU_IS_SPE(copts.processor))
+#endif
+                    )) {
                     interferencegraph[instr->args[i].data.reg.reg]->flags |=
                         ((arg->data.reg.effect & EffectPS1) ? fPairedSingle1 : 0) |
                         ((arg->data.reg.effect & EffectPS0) ? fPairedSingle0 : 0);

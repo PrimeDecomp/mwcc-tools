@@ -1,4 +1,8 @@
 #include "compiler/CInit.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CCallGraph.h"
+#include "compiler/CMiddleLayer.h"
+#endif
 #include "compiler/CABI.h"
 #include "compiler/CClass.h"
 #include "compiler/CDecl.h"
@@ -19,6 +23,9 @@
 #include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/PPCError.h"
+#endif
 #include "compiler/tokens.h"
 #include "compiler/types.h"
 #include <string.h>
@@ -49,7 +56,11 @@ InitInfo* cinit_initinfo;
 static PooledString* cinit_stringlist;
 static PooledString* cinit_pooledstringlist;
 static PooledString* cinit_pooledwstringlist;
+#if VERSION == VERSION_WII_1_0RC1
+ObjectList* cinit_tentative;
+#else
 static ObjectList* cinit_tentative;
+#endif
 static TypeClass* cinit_loop_class;
 static ENodeList* cinit_fdtnode;
 static Boolean cinit_fdtambig;
@@ -496,6 +507,12 @@ static void CInit_InitNonConst(CInit_DataBuffer* db, Type* type, ENode* expr) {
     CInit_NonConst* scan;
     MWVector128* vec;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_TYPE_SPE(type) && ENODE_IS(expr, EVECTOR128CONST)) {
+        CMach_InitVectorMem(type, expr->data.vector128val, db->buffer + db->size, TRUE);
+        return;
+    }
+#endif
     if (db->root->allow_nonconst || IS_TYPE_VECTOR(type)) {
         if (IS_TYPE_VECTOR(type) && ENODE_IS(expr, EVECTOR128CONST)) {
             vec = (MWVector128*)(db->buffer + db->size);
@@ -1004,6 +1021,19 @@ static void CInit_InitTypeStruct(
                     if (braced) {
                         tk = lex();
                     }
+#if VERSION == VERSION_WII_1_0RC1
+                    if (IS_TYPE_SPE(TYPE(tstruct))) {
+                        if (count == 1) {
+                            SInt32 lane_size = tstruct->members->type->size;
+                            SInt32 lane;
+                            for (lane = lane_size; lane < tstruct->size; lane += lane_size) {
+                                memcpy(db->buffer + start + lane, db->buffer + start, lane_size);
+                            }
+                        } else {
+                            PPCError_Error(PPCERR_ILLEGAL_VECTOR_INITIALIZATION);
+                        }
+                    }
+#endif
                     if (IS_TYPESTRUCT_VECTOR(tstruct)) {
                         switch (TYPE_STRUCT(tstruct)->stype) {
                             case STRUCT_VECTOR_UCHAR:
@@ -1897,7 +1927,7 @@ static void CInit_Struct(TypeStruct* tstruct, Boolean isTopLevel) {
         return;
     }
 
-    if (IS_TYPE_VECTOR(tstruct) && tk != '{') {
+    if ((IS_TYPE_VECTOR(tstruct) || IS_TYPE_SPE(TYPE(tstruct))) && tk != '{') {
         CInit_TypeExpr(
             TYPE(tstruct),
             CExpr_AssignmentPromotion(conv_assignment_expression(), TYPE(tstruct), 0, TRUE)
@@ -2726,6 +2756,41 @@ static Boolean CInit_InitReference(Object* obj, Boolean isLocal) {
     return FALSE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static ENode* CInit_SPEConstant(Type* type, const char* buffer) {
+    ENode* expr = CExpr_NewENode(EVECTOR128CONST);
+    int i;
+
+    expr->rtype = type;
+    memset(&expr->data.vector128val, 0, sizeof(expr->data.vector128val));
+    for (i = 0; i < 2; i++) {
+        const char* word = buffer + 4 * i;
+        UInt32 value;
+        switch (TYPE_STRUCT(type)->stype) {
+            case STRUCT_SPE_U16:
+            case STRUCT_SPE_S16: {
+                UInt16 half[2];
+                memcpy(half, word, sizeof(half));
+                value = CTool_EndianConvertWord16(half[0]) |
+                    ((UInt32)CTool_EndianConvertWord16(half[1]) << 16);
+                break;
+            }
+            case STRUCT_SPE_FS:
+                // The native initializer retains the four target-order float bytes.
+                value = (UInt32)(UInt8)word[0] | ((UInt32)(UInt8)word[1] << 8) |
+                    ((UInt32)(UInt8)word[2] << 16) | ((UInt32)(UInt8)word[3] << 24);
+                break;
+            default:
+                memcpy(&value, word, sizeof(value));
+                value = CTool_EndianConvertWord32(value);
+                break;
+        }
+        expr->data.vector128val.ul[i] = value;
+    }
+    return expr;
+}
+#endif
+
 ENode* CInit_AutoObject(Object* obj, Type* type, UInt32 qual) {
     CInit_DataBuffer db;
     CInit_NonConst* entry;
@@ -2736,9 +2801,26 @@ ENode* CInit_AutoObject(Object* obj, Type* type, UInt32 qual) {
     Type* newtype;
     Object* newobj;
 
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean spe_literal = IS_TYPE_SPE(type) && tk == '{';
+#endif
     CInit_InitData(
         &db, type, qual, copts.cplusplus || copts.gcc_extensions || copts.c9x || obj == NULL
     );
+#if VERSION == VERSION_WII_1_0RC1
+    if (spe_literal) {
+        if (db.nonconst) {
+            if (obj) {
+                CError_Error(ERR_ILLEGAL_CONSTANT_EXPRESSION);
+            } else {
+                PPCError_Error(PPCERR_ILLEGAL_VECTOR_INITIALIZATION);
+            }
+        }
+        if (!obj) {
+            return CInit_SPEConstant(type, db.buffer);
+        }
+    }
+#endif
     if (!obj && !cscope_currentfunc) {
         obj = CParser_NewCompilerDefDataObject();
         obj->name = CParser_GetUniqueName();
@@ -2748,16 +2830,23 @@ ENode* CInit_AutoObject(Object* obj, Type* type, UInt32 qual) {
         CScope_AddGlobalObject(obj);
     }
 
-    if (IS_TYPE_VECTOR(type) && !db.nonconst) {
+    if ((IS_TYPE_VECTOR(type) || IS_TYPE_SPE(type)) && !db.nonconst) {
         if (obj) {
             obj_expr = create_objectrefnode(obj);
         } else {
             obj_expr = CExpr_NewETEMPNode(type, TRUE);
         }
 
-        const_expr = CExpr_NewENode(EVECTOR128CONST);
-        const_expr->rtype = type;
-        const_expr->data.vector128val = *((MWVector128*)db.buffer);
+#if VERSION == VERSION_WII_1_0RC1
+        if (IS_TYPE_SPE(type)) {
+            const_expr = CInit_SPEConstant(type, db.buffer);
+        } else
+#endif
+        {
+            const_expr = CExpr_NewENode(EVECTOR128CONST);
+            const_expr->rtype = type;
+            const_expr->data.vector128val = *((MWVector128*)db.buffer);
+        }
 
         indirect_expr = makemonadicnode(obj_expr, EINDIRECT);
         indirect_expr->rtype = type;
@@ -3099,7 +3188,7 @@ void CInit_InitializeData(Object* obj) {
                     list->object = obj;
                     list->next = cinit_tentative;
                     cinit_tentative = list;
-                    obj->qual |= Q_TENTATIVE;
+                    OBJECT_MARK_TENTATIVE(obj);
                 }
             }
 
@@ -3198,6 +3287,20 @@ void CInit_InitializeData(Object* obj) {
 
     CInit_CleanupInitInfo(&initinfo);
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+void CInit_RemoveDeadStrings(void) {
+    PooledString** link = &cinit_stringlist;
+
+    while (*link) {
+        if (CCallGraph_IsDefined((*link)->obj)) {
+            link = &(*link)->next;
+        } else {
+            *link = (*link)->next;
+        }
+    }
+}
+#endif
 
 Object* CInit_DeclareString(char* data, SInt32 size, Boolean ispascal, Boolean iswide) {
     PooledString* str;
@@ -3422,7 +3525,14 @@ static void declaredata(
     qual = obj->qual;
 
     if (cparamblkptr->precompile == 1) {
+#if VERSION == VERSION_WII_1_0RC1
+        if (!copts.cplusplus) {
+            obj->flags |= OBJECT_DEFINED;
+        }
+        PreComp_StaticData(obj, data, list, size, is_readonly);
+#else
         PreComp_StaticData(obj, data, list, size);
+#endif
         return;
     }
 
@@ -3431,6 +3541,12 @@ static void declaredata(
         for (scan = list; scan; scan = scan->next) {
             CInline_ObjectAddrRef(scan->obj);
         }
+#if VERSION == VERSION_WII_1_0RC1
+        if (CMid_InIPA()) {
+            CMid_DefineData(obj, data, list, size, is_readonly);
+            return;
+        }
+#endif
         if (copts.filesyminfo) {
             CPrep_SetSourceFile(&cparser_fileoffset);
         }
@@ -3453,6 +3569,11 @@ void CInit_DeclareReadOnlyData(Object* obj, void* data, OLinkList* list, SInt32 
 
 void CInit_DefineTentativeData(void) {
     ObjectList* list;
+#if VERSION == VERSION_WII_1_0RC1
+    if (cparamblkptr->precompile == 1) {
+        return;
+    }
+#endif
 
     for (list = cinit_tentative; list; list = list->next) {
         if (!(list->object->flags & OBJECT_DEFINED)) {

@@ -66,6 +66,7 @@ pub mod views;
 pub mod wasm_build;
 pub mod wasm_linker;
 pub mod wasm_oracle;
+pub mod windows_oracle;
 pub mod x86;
 
 // (a project's units and build: mwcc-project)

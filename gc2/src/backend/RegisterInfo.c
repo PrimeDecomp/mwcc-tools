@@ -335,9 +335,9 @@ void assign_register_by_type(Object* obj) {
         (ty->type == TYPEENUM) ||
         ((ty->type == TYPEPOINTER || ty->type == TYPEARRAY) && (ty->type != TYPEARRAY)) ||
         ((ty->type == TYPEMEMBERPOINTER) && (ty->size == 4U)) ||
-        (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(ty))) {
+        (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(ty)) || IS_TYPE_SPE(ty)) {
         if ((((ty->type == TYPEINT) || (ty->type == TYPEENUM)) && (ty->size == 8)) ||
-            (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(ty) && ty->size != 4)) {
+            (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(ty) && ty->size != 4 && !TYPE_IS_DPFP(ty))) {
             needsPair = TRUE;
         }
         vi->rclass = RegClass_GPR;

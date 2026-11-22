@@ -91,6 +91,7 @@ static void addrelocation(Object* obj, SInt32 offset) {
     last_except_ref = ref;
 }
 
+// These records are written directly to extab. Spell out their reserved bytes.
 typedef struct AABC {
     UInt8 a;
     UInt8 b;
@@ -101,6 +102,7 @@ typedef struct AABC {
 typedef struct AACC {
     UInt8 a;
     UInt8 b;
+    UInt16 reserved;
     UInt32 c;
     UInt32 d;
 } AACC;
@@ -110,6 +112,7 @@ typedef struct AABBC {
     UInt8 b;
     UInt16 c;
     UInt16 d;
+    UInt16 reserved;
     UInt32 e;
 } AABBC;
 
@@ -124,6 +127,7 @@ typedef struct AABCC {
 typedef struct AACCC {
     UInt8 a;
     UInt8 b;
+    UInt16 reserved;
     UInt32 c;
     UInt32 d;
     UInt32 e;
@@ -143,6 +147,7 @@ typedef struct AABBCC {
     UInt8 b;
     UInt16 c;
     UInt16 d;
+    UInt16 reserved;
     UInt32 e;
     UInt32 f;
 } AABBCC;
@@ -150,6 +155,7 @@ typedef struct AABBCC {
 typedef struct AACCCC {
     UInt8 a;
     UInt8 b;
+    UInt16 reserved;
     UInt32 c;
     UInt32 d;
     UInt32 e;
@@ -169,6 +175,7 @@ typedef struct AABCCCC {
 typedef struct AACCCCC {
     UInt8 a;
     UInt8 b;
+    UInt16 reserved;
     UInt32 c;
     UInt32 d;
     UInt32 e;
@@ -185,6 +192,7 @@ typedef struct AAB {
 typedef struct AAC {
     UInt8 a;
     UInt8 b;
+    UInt16 reserved;
     UInt32 c;
 } AAC;
 
@@ -224,7 +232,7 @@ static void allocateactioninfo(EANode* node) {
                     AppendGListData(&exceptmodule, &e, sizeof(e));
                     addrelocation(ea->data.destroy_local.dtor, offset + 4);
                 } else {
-                    AACC e;
+                    AACC e = {0};
                     e.a = lastFlag | 0x11;
                     e.b = 0;
                     e.c = CTool_EndianConvertWord32(local_offset_32(ea->data.destroy_local.local));
@@ -238,7 +246,7 @@ static void allocateactioninfo(EANode* node) {
                 reg = OBJECT_REG(ea->data.destroy_local_cond.cond);
                 if ((reg || local_is_16bit_offset(ea->data.destroy_local_cond.cond)) &&
                     local_is_16bit_offset(ea->data.destroy_local_cond.local)) {
-                    AABBC e;
+                    AABBC e = {0};
                     e.a = lastFlag | 3;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord16(
@@ -251,7 +259,7 @@ static void allocateactioninfo(EANode* node) {
                     AppendGListData(&exceptmodule, &e, sizeof(e));
                     addrelocation(ea->data.destroy_local_cond.dtor, offset + 8);
                 } else {
-                    AACCC e;
+                    AACCC e = {0};
                     e.a = lastFlag | 0x12;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord32(
@@ -279,7 +287,7 @@ static void allocateactioninfo(EANode* node) {
                     AppendGListData(&exceptmodule, &e, sizeof(e));
                     addrelocation(ea->data.destroy_local_offset.dtor, offset + 4);
                 } else {
-                    AACC e;
+                    AACC e = {0};
                     e.a = lastFlag | 0x11;
                     e.b = 0;
                     e.c = CTool_EndianConvertWord32(
@@ -305,7 +313,7 @@ static void allocateactioninfo(EANode* node) {
                     AppendGListData(&exceptmodule, &e, sizeof(e));
                     addrelocation(ea->data.destroy_local_pointer.dtor, offset + 4);
                 } else {
-                    AACC e;
+                    AACC e = {0};
                     e.a = lastFlag | 0x13;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord32(
@@ -331,7 +339,7 @@ static void allocateactioninfo(EANode* node) {
                     AppendGListData(&exceptmodule, &e, sizeof(e));
                     addrelocation(ea->data.destroy_local_array.dtor, offset + 8);
                 } else {
-                    AACCCC e;
+                    AACCCC e = {0};
                     e.a = lastFlag | 0x14;
                     e.b = 0;
                     e.c = CTool_EndianConvertWord32(
@@ -359,7 +367,7 @@ static void allocateactioninfo(EANode* node) {
                     AppendGListData(&exceptmodule, &e, sizeof(e));
                     addrelocation(ea->data.destroy_member.dtor, offset + 8);
                 } else {
-                    AACCC e;
+                    AACCC e = {0};
                     e.a = lastFlag | 0x16;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord32(
@@ -386,7 +394,7 @@ static void allocateactioninfo(EANode* node) {
                     AppendGListData(&exceptmodule, &e, sizeof(e));
                     addrelocation(ea->data.destroy_base.dtor, offset + 8);
                 } else {
-                    AACCC e;
+                    AACCC e = {0};
                     e.a = lastFlag | 0x15;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord32(
@@ -404,7 +412,7 @@ static void allocateactioninfo(EANode* node) {
                 reg2 = OBJECT_REG(ea->data.destroy_member_cond.objectptr);
                 if ((reg || local_is_16bit_offset(ea->data.destroy_member_cond.cond)) &&
                     (reg2 || local_is_16bit_offset(ea->data.destroy_member_cond.objectptr))) {
-                    AABBCC e;
+                    AABBCC e = {0};
                     e.a = lastFlag | 8;
                     e.b = ((reg ? 1 : 0) << 7) | (((reg2 ? 1 : 0) & 1) << 6);
                     e.c = CTool_EndianConvertWord16(
@@ -418,7 +426,7 @@ static void allocateactioninfo(EANode* node) {
                     AppendGListData(&exceptmodule, &e, sizeof(e));
                     addrelocation(ea->data.destroy_member_cond.dtor, offset + 12);
                 } else {
-                    AACCCC e;
+                    AACCCC e = {0};
                     e.a = lastFlag | 0x17;
                     e.b = ((reg ? 1 : 0) << 7) | (((reg2 ? 1 : 0) & 1) << 6);
                     e.c = CTool_EndianConvertWord32(
@@ -450,7 +458,7 @@ static void allocateactioninfo(EANode* node) {
                     AppendGListData(&exceptmodule, &e, sizeof(e));
                     addrelocation(ea->data.destroy_member_array.dtor, offset + 16);
                 } else {
-                    AACCCCC e;
+                    AACCCCC e = {0};
                     e.a = lastFlag | 0x18;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord32(
@@ -479,7 +487,7 @@ static void allocateactioninfo(EANode* node) {
                     AppendGListData(&exceptmodule, &e, sizeof(e));
                     addrelocation(ea->data.delete_pointer.deletefunc, offset + 4);
                 } else {
-                    AACC e;
+                    AACC e = {0};
                     e.a = lastFlag | 0x19;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord32(
@@ -496,7 +504,7 @@ static void allocateactioninfo(EANode* node) {
                 reg2 = OBJECT_REG(ea->data.delete_pointer_cond.pointerobject);
                 if ((reg || local_is_16bit_offset(ea->data.delete_pointer_cond.cond)) &&
                     (reg2 || local_is_16bit_offset(ea->data.delete_pointer_cond.pointerobject))) {
-                    AABBC e;
+                    AABBC e = {0};
                     e.a = lastFlag | 0xB;
                     e.b = ((reg ? 1 : 0) << 7) | (((reg2 ? 1 : 0) & 1) << 6);
                     e.c = CTool_EndianConvertWord16(
@@ -509,7 +517,7 @@ static void allocateactioninfo(EANode* node) {
                     AppendGListData(&exceptmodule, &e, sizeof(e));
                     addrelocation(ea->data.delete_pointer_cond.deletefunc, offset + 8);
                 } else {
-                    AACCC e;
+                    AACCC e = {0};
                     e.a = lastFlag | 0x1A;
                     e.b = ((reg ? 1 : 0) << 7) | (((reg2 ? 1 : 0) & 1) << 6);
                     e.c = CTool_EndianConvertWord32(
@@ -525,7 +533,7 @@ static void allocateactioninfo(EANode* node) {
                 break;
             }
             case EAT_CATCHBLOCK: {
-                AACCC e;
+                AACCC e = {0};
                 e.a = lastFlag | 0x10;
                 e.b = 0;
                 e.c = 0;
@@ -555,7 +563,7 @@ static void allocateactioninfo(EANode* node) {
                     );
                     AppendGListData(&exceptmodule, &e, sizeof(e));
                 } else {
-                    AAC e;
+                    AAC e = {0};
                     e.a = lastFlag | 0x1B;
                     e.b = 0;
                     e.c = CTool_EndianConvertWord32(

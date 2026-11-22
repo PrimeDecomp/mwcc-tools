@@ -77,6 +77,10 @@ extern ENode* CExpr_MakeNameLookupResultExpr(NameResult* pr);
 extern SInt32 scansizeof(void);
 extern ENode* getnodeaddress(ENode* expr, Boolean isAddressOf);
 extern ENode* getpointertomemberfunc(ENode* expr, Type* type, Boolean buildData);
+extern ENode* CExpr_NewMemberFunctionPointer(Object* method, Type* type, Boolean buildData);
+#if VERSION == VERSION_WII_1_0RC1
+extern Boolean CExpr_MaterializeMemberFunctionLiteral(ENode* expr);
+#endif
 extern ENode* CExpr_New_ELOGNOT_Node(ENode* input);
 extern ENode* CExpr_New_EMONMIN_Node(ENode* input);
 extern ENode* CExpr_New_EBINNOT_Node(ENode* input);
@@ -190,6 +194,11 @@ extern ENode* CExpr_NewTemplDepENode(TemplDepSubType t);
 extern ENode* forceintegral(ENode* expr);
 extern Boolean CExpr_AllBitsSet(ENode* expr);
 extern void CExpr_SearchExprTree(ENode* expr, CExprSearchCB callback, SInt32 count, ...);
+#if VERSION == VERSION_WII_1_0RC1
+extern void CExpr_SearchIPAReferences(
+    ENode* expr, CExprSearchCB opaque, void (*visit)(Object*, Boolean)
+);
+#endif
 extern ENode* CExpr_VarArgPromotion(ENode* expr, Boolean toEllipsis);
 extern ENode* CExpr_GenericFuncCall(
     BClassList* path,

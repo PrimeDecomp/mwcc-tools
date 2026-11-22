@@ -84,6 +84,12 @@ Option *optlstBackEnd_057[] = {
 };
 OptionList optlstBackEnd_058 = {0, 0x100, optlstBackEnd_057};
 Option optlstBackEnd_059 = {"vector", 0x8100, 0, &optlstBackEnd_058, 0, "specify Altivec vectorization options"};
+#if VERSION == VERSION_WII_1_0RC1
+static SET_T setSPEVector = {11, 0x01, 0, 0, 1, 2, (void *)&pBackEnd.spe};
+static SET_T setSPEAdditionalVector = {11, 0x01, 0, 0, 1, 3, (void *)&pBackEnd.spe};
+static Option optSPEVector = {"spe_vector", 0x100, (PARAM_T *)&setSPEVector, 0, 0, "enable SPE vector support"};
+static Option optSPEAdditionalVector = {"spe_addl_vector", 0x100, (PARAM_T *)&setSPEAdditionalVector, 0, 0, "enable additional SPE vector support"};
+#endif
 Option *optlstBackEnd_060[] = {
     &optlstBackEnd_016,
     &optlstBackEnd_018,
@@ -95,6 +101,10 @@ Option *optlstBackEnd_060[] = {
     &optlstBackEnd_044,
     &optlstBackEnd_046,
     &optlstBackEnd_059,
+#if VERSION == VERSION_WII_1_0RC1
+    &optSPEVector,
+    &optSPEAdditionalVector,
+#endif
     0
 };
 OptionList optlstBackEnd = {"Embedded PowerPC Options\n", 0x100, optlstBackEnd_060};

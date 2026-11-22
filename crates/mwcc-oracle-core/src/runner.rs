@@ -185,9 +185,10 @@ pub(crate) fn module(root: &Path, executable: &Path) -> Option<PathBuf> {
     };
 }
 
-/// Whether EXECUTABLE can run: it is there, or a module runs in its place.
+/// Whether EXECUTABLE can run as a process or through its module.
 pub fn runs(root: &Path, executable: &Path) -> bool {
-    executable.is_file() || module(root, executable).is_some()
+    mwcc_project::compilers::native_executable(root, executable).is_file()
+        || module(root, executable).is_some()
 }
 
 pub fn execute_process(invocation: Invocation<'_>) -> Result<Execution> {
@@ -408,11 +409,11 @@ pub fn compile_controlled(
     let root = fs::canonicalize(&request.root).context("oracle root does not exist")?;
     let relative_oracle = format!("build/{}/oracle/mwcceppc.exe", request.version.name());
     let mut oracle = root.join(&relative_oracle);
-    let mut original = root.join(format!(
-        "build/compilers/GC/{}/mwcceppc.exe",
-        request.version.compiler_directory()
-    ));
+    let mut original = mwcc_project::compilers::stock_executable(&root, request.version);
     let in_process = |path: &Path| module(&root, path);
+    if in_process(&oracle).is_none() {
+        oracle = mwcc_project::compilers::native_executable(&root, &oracle).into_owned();
+    }
     let fallback = !runs(&root, &oracle) && request.original_fallback && original.is_file();
     if fallback {
         oracle = original.clone();

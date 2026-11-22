@@ -82,6 +82,43 @@ void CPrep_PreprocessDumpFileInfo(Boolean newLine) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void CPrep_DumpOctal(UInt8 value) {
+    AppendGListByte(&pplist, '0' + (value >> 6));
+    AppendGListByte(&pplist, '0' + ((value >> 3) & 7));
+    AppendGListByte(&pplist, '0' + (value & 7));
+}
+
+static void CPrep_DumpWString(const UInt8* str, short len) {
+    SInt32 width = stwchar.size;
+    while (len--) {
+        UInt32 value = 0;
+        SInt32 i;
+        for (i = 0; i < width; ++i) {
+            value = (value << 8) | str[copts.littleendian ? width - i - 1 : i];
+        }
+        str += width;
+
+        if (value >= 0x20 && value < 0x7f) {
+            if (value == '"' || value == '\\') {
+                AppendGListByte(&pplist, '\\');
+            }
+            AppendGListByte(&pplist, value);
+        } else if (value < 0x100) {
+            AppendGListByte(&pplist, '\\');
+            CPrep_DumpOctal(value);
+        } else {
+            char escape[11];
+            int size = sprintf(escape, "\\x%lX", (unsigned long)value);
+            AppendGListData(&pplist, escape, size);
+            // A later hexadecimal digit must start a separate string token.
+            if (len) {
+                AppendGListData(&pplist, "\" L\"", 4);
+            }
+        }
+    }
+}
+#else
 static void CPrep_DumpWString(UInt16* str, short len) {
     int divisor;
     int i;
@@ -141,6 +178,7 @@ static void CPrep_DumpWString(UInt16* str, short len) {
         str++;
     }
 }
+#endif
 
 static void CPrep_DumpString(UInt8* str, short len) {
     while (len--) {
@@ -169,10 +207,14 @@ static void CPrep_DumpString(UInt8* str, short len) {
                     AppendGListByte(&pplist, 'v');
                     break;
                 default:
+#if VERSION == VERSION_WII_1_0RC1
+                    CPrep_DumpOctal(*str);
+#else
                     if (*str >= 8) {
                         AppendGListByte(&pplist, '0' + (*str / 8));
                     }
                     AppendGListByte(&pplist, '0' + (*str % 8));
+#endif
             }
         } else {
             switch (*str) {
@@ -208,6 +250,22 @@ void CPrep_PreprocessDumpDirectiveEnd(void) {
 }
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+void CPrep_PreprocessDumpPCH(const char* name, Boolean isSystem) {
+    if (!pplist.data && InitGList(&pplist, 10000)) {
+        CError_NoMem();
+    }
+    if (pplist.size && (*pplist.data)[pplist.size - 1] != '\n') {
+        AppendGListData(&pplist, "\r\n", 2);
+    }
+    AppendGListData(&pplist, "#include ", 9);
+    AppendGListByte(&pplist, isSystem ? '<' : '"');
+    AppendGListData(&pplist, name, strlen(name));
+    AppendGListByte(&pplist, isSystem ? '>' : '"');
+    AppendGListData(&pplist, "\r\n", 2);
+}
+#endif
+
 #if VERSION == VERSION_GC_1_3_2
 #undef CError_LINE_DELTA
 #define CError_LINE_DELTA -43
@@ -225,7 +283,11 @@ void CPrep_Preprocess(void) {
     startToken = 0;
     depth = 0;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (!pplist.data && InitGList(&pplist, 10000)) {
+#else
     if (InitGList(&pplist, 10000)) {
+#endif
         CError_NoMem();
     }
 
@@ -713,7 +775,11 @@ void CPrep_Preprocess(void) {
 
                     case TK_STRING_WIDE:
                         AppendGListData(&pplist, "L\"", 2);
+#if VERSION == VERSION_WII_1_0RC1
+                        CPrep_DumpWString((const UInt8*)tkstring, (tksize / stwchar.size) - 1);
+#else
                         CPrep_DumpWString((UInt16*)tkstring, (tksize / stwchar.size) - 1);
+#endif
                         AppendGListByte(&pplist, '"');
                         break;
 

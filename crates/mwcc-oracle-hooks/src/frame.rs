@@ -48,7 +48,7 @@ unsafe fn objects(kind: &CStr, mut list: *const u8) {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", feature = "source-probes"))]
 unsafe extern "C" {
     // (gc2's names: the WebAssembly module has no x86 code to find them in)
     static linkage_area_size: i32;
@@ -58,7 +58,7 @@ unsafe extern "C" {
     static frame_size: i32;
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", feature = "source-probes"))]
 unsafe fn layout() {
     unsafe {
         OracleTrace_Printf(
@@ -74,7 +74,7 @@ unsafe fn layout() {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", feature = "source-probes")))]
 unsafe fn layout() {
     unsafe {
         let code = fn_004f7fb0__retail as *const () as *const u8;

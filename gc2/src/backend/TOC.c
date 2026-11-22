@@ -1034,6 +1034,28 @@ Boolean canoptimizevectorconst(MWVector128* vecp, Type* type, COVCResult* result
     char ci;
     UInt32 l0, l1, l2, l3;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_TYPE_SPE(type)) {
+        first32 = (SInt32)vecp->ul[0];
+        if (result) {
+            UInt32 word = vecp->ul[0];
+            result->op2 = -1;
+            result->op1 = PC_EVMERGELO;
+            result->arg = 0;
+            if (word == vecp->ul[1]) {
+                if (first32 >= -16 && first32 <= 15) {
+                    result->op1 = PC_EVSPLATI;
+                    result->arg = first32;
+                } else if ((word & 0x00FFFFFF) == 0 && (word >> 24 & 0xF1) == 0xF1) {
+                    result->op1 = PC_EVSPLATFI;
+                    result->arg = (SInt8)(word >> 24) >> 3;
+                }
+            }
+        }
+        return TRUE;
+    }
+#endif
+
     if (IS_TYPE_VECTOR(type)) {
         vec = *vecp;
         v = (signed_vec*)&vec;
@@ -2036,17 +2058,13 @@ opassign_common:
                     }
                 }
             }
-            if (copts.soft_float &&
-                IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype) &&
-                ENODE_IS2(expr, EDIV, EMUL)) {
+            if (TYPE_REQUIRES_SFPE(expr->rtype) && ENODE_IS2(expr, EDIV, EMUL)) {
                 expr->hascall = TRUE;
                 requires_frame = TRUE;
                 makes_call = TRUE;
             }
-            if ((copts.soft_float &&
-                 IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->data.diadic.right->rtype)) ||
-                (copts.soft_float &&
-                 IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->data.diadic.left->rtype))) {
+            if (TYPE_REQUIRES_SFPE(expr->data.diadic.right->rtype) ||
+                TYPE_REQUIRES_SFPE(expr->data.diadic.left->rtype)) {
                 if (ENODE_IS(expr, ELESS) ||
                     ENODE_IS(expr, EGREATER) ||
                     ENODE_IS(expr, ELESSEQU) ||
@@ -2097,9 +2115,7 @@ opassign_common:
 
                 expr->rtype = type;
             }
-            if (copts.soft_float &&
-                IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype) &&
-                ENODE_IS3(expr, EMUL, EADD, ESUB)) {
+            if (TYPE_REQUIRES_SFPE(expr->rtype) && ENODE_IS3(expr, EMUL, EADD, ESUB)) {
                 expr->hascall = TRUE;
                 requires_frame = TRUE;
                 makes_call = TRUE;
@@ -2162,6 +2178,9 @@ opassign_common:
             if (IS_TYPE_INT_OR_ENUM(tmpexpr->rtype) &&
                 IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype)) {
                 uses_globals = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+                ++num_int_to_float_converts;
+#endif
             }
 
             if ((TYPE_IS_8BYTES(tmpexpr->rtype) && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype)) ||
@@ -2202,7 +2221,7 @@ opassign_common:
                 }
                 expandTOCexpression(expr->data.monadic, NULL, FALSE);
                 expr->hascall = expr->data.monadic->hascall;
-                if (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype)) {
+                if (TYPE_REQUIRES_SFPE(expr->rtype)) {
                     expr->hascall = TRUE;
                     requires_frame = TRUE;
                     makes_call = TRUE;
@@ -2211,7 +2230,7 @@ opassign_common:
             }
             expr->type = EPREINC;
         case EPREINC:
-            if (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype)) {
+            if (TYPE_REQUIRES_SFPE(expr->rtype)) {
                 expr->hascall = TRUE;
                 requires_frame = TRUE;
                 makes_call = TRUE;
@@ -2228,7 +2247,7 @@ opassign_common:
                 }
                 expandTOCexpression(expr->data.monadic, NULL, FALSE);
                 expr->hascall = expr->data.monadic->hascall;
-                if (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype)) {
+                if (TYPE_REQUIRES_SFPE(expr->rtype)) {
                     expr->hascall = TRUE;
                     requires_frame = TRUE;
                     makes_call = TRUE;
@@ -2237,7 +2256,7 @@ opassign_common:
             }
             expr->type = EPREDEC;
         case EPREDEC:
-            if (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype)) {
+            if (TYPE_REQUIRES_SFPE(expr->rtype)) {
                 expr->hascall = TRUE;
                 requires_frame = TRUE;
                 makes_call = TRUE;
@@ -2373,6 +2392,10 @@ static void checkexceptionreferences(ExceptionAction* action) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+int num_int_to_float_converts;
+#endif
+
 void expandTOCreferences(Statement** stmts) {
     Statement* stmt;
     IAOperand* op;
@@ -2382,6 +2405,9 @@ void expandTOCreferences(Statement** stmts) {
 
     codelabellist = NULL;
     exceptionlist = NULL;
+#if VERSION == VERSION_WII_1_0RC1
+    num_int_to_float_converts = 0;
+#endif
 
     for (stmt = *stmts; stmt; stmt = stmt->next) {
         curstmtvalue = stmt->value;

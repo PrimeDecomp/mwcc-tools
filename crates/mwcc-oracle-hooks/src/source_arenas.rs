@@ -7,6 +7,9 @@ use crate::{
 };
 use core::{ffi::CStr, ptr};
 
+#[path = "wii_rc1_arena.rs"]
+mod wii_rc1;
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct Globals {
@@ -156,7 +159,10 @@ unsafe fn enter() -> bool {
             let g = globals();
             let event = next(ptr::addr_of_mut!(EVENT));
             OracleTrace_Printf(c"pv.arena.begin schema=1 stream=1 event=%lu scope=guarded_retail_arenas_v1 version=%lu pools=%08lx lock=%08lx\n".as_ptr(),event,g.version,g.pools as u32,g.lock as u32);
-            if g.pools.is_null() || g.lock.is_null() || !(1..=4).contains(&g.version) {
+            if g.pools.is_null()
+                || g.lock.is_null()
+                || (!(1..=4).contains(&g.version) && g.version != u32::from(wii_rc1::VERSION))
+            {
                 gap(c"invalid_globals", 0);
             }
         }
@@ -307,10 +313,13 @@ unsafe fn commit(
                 read::<i32>(heap, 16),
             )
         };
-        let rounded = (request.size & !7).checked_add(8);
+        let rounded = if version() == u32::from(wii_rc1::VERSION) {
+            wii_rc1::rounded(request.size)
+        } else {
+            (request.size & !7).checked_add(8)
+        };
         let valid = matched
             && address.is_some()
-            && size > 0
             && size <= i32::MAX as u32
             && rounded == Some(size)
             && request.size <= size
@@ -346,8 +355,13 @@ const SOURCE_SITES: [(u32, u32); 9] = [
 const SOURCE_CALLBACK: u32 = 0x44113a;
 
 /// PAIR's sites, for gc2's probes.
-fn source_sites(pair: u32) -> Option<(u32, u32)> {
-    SOURCE_SITES.get(pair.checked_sub(1)? as usize).copied()
+fn source_sites(version: u32, pair: u32) -> Option<(u32, u32)> {
+    let table = if version == u32::from(wii_rc1::VERSION) {
+        &wii_rc1::SITES
+    } else {
+        &SOURCE_SITES
+    };
+    table.get(pair.checked_sub(1)? as usize).copied()
 }
 
 /// gc2's probe of a request (`include/compiler/OracleProbes.h`).
@@ -357,7 +371,7 @@ pub unsafe extern "C" fn OracleProbe_ArenaRequest(pair: u32, requested: u32, fra
         if !enter() {
             return;
         }
-        match (source_sites(pair), pool_for_pair(pair)) {
+        match (source_sites(version(), pair), pool_for_pair(pair)) {
             (Some((site, _)), Some(pool)) => request(site, pair, pool, requested, frame as u32),
             _ => gap(c"invalid_pair", 0),
         }
@@ -378,7 +392,7 @@ pub unsafe extern "C" fn OracleProbe_ArenaCommit(
         if !enter() {
             return;
         }
-        match (source_sites(pair), pool_for_pair(pair)) {
+        match (source_sites(version(), pair), pool_for_pair(pair)) {
             (Some((_, site)), Some(pool)) => commit(
                 site,
                 pair,
@@ -399,7 +413,12 @@ pub unsafe extern "C" fn OracleProbe_ArenaCommit(
 pub unsafe extern "C" fn OracleProbe_ArenaCallback() {
     unsafe {
         if enter() {
-            gap(c"allocator_callback", SOURCE_CALLBACK);
+            let site = if version() == u32::from(wii_rc1::VERSION) {
+                wii_rc1::CALLBACK
+            } else {
+                SOURCE_CALLBACK
+            };
+            gap(c"allocator_callback", site);
             leave();
         }
     }

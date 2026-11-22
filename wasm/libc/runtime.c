@@ -15,6 +15,7 @@ void _CRTStartup(void)
     char* start;
     char* end;
     char* p;
+    size_t size;
     int count = 0;
     int i;
 
@@ -42,14 +43,20 @@ void _CRTStartup(void)
     while (*end) {
         end += strlen(end) + 1;
     }
-    environment = malloc(end - start);
-    if (environment) {
-        memcpy(environment, start, end - start);
+    /* Include the empty string that terminates the block. */
+    size = (size_t)(end - start) + 1;
+    environment = malloc(size);
+    if (!environment) {
+        exit(1);
     }
+    memcpy(environment, start, size);
     for (p = environment; *p; p += strlen(p) + 1) {
         count++;
     }
     _Environ = malloc((count + 1) * sizeof(char*));
+    if (!_Environ) {
+        exit(1);
+    }
     i = 0;
     for (p = environment; *p; p += strlen(p) + 1) {
         _Environ[i++] = p;
@@ -65,7 +72,7 @@ char* getenv(const char* name)
     int i = 0;
 
     while ((entry = _Environ[i++]) != 0) {
-        if (entry[length] == '=' && _strnicmp(entry, name, length) == 0) {
+        if (_strnicmp(entry, name, length) == 0 && entry[length] == '=') {
             return entry + length + 1;
         }
     }

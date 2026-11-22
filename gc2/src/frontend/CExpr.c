@@ -834,7 +834,7 @@ ENode* argumentpromotion(ENode* expr, Type* type, short qual, Boolean checkAcces
         );
     }
 
-    if (CMach_PassResultInHiddenArg(type)) {
+    if (CMach_PassAddressOf(type)) {
         ENode* temp;
         ENode* tempcopy;
         ENode* indirect;
@@ -2709,14 +2709,68 @@ static ENode* CExpr_MakePTDM(ENode* expr) {
 #undef CError_LINE_DELTA
 #define CError_LINE_DELTA -2
 #endif
+ENode* CExpr_NewMemberFunctionPointer(Object* method, Type* type, Boolean buildData) {
+    TypeMemberFunc* tmethod = TYPE_METHOD(method->type);
+    OLinkList* olist;
+    Object* dataobj = CParser_NewGlobalDataObject(NULL);
+    SInt32 data[3];
+
+    dataobj->name = CParser_GetUniqueName();
+    dataobj->nspace = cscope_root;
+    dataobj->type = type;
+    dataobj->sclass = TK_STATIC;
+
+    if (buildData) {
+        data[0] = CTool_EndianConvertWord32(0);
+        if (method->datatype == DVFUNC) {
+            olist = NULL;
+            data[1] = CTool_EndianConvertWord32(tmethod->vtbl_index);
+            data[2] = CTool_EndianConvertWord32(tmethod->theclass->vtable->offset);
+        } else {
+            data[1] = CTool_EndianConvertWord32(-1);
+            data[2] = CTool_EndianConvertWord32(0);
+            olist = galloc(sizeof(OLinkList));
+            olist->next = NULL;
+            olist->obj = method;
+            olist->addend = 0;
+            olist->offset = 8;
+        }
+        CInit_DeclareData(dataobj, data, olist, dataobj->type->size);
+    }
+    return create_objectnode(dataobj);
+}
+
+#if VERSION == VERSION_WII_1_0RC1
+Boolean CExpr_MaterializeMemberFunctionLiteral(ENode* expr) {
+    Object* method = expr->data.objref;
+    ENode* literal;
+    TypeClass* owner;
+
+    if (!IS_TYPE_MEMBERPOINTER(expr->rtype) ||
+        expr->rtype->size != 12 ||
+        !method ||
+        !method->type ||
+        !IS_TYPE_NONSTATIC_METHOD(method->type) ||
+        (method->datatype != DFUNC && method->datatype != DVFUNC)) {
+        return FALSE;
+    }
+    owner = TYPE_METHOD(method->type)->theclass;
+    if (method->datatype == DVFUNC && (!owner || !owner->vtable)) {
+        return FALSE;
+    }
+    literal = CExpr_NewMemberFunctionPointer(method, expr->rtype, TRUE);
+    if (!ENODE_IS(literal, EINDIRECT)) {
+        return FALSE;
+    }
+    literal->flags = expr->flags;
+    *expr = *literal;
+    return TRUE;
+}
+#endif
+
 ENode* getpointertomemberfunc(ENode* expr, Type* type, Boolean buildData) {
     NameSpaceObjectList* list;
     Object* obj;
-    Type* ptmtype;
-    TypeMemberFunc* tmethod;
-    OLinkList* olist;
-    Object* dataobj;
-    SInt32 data[3];
 
     CError_ASSERT(3444, ENODE_IS(expr, EMEMBER));
 
@@ -2767,33 +2821,9 @@ ENode* getpointertomemberfunc(ENode* expr, Type* type, Boolean buildData) {
         CError_Error(ERR_UNIMPLEMENTED_C_FEATURE);
     }
 
-    ptmtype = CExpr_NewPTMType(expr->data.emember, obj);
-    tmethod = TYPE_METHOD(obj->type);
-    dataobj = CParser_NewGlobalDataObject(NULL);
-    dataobj->name = CParser_GetUniqueName();
-    dataobj->nspace = cscope_root;
-    dataobj->type = ptmtype;
-    dataobj->sclass = TK_STATIC;
-
-    if (buildData) {
-        data[0] = CTool_EndianConvertWord32(0);
-        if (obj->datatype == DVFUNC) {
-            olist = NULL;
-            data[1] = CTool_EndianConvertWord32(tmethod->vtbl_index);
-            data[2] = CTool_EndianConvertWord32(tmethod->theclass->vtable->offset);
-        } else {
-            data[1] = CTool_EndianConvertWord32(-1);
-            data[2] = CTool_EndianConvertWord32(0);
-            olist = galloc(sizeof(OLinkList));
-            olist->next = NULL;
-            olist->obj = obj;
-            olist->addend = 0;
-            olist->offset = 8;
-        }
-        CInit_DeclareData(dataobj, data, olist, dataobj->type->size);
-    }
-
-    return create_objectnode(dataobj);
+    return CExpr_NewMemberFunctionPointer(
+        obj, CExpr_NewPTMType(expr->data.emember, obj), buildData
+    );
 }
 #if VERSION == VERSION_GC_1_3_2
 #undef CError_LINE_DELTA

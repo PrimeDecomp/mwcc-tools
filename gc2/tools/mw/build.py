@@ -71,10 +71,10 @@ def host_compiler(cfg: config.VersionConfig, source: config.Source) -> str:
 
 def compilation(version: Version | str | None, source: str, *, _sources=None, _config=None) -> Compilation:
     v = get_version(version)
-    table = _sources if _sources is not None else config.sources()
+    cfg = _config if _config is not None else config.version_config(v)
+    table = _sources if _sources is not None else config.sources(extra=cfg.raw.get("extra_sources"))
     if source not in table:
         raise Error(f"{source} is not in config/sources.json")
-    cfg = _config if _config is not None else config.version_config(v)
     settings = table[source]
     flags = list(cfg.flags.get(source, settings.flags))
     args = [
@@ -93,7 +93,8 @@ def compilation(version: Version | str | None, source: str, *, _sources=None, _c
 
 def compilations(version: Version | str | None = None) -> list[Compilation]:
     v = get_version(version)
-    table, cfg = config.sources(), config.version_config(v)
+    cfg = config.version_config(v)
+    table = config.sources(extra=cfg.raw.get("extra_sources"))
     return [compilation(v, s, _sources=table, _config=cfg) for s in table]
 
 

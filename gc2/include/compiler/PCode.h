@@ -171,6 +171,10 @@ enum {
 
 #define SPR_GQR0 912
 #define SPR_GQR1 913
+#if VERSION == VERSION_WII_1_0RC1
+#define SPR_SPEFSCR 512
+#define SPR_ACC 4048
+#endif
 
 extern PCodeBlock* pcbasicblocks;
 extern PCodeBlock* pclastblock;

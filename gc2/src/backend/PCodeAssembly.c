@@ -140,6 +140,55 @@ static SInt32 pcode_update_mem_labeldiff_imm(PCode* instr, const PCodeArg* op, W
     return offset;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static UInt32 assemble_spe_pcode(const PCode* instr, UInt32 bits) {
+    const SPEOpcodeInfo* spe = &spe_opcodeinfo[instr->op - PC_EVOR];
+    const PCodeArg* args = instr->args;
+    UInt32 reg0;
+
+    if (spe->encoding == SPE_NO_OPERANDS) {
+        return bits;
+    }
+    reg0 = args[0].data.reg.reg;
+
+    switch (spe->encoding) {
+        case SPE_RRR:
+            return bits | (reg0 << 21) | (args[1].data.reg.reg << 16) |
+                (args[2].data.reg.reg << 11);
+        case SPE_RA:
+            return bits | (reg0 << 21) | (args[1].data.reg.reg << 16);
+        case SPE_RB:
+            return bits | (reg0 << 21) | (args[1].data.reg.reg << 11);
+        case SPE_I:
+            return bits | (reg0 << 21) | ((args[1].data.imm.value & 31) << 16);
+        case SPE_RI:
+            return bits | (reg0 << 21) | (args[1].data.reg.reg << 16) |
+                ((args[2].data.imm.value & 31) << 11);
+        case SPE_IR:
+            return bits | (reg0 << 21) | ((args[1].data.imm.value & 31) << 16) |
+                (args[2].data.reg.reg << 11);
+        case SPE_ADDI:
+            return bits | (reg0 << 21) | ((args[2].data.imm.value & 31) << 16) |
+                (args[1].data.reg.reg << 11);
+        case SPE_COMPARE:
+            return bits | (reg0 << 23) | (args[1].data.reg.reg << 16) |
+                (args[2].data.reg.reg << 11);
+        case SPE_SELECT:
+            return bits | (reg0 << 21) | (args[1].data.reg.reg << 16) |
+                (args[2].data.reg.reg << 11) | 0x278 | args[3].data.reg.reg;
+        case SPE_DISPLACEMENT:
+            return bits | (reg0 << 21) | (args[1].data.reg.reg << 16) |
+                ((args[2].data.imm.value / spe->memoryWidth & 31) << 11);
+        case SPE_MR:
+            return bits | (reg0 << 21) | (args[1].data.reg.reg << 16) |
+                (args[1].data.reg.reg << 11);
+        default:
+            CError_FATAL(203);
+            return bits;
+    }
+}
+#endif
+
 UInt32 assemblepcode(PCode* instr, UInt32 offset, WeirdOperand* wop) {
     UInt32 bits;
     int isAbsolute;
@@ -147,6 +196,12 @@ UInt32 assemblepcode(PCode* instr, UInt32 offset, WeirdOperand* wop) {
     bits = opcodeinfo[instr->op].insn;
     wop->type = -1;
     wop->addend = 0;
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_SPE_OPCODE(instr->op)) {
+        return CTool_EndianConvertWord32(assemble_spe_pcode(instr, bits));
+    }
+#endif
 
     switch (instr->op) {
         case PC_BL: {
@@ -1701,6 +1756,13 @@ static SInt32 insert_align_nops(Object* func, SInt32 codesize) {
     PCodeBlock* block;
     int changed;
     PCodeBlock* prev;
+
+#if VERSION == VERSION_WII_1_0RC1
+    // RC1 uses the instruction alignment for inner loops when optimizing for size.
+    if (copts.optimizesize) {
+        return codesize;
+    }
+#endif
 
     do {
         changed = FALSE;

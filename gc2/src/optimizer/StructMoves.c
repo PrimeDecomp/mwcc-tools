@@ -9,6 +9,12 @@
 #include "compiler/Registers.h"
 #include "compiler/types.h"
 
+#if VERSION == VERSION_WII_1_0RC1
+#define USE_FP_BLOCKMOVE (!copts.ppc_no_fp_blockmove && copts.use_fp && !copts.soft_float)
+#else
+#define USE_FP_BLOCKMOVE (copts.use_fp && !copts.soft_float)
+#endif
+
 void make_addressable(Operand* operand, SInt32 offset, int n) {
     int reg;
 
@@ -108,7 +114,7 @@ static void move_block_via_load_store(Operand* dst, Operand* src, SInt32 len, SI
         coerce_to_addressable(dst);
     }
 
-    if (copts.use_fp && !copts.soft_float && len == 8) {
+    if (USE_FP_BLOCKMOVE && len == 8) {
         floatReg = ALLOC_FPR();
         if (src->optype == OpndType_IndirectGPR_ImmOffset) {
             load_store_register(PC_LFD, floatReg, src->reg, src->object, src->immOffset);
@@ -217,7 +223,7 @@ static void move_block_via_load_store_sequence(
     make_addressable(dst, len, 0);
     make_addressable(src, len, 0);
 
-    if (copts.use_fp && !copts.soft_float && (align % 8) == 0) {
+    if (USE_FP_BLOCKMOVE && (align % 8) == 0) {
         while (len >= 16) {
             int reg1 = ALLOC_FPR();
             int reg2 = ALLOC_FPR();
@@ -237,7 +243,7 @@ static void move_block_via_load_store_sequence(
     }
 
     while (len >= 8) {
-        if (copts.use_fp && !copts.soft_float && (align % 8) == 0) {
+        if (USE_FP_BLOCKMOVE && (align % 8) == 0) {
             int reg = ALLOC_FPR();
 
             load_store_register(PC_LFD, reg, src->reg, src->object, src->immOffset + pos);
@@ -452,7 +458,7 @@ void move_block(Operand* dst, Operand* src, SInt32 len, SInt32 align) {
 
     if (len == 1 || len == 2 || len == 4) {
         move_block_via_load_store(&myDst, src, len, align);
-    } else if (copts.use_fp && !copts.soft_float && len == 8 && align == 8) {
+    } else if (USE_FP_BLOCKMOVE && len == 8 && align == 8) {
         move_block_via_load_store(&myDst, src, len, align);
     } else if (len <= 16 || (!copts.optimizesize && len <= 64)) {
         move_block_via_load_store_sequence(&myDst, src, len, align);

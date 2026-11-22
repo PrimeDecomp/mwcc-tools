@@ -7,6 +7,9 @@
 #include "compiler/enode.h"
 #include "compiler/LoopDetection.h"
 #include "compiler/objects.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/Operands.h"
+#endif
 #include "compiler/PCode.h"
 #include "compiler/PCodeInfo.h"
 #include "compiler/Registers.h"
@@ -848,6 +851,13 @@ static void deleteloopheader(Loop* loop) {
 static void rewriteloopwithBDNZ(Loop* loop) {
     PCode* instr;
 
+#if VERSION == VERSION_WII_1_0RC1
+    PCode* anchor = loop->preheader->lastPCode;
+    short count_reg = ALLOC_GPR();
+
+    insert_load_immediate_before(anchor, count_reg, loop->iterationCount);
+    insertpcodebefore(anchor, makepcode(PC_MTCTR, count_reg));
+#else
     if (!FITS_IN_SHORT(loop->iterationCount)) {
         instr = makepcode(
             PC_LIS, ALLOC_GPR(), 0, HIGH_PART(loop->iterationCount)
@@ -872,6 +882,7 @@ static void rewriteloopwithBDNZ(Loop* loop) {
     }
 
     insertpcodebefore(loop->preheader->lastPCode, makepcode(PC_MTCTR, instr->args[0].data.reg.reg));
+#endif
 
     instr = makepcode(PC_BDNZ, loop->body->lastPCode->args[2].data.label.label);
     deletepcode(loop->body->firstPCode);
