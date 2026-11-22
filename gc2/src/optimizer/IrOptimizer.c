@@ -254,6 +254,17 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
             }
             IRO_DumpAfterPhase("IRO_ScalarizeClassDataMembers", FALSE);
 
+#if VERSION == VERSION_WII_1_0RC1
+            if (copts.opt_optimizecontrolflow) {
+                if (IRO_SimplifyConditionals()) {
+                    IRO_DumpAfterPhase("IRO_SimplifyConditionals", FALSE);
+                }
+                if (IRO_SimplifyBoundedIntervalConditionals()) {
+                    IRO_DumpAfterPhase("IRO_SimplifyBoundedIntervalConditionals", FALSE);
+                }
+            }
+#endif
+
             if (copts.propagation) {
                 IRO_CopyAndConstantPropagation();
                 IRO_CPFirstTime = FALSE;
@@ -282,9 +293,6 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
 #if VERSION == VERSION_WII_1_0RC1
             if (copts.opt_optimizecontrolflow) {
                 IRO_SimplifyConditionals();
-                if (IRO_SimplifyBoundedIntervalConditionals()) {
-                    IRO_DumpAfterPhase("IRO_SimplifyBoundedIntervalConditionals", FALSE);
-                }
                 if (IRO_OptimizeSwitches()) {
                     IRO_DumpAfterPhase("IRO_OptimizeSwitches", FALSE);
                 }

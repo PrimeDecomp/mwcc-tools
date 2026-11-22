@@ -316,8 +316,9 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   comparisons. The emitter at `0x61e6b0` tests wider ranges first and uses
   source order for equally wide ranges. It evaluates selectors with side
   effects once. Stock runs `IRO_SimplifyBoundedIntervalConditionals` at
-  `0x62b860` before and after switch lowering. Its matcher at `0x62bef0`
-  looks for consecutive bounds on one variable with a shared failure path.
+  `0x62b860` before propagation and again after switch lowering. Its
+  matcher at `0x62bef0` looks for consecutive bounds on one variable
+  with a shared failure path.
   The rewrite at `0x62b8e0` adjusts strict bounds and emits the unsigned
   comparison `(x - lower) <= (upper - lower)`. The pragma
   `opt_optimizecontrolflow` enables the pass by default at `-O1` and above.
@@ -333,8 +334,15 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   rejects an upper bound whose increment wraps. The rewrite at
   `0x62c150` retains the last branch and compares the offset from the
   lower bound after conversion to unsigned. `IRO_NewIntConst` at
-  `0x5cb480` truncates the offset to the original operand width. This
-  matches the range tests in optimized `FILE_POS.c`.
+  `0x5cb480` truncates the offset to the original operand width.
+  Calls at `0x58ddf8` and `0x58de50` run both range simplifiers before
+  copy and expression propagation on each optimizer pass. In the
+  second pass of stock `_fseek`, the bounded interval rewrite rebuilds the
+  flowgraph. Expression propagation sees the new block and copies the
+  buffer-length subtraction into its local use. The following CSE
+  pass assigns new temporaries to the field loads and subtraction in
+  stock order. Corruption's `FILE_POS.c` object now matches byte for
+  byte at `-O2`, `-O3` and the project's default `-O4,p`.
 - The `RLWIMI` peephole at `0x6586c0` uses a reaching `LI` to compute
   the rotated bits under the insert mask. A zero insert uses the
   complemented mask with `RLWINM` or becomes `LI 0` if it overwrites
@@ -342,10 +350,7 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   use `ORI` or `ORIS` when the instruction is nonvolatile, has no side
   effects, and leaves the condition register unchanged. Both stock
   pattern tables install the rule. A debugger trace of a three-bit
-  field clear reaches it before value numbering. In optimized
-  `FILE_POS.c`, the symbol table and text relocations now match stock.
-  The remaining difference is register selection in the inlined
-  `_ftell` code.
+  field clear reaches it before value numbering.
 - When optimizing with peephole enabled, `move_assigned_argument` calls
   `extendgpr` at `0x46ca39` for an unsigned byte or a halfword argument
   assigned to a register. It marks the new instruction as an argument
@@ -570,6 +575,10 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   `0x449CA0` and `0x4654A0`. The driver handles the `Ai` and `Fa` optimization flags in
   `TargetSetOptFlags` at `0x435850`. `CInline_CheckInlineability` at `0x55D210`
   uses the auto-inline statement and local-storage limits in its speed path.
+  With `-O4,s`, stock emits a weak `_ftell` called from `ftell` and
+  `_fseek`, even with `-inline always`. Turning `inlineforsize` off
+  makes stock inline `_ftell` into both callers. The source currently
+  inlines it at the default `-O4,s` settings.
 - `CMach_GetObjectAlignment`, `CMach_AllocationAlignment`, and `move_block` start at
   `0x4F4AA0`, `0x4F4BB0`, and `0x5BD1F0`. The source smoke test compares an 8-byte
   aggregate copy with the default options, legacy struct alignment, and floating-point moves enabled.
