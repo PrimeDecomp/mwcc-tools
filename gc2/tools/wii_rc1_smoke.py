@@ -3059,10 +3059,7 @@ void construct() {
                 result = (text[start:end], fixups)
             results[f"{source.name} {opt} {name}"] = result
 
-    for suffix, bases in (("direct", "Base, Middle"), ("virtual", "virtual Base, Middle, virtual Extra")):
-        source = work / f"destructor_unwind_{suffix}.cpp"
-        source.write_text(
-            """
+    unwind_source = """
 extern void might_throw();
 struct Base { int field; ~Base(); };
 struct Middle { int field; ~Middle(); };
@@ -3079,9 +3076,31 @@ struct Outer : BASES {
     ~Outer() { might_throw(); }
 };
 void destroy(Outer* object) { object->~Outer(); }
-""".replace("BASES", bases),
-            encoding="ascii",
-        )
+"""
+    unwind_cases = {
+        "direct": unwind_source.replace("BASES", "Base, Middle"),
+        "virtual": unwind_source.replace("BASES", "virtual Base, Middle, virtual Extra"),
+        "nested": """
+extern void might_throw();
+struct Base { int field; ~Base(); };
+struct Member { int field; ~Member(); };
+struct Local { int field; Local(); ~Local(); };
+struct Outer : Base { Member member; ~Outer(); };
+Outer::~Outer() {
+    if (field < 0)
+        return;
+    Local a;
+    if (field > 0) {
+        Local b;
+        might_throw();
+    }
+    might_throw();
+}
+""",
+    }
+    for suffix, fixture in unwind_cases.items():
+        source = work / f"destructor_unwind_{suffix}.cpp"
+        source.write_text(fixture, encoding="ascii")
         obj = source.with_suffix(".o")
         flags = (*FLAGS, "-func_align", "4", "-O4,p")
         run(compiler, *flags, "-Cpp_exceptions", "on", "-c", source, "-o", obj, cwd=work)

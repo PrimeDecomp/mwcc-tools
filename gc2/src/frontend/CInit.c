@@ -45,6 +45,9 @@ typedef struct InitInfo {
     Object* auto_obj;
     InsertExprCB insert_expr_cb;
     RegisterObjectCB register_object_cb;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean auto_needs_value;
+#endif
     char* buffer;
     SInt32 size;
     SInt32 bufferSize;
@@ -1557,7 +1560,11 @@ static Boolean CInit_ConstructAutoObject(
             ctorflag = FALSE;
         }
 
-        if (!dtor) {
+        if (!dtor
+#if VERSION == VERSION_WII_1_0RC1
+            || copts.cplusplus
+#endif
+        ) {
             objexpr = create_objectrefnode(cinit_initinfo->auto_obj);
             if (offset) {
                 objexpr =
@@ -1574,6 +1581,28 @@ static Boolean CInit_ConstructAutoObject(
             CError_Error(ERR_ILLEGAL_INITIALIZATION);
             return TRUE;
         }
+#if VERSION == VERSION_WII_1_0RC1
+        if (copts.cplusplus) {
+            if (cinit_initinfo->auto_needs_value) {
+                objexpr = makemonadicnode(objexpr, EINDIRECT);
+                objexpr->rtype = TPTR_TARGET(objexpr->rtype);
+            }
+            cinit_initinfo->insert_expr_cb(objexpr);
+            if (dtor) {
+                objexpr = cinit_initinfo->register_object_cb(
+                    TYPE(tclass), cinit_initinfo->auto_obj, offset, FALSE
+                );
+                if (cinit_initinfo->auto_needs_value) {
+                    ENode* value = makemonadicnode(objexpr, EINDIRECT);
+                    value->rtype = TYPE(tclass);
+                    cinit_initinfo->insert_expr_cb(value);
+                } else if (offset == 0 && cinit_initinfo->auto_obj->type == TYPE(tclass)) {
+                    cinit_initinfo->insert_expr_cb(nullnode());
+                }
+            }
+            return TRUE;
+        }
+#endif
         objexpr = makemonadicnode(objexpr, EINDIRECT);
         objexpr->rtype = TYPE_POINTER(objexpr->rtype)->target;
         cinit_initinfo->insert_expr_cb(objexpr);
@@ -1586,6 +1615,14 @@ static Boolean CInit_ConstructAutoObject(
                 TYPE(tclass), cinit_initinfo->auto_obj, offset, FALSE
             );
         }
+#if VERSION == VERSION_WII_1_0RC1
+        if (copts.cplusplus && !cinit_initinfo->auto_needs_value) {
+            if (offset == 0 && cinit_initinfo->auto_obj->type == TYPE(tclass)) {
+                cinit_initinfo->insert_expr_cb(nullnode());
+            }
+            return TRUE;
+        }
+#endif
         cinit_initinfo->insert_expr_cb(objexpr);
     }
 
@@ -2941,7 +2978,12 @@ static void CInit_GlobalObject(Object* obj) {
     }
 }
 
-void CInit_InitializeAutoData(Object* obj, InsertExprCB insert_cb, RegisterObjectCB register_cb) {
+void CInit_InitializeAutoData(
+    Object* obj, InsertExprCB insert_cb, RegisterObjectCB register_cb
+#if VERSION == VERSION_WII_1_0RC1
+    , Boolean needsValue
+#endif
+) {
     Type* type = obj->type;
     Type* inner;
     Boolean is_simple;
@@ -2998,6 +3040,9 @@ void CInit_InitializeAutoData(Object* obj, InsertExprCB insert_cb, RegisterObjec
     initinfo.auto_obj = obj;
     initinfo.insert_expr_cb = insert_cb;
     initinfo.register_object_cb = register_cb;
+#if VERSION == VERSION_WII_1_0RC1
+    initinfo.auto_needs_value = needsValue;
+#endif
 
     if (IS_TYPE_CLASS(obj->type) &&
         CInit_ConstructAutoObject(TYPE_CLASS(obj->type), NULL, 0, TRUE)) {

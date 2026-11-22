@@ -44,6 +44,9 @@ extern Statement* CInit_ConstructClassArray(
 extern ENode* CInit_AutoObject(Object* obj, Type* type, UInt32 qual);
 extern void CInit_InitializeAutoData(
     Object* obj, InsertExprCB insert_cb, RegisterObjectCB register_cb
+#if VERSION == VERSION_WII_1_0RC1
+    , Boolean needsValue
+#endif
 );
 extern void CInit_InitializeStaticData(Object* obj, InitExprRegisterCB cb);
 extern void CInit_InitializeData(Object* obj);

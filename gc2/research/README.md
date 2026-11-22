@@ -407,9 +407,15 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   call. The source preserves this order, including for arrays and
   virtual bases. The smoke test compares `extab` and its relocations
   for both ordinary and virtual inheritance.
-  Stock also registers a temporary local-object action before an automatic
-  constructor call at `0x4a2b70`. The source still lacks that transition,
-  which changes the number of unwind actions in a destructor with nested locals.
+  `CExcept_RegisterLocalObject` at `0x4a2b70` adds a temporary action for
+  an initialized or non-POD automatic C++ object. The constructor call
+  precedes destructor registration at `0x5489e3` and `0x5489f8`. RC1
+  removes the temporary actions at `0x49fac7` after the destructor body
+  has used their stack transitions to attach subobject actions.
+  `call_function` at `0x5fcc9b` checks whether a known callee can throw
+  and suppresses exception recording for that call after its arguments
+  have been evaluated. The nested-local fixture compares all 13 stock
+  unwind relocations and the ranges that select them.
 - The `AND` case of constant propagation (`0x6462f1`) follows `LI` and
   `LIS` definitions. Contiguous masks become `RLWINM` with a zero shift.
   Disjoint masks use `ANDI` or `ANDIS` and define CR0. The stock formatter

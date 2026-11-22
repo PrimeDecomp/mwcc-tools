@@ -191,8 +191,21 @@ void CExcept_CompareSpecifications(ExceptSpecList* a, ExceptSpecList* b) {
 }
 
 Boolean CExcept_ActionCompare(ExceptionAction* a, ExceptionAction* b) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (a == b) {
+        return TRUE;
+    }
+    if (!a || !b) {
+        return FALSE;
+    }
+#endif
     if (a->type == b->type) {
         switch (a->type) {
+#if VERSION == VERSION_WII_1_0RC1
+            case EAT_LOCALOBJECT:
+                return a->data.local_object.local == b->data.local_object.local &&
+                    a->data.local_object.scopeBarrier == b->data.local_object.scopeBarrier;
+#endif
             case EAT_DESTROYLOCAL:
                 return a->data.destroy_local.local == b->data.destroy_local.local;
             case EAT_DESTROYLOCALCOND:
@@ -292,6 +305,10 @@ int CExcept_IsSubList(ExceptionAction* a, ExceptionAction* b) {
 
 Boolean CExcept_ActionNeedsDestruction(ExceptionAction* action) {
     switch (action->type) {
+#if VERSION == VERSION_WII_1_0RC1
+        case EAT_LOCALOBJECT:
+            return action->data.local_object.scopeBarrier;
+#endif
         case EAT_CATCHBLOCK:
             return FALSE;
         case EAT_DESTROYLOCAL:
@@ -312,6 +329,19 @@ Boolean CExcept_ActionNeedsDestruction(ExceptionAction* action) {
 
     return FALSE;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+void CExcept_RegisterLocalObject(Object* local, Boolean scopeBarrier) {
+    ExceptionAction* action = lalloc(sizeof(ExceptionAction));
+    memclrw(action, sizeof(ExceptionAction));
+    action->prev = cexcept_dobjstack;
+    action->type = EAT_LOCALOBJECT;
+    action->data.local_object.local = local;
+    action->data.local_object.scopeBarrier = scopeBarrier;
+    cexcept_dobjstack = action;
+    cexcept_hasdobjects = TRUE;
+}
+#endif
 
 ENode* CExcept_RegisterDestructorObject(
     Object* local, SInt32 offset, Object* dtor, Boolean unused
@@ -636,6 +666,9 @@ static Statement* CExcept_EndCatch(ExceptionAction* ea, Statement* stmt) {
 
 Statement* CExcept_ActionCleanup(ExceptionAction* ea, Statement* stmt) {
     switch (ea->type) {
+#if VERSION == VERSION_WII_1_0RC1
+        case EAT_LOCALOBJECT:
+#endif
         case EAT_DESTROYLOCALCOND:
         case EAT_DESTROYLOCALPOINTER:
         case EAT_DESTROYPARTIALARRAY:
@@ -2086,6 +2119,23 @@ static void CExcept_CleanupExceptionActions(Statement* stmt) {
     Statement* iter;
     ENode* expr;
     ExceptionAction* ea;
+
+#if VERSION == VERSION_WII_1_0RC1
+    for (iter = stmt; iter; iter = iter->next) {
+        ExceptionAction* previous = NULL;
+        for (ea = iter->dobjstack; ea; ea = ea->prev) {
+            if (ea->type == EAT_LOCALOBJECT && !ea->data.local_object.scopeBarrier) {
+                if (previous) {
+                    previous->prev = ea->prev;
+                } else {
+                    iter->dobjstack = ea->prev;
+                }
+            } else {
+                previous = ea;
+            }
+        }
+    }
+#endif
 
     for (iter = cexcept_prevstmt = stmt; iter; iter = iter->next) {
         cexcept_eabefore = cexcept_eaafter = iter->dobjstack;

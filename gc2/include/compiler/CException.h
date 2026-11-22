@@ -23,6 +23,9 @@ extern void CExcept_CheckStackRefs(ExceptionAction* actions);
 extern void CExcept_CompareSpecifications(ExceptSpecList* a, ExceptSpecList* b);
 extern Boolean CExcept_ActionCompare(ExceptionAction* a, ExceptionAction* b);
 extern Boolean CExcept_ActionNeedsDestruction(ExceptionAction* action);
+#if VERSION == VERSION_WII_1_0RC1
+extern void CExcept_RegisterLocalObject(Object* local, Boolean scopeBarrier);
+#endif
 extern ENode* CExcept_RegisterDestructorObject(
     Object* local, SInt32 offset, Object* dtor, Boolean unused
 );

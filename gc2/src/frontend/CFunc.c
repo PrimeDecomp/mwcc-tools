@@ -60,6 +60,9 @@ static Object* sinit_first_object;
 static CLabel* sinit_label;
 static Boolean ainit_only_one;
 static ENode* ainit_expr;
+#if VERSION == VERSION_WII_1_0RC1
+static ExceptionAction* ainit_actions;
+#endif
 static FuncArg* check_arglist;
 static Boolean cfunc_is_extern_c;
 static SInt16 cfunc_staticvarcount;
@@ -77,6 +80,9 @@ typedef struct CFuncSave {
     ExceptionAction* cexcept_dobjstack;
     CLabel* sinit_label;
     ENode* ainit_expr;
+#if VERSION == VERSION_WII_1_0RC1
+    ExceptionAction* ainit_actions;
+#endif
     CtorChain* ctor_chain;
     ParserTryBlock* trychain;
     TempNodeCB cinit_tempnodefunc;
@@ -1168,8 +1174,14 @@ static void ainit_insert_expr(ENode* expr) {
         if (ainit_expr) {
             stmt = CFunc_AppendStatement(ST_EXPRESSION);
             stmt->expr = ainit_expr;
+#if VERSION == VERSION_WII_1_0RC1
+            stmt->dobjstack = ainit_actions;
+#endif
         }
         ainit_expr = expr;
+#if VERSION == VERSION_WII_1_0RC1
+        ainit_actions = cexcept_dobjstack;
+#endif
     } else {
         stmt = CFunc_AppendStatement(ST_EXPRESSION);
         stmt->expr = expr;
@@ -1184,6 +1196,9 @@ static ENode* ainit_register_object(Type* type, Object* local, SInt32 offset, Bo
 
 static void CFunc_LocalDataDeclarator(
     DeclInfo* di, TStreamElement* deftoken, Boolean isParameterList, Boolean isCondition
+#if VERSION == VERSION_WII_1_0RC1
+    , Boolean isForInit
+#endif
 ) {
     Object* aliasObject;
     NameSpace* globalNS;
@@ -1351,7 +1366,19 @@ static void CFunc_LocalDataDeclarator(
                     if (IS_TYPE_SOM_CLASS(di->thetype)) {
                         CSOM_InitAutoClass(object);
                     } else {
+#if VERSION == VERSION_WII_1_0RC1
+                        if (copts.cplusplus &&
+                            (tk == '=' || tk == '(' ||
+                             (IS_TYPE_CLASS(object->type) &&
+                              !CClass_IsPODClass(TYPE_CLASS(object->type))))) {
+                            CExcept_RegisterLocalObject(object, FALSE);
+                        }
+                        CInit_InitializeAutoData(
+                            object, ainit_insert_expr, ainit_register_object, isCondition && !isForInit
+                        );
+#else
                         CInit_InitializeAutoData(object, ainit_insert_expr, ainit_register_object);
+#endif
                         if (object->type != di->thetype &&
                             (IS_TYPE_STRUCT(object->type) || IS_TYPE_CLASS(object->type))) {
                             CError_ASSERT(1478, !cscope_current->is_hash);
@@ -1426,7 +1453,12 @@ static ENode* CFunc_ParseLocalDeclarationList(
                                 break;
                             }
                         } else {
-                            CFunc_LocalDataDeclarator(&di, &deftoken, isParameterList, isCondition);
+                            CFunc_LocalDataDeclarator(
+                                &di, &deftoken, isParameterList, isCondition
+#if VERSION == VERSION_WII_1_0RC1
+                                , isForInit
+#endif
+                            );
                         }
                     } else {
                         CDecl_TypedefDeclarator(&di);
@@ -2877,6 +2909,10 @@ CFuncSave* CFunc_GetGlobalCompilerState(void) {
 
     state->ainit_expr = ainit_expr;
     ainit_expr = NULL;
+#if VERSION == VERSION_WII_1_0RC1
+    state->ainit_actions = ainit_actions;
+    ainit_actions = NULL;
+#endif
 
     state->ctor_chain = ctor_chain;
     ctor_chain = NULL;
@@ -2957,6 +2993,9 @@ void CFunc_SetGlobalCompilerState(CFuncSave* state) {
         cexcept_dobjstack = state->cexcept_dobjstack;
         sinit_label = state->sinit_label;
         ainit_expr = state->ainit_expr;
+#if VERSION == VERSION_WII_1_0RC1
+        ainit_actions = state->ainit_actions;
+#endif
         ctor_chain = state->ctor_chain;
         cinit_tempnodefunc = state->cinit_tempnodefunc;
         trychain = state->trychain;

@@ -26,6 +26,9 @@ typedef enum ExceptionActionType {
     EAT_SPECIFICATION,
     EAT_TERMINATE,
     EAT_DESTROYBASE,
+#if VERSION == VERSION_WII_1_0RC1
+    EAT_LOCALOBJECT,
+#endif
     EAT_NACTIONS
 } ExceptionActionType;
 
@@ -37,6 +40,12 @@ struct ExceptionAction {
             Object* local;
             Object* dtor;
         } destroy_local;
+#if VERSION == VERSION_WII_1_0RC1
+        struct {
+            Object* local;
+            Boolean scopeBarrier;
+        } local_object;
+#endif
         struct {
             Object* local;
             Object* cond;

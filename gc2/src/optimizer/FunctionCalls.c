@@ -1,5 +1,6 @@
 #include "compiler/FunctionCalls.h"
 #include "compiler/CError.h"
+#include "compiler/CException.h"
 #include "compiler/CFunc.h"
 #include "compiler/CMachine.h"
 #include "compiler/CodeGen.h"
@@ -8,6 +9,7 @@
 #include "compiler/enode.h"
 #include "compiler/InstrSelection.h"
 #include "compiler/ObjGen_PPC_EABI.h"
+#include "compiler/objects.h"
 #include "compiler/Operands.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeInfo.h"
@@ -654,6 +656,9 @@ void call_function(ENode* expr, Operand* output) {
     UInt32 used_regs[RegClassMax] = {0};
     Boolean has_floats;
     FuncArg* arg;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean exceptions;
+#endif
 
     memclrw(&opnd, sizeof(Operand));
 
@@ -717,6 +722,17 @@ void call_function(ENode* expr, Operand* output) {
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    exceptions = copts.exceptions;
+    if (exceptions && ENODE_IS(funcref, EOBJREF) && funcref->data.objref) {
+        Object* callee = funcref->data.objref;
+        Boolean virtualCall = callee->datatype == DVFUNC && !(expr->flags & ENODE_FLAG_NONVIRTUAL);
+        if (!CExcept_CanThrowException(callee, virtualCall)) {
+            copts.exceptions = FALSE;
+        }
+    }
+#endif
+
     if (funcref->type == EOBJREF) {
         if (CParser_IsVirtualFunction(funcref->data.objref, &tclass, &vfOffset)) {
             load_virtual_function(
@@ -751,6 +767,9 @@ void call_function(ENode* expr, Operand* output) {
         branch_subroutine_indirect_ctr(&opnd, used_regs);
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    copts.exceptions = exceptions;
+#endif
     ORACLE_PROBE(OracleProbe_Binding(expr, output, resultType));
 #if VERSION == VERSION_WII_1_0RC1
     if (IS_TYPE_SPE(resultType)) {
