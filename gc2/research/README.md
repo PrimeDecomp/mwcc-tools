@@ -261,7 +261,9 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   source order for equally wide ranges. It evaluates selectors with side
   effects once. Stock runs `IRO_SimplifyBoundedIntervalConditionals` at
   `0x62b860` after switch lowering and can combine the two comparisons for an
-  interior range.
+  interior range. In Corruption's `TRKNubMainLoop`, stock reaches the
+  range rewrite at `0x62b8e0` and tests event types 3 and 4 with one
+  unsigned comparison. The source still emits both comparisons.
 - RC1's equality-chain pass at `0x62c0e0` follows fallthrough blocks and
   checks each successor against the original branch destination. It can
   end the chain at an inverted branch whose fallthrough is that
@@ -272,11 +274,24 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   `0x62c150` retains the last branch and compares the offset from the
   lower bound after conversion to unsigned. `IRO_NewIntConst` at
   `0x5cb480` truncates the offset to the original operand width. This
-  matches the range tests in optimized `FILE_POS.c`. Register selection
-  and zero-valued bit-field inserts still differ in that object. In a
-  three-bit field clear, stock emits `RLWIMI` at `0x5ac953` and changes
-  it to `RLWINM` at `0x6588c0` after seeing that the insert operand
-  comes from `LI 0`.
+  matches the range tests in optimized `FILE_POS.c`.
+- The `RLWIMI` peephole at `0x6586c0` uses a reaching `LI` to compute
+  the rotated bits under the insert mask. A zero insert uses the
+  complemented mask with `RLWINM` or becomes `LI 0` if it overwrites
+  the whole register. An all-ones insert confined to one halfword can
+  use `ORI` or `ORIS` when the instruction is nonvolatile, has no side
+  effects, and leaves the condition register unchanged. Both stock
+  pattern tables install the rule. A debugger trace of a three-bit
+  field clear reaches it before value numbering. In optimized
+  `FILE_POS.c`, the symbol table and text relocations now match stock.
+  The remaining difference is register selection in the inlined
+  `_ftell` code.
+- For an unsigned narrow argument in a register, stock
+  `move_assigned_argument` calls `extendgpr` at `0x46ca39` and marks
+  the result as an argument initializer. The late forward pass replaces
+  a redundant zero extension with a move at `0x5b8bba`. The source
+  still extends an unsigned byte before comparing it with one in the
+  minimal argument test.
 - RC1's class-specific liveness pass calls `0x63a9e0` at `0x63a491` before
   building the interference graph. It restricts entry live-ins to physical
   registers and walks blocks forward, masking live-outs by live-ins and local

@@ -2220,6 +2220,29 @@ unsigned absolute(unsigned x) {
         run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    source = work / "constant_bitfield_insert.c"
+    source.write_text(
+        """\
+struct Fields { unsigned state : 3; unsigned rest : 29; };
+struct Middle { unsigned prefix : 8; unsigned field : 6; unsigned rest : 18; };
+struct Low { unsigned prefix : 26; unsigned field : 6; };
+struct Wide { unsigned prefix : 2; unsigned field : 20; unsigned rest : 10; };
+void clear_top(struct Fields *p) { p->state = 0; }
+void clear_middle(struct Middle *p) { p->field = 0; }
+void fill_top(struct Fields *p) { p->state = 7; }
+void fill_low(struct Low *p) { p->field = 63; }
+void fill_wide(struct Wide *p) { p->field = 0xfffff; }
+void partial_top(struct Fields *p) { p->state = 2; }
+void clear_volatile(volatile struct Fields *p) { p->state = 0; }
+unsigned assign_value(struct Fields *p) { return p->state = 0; }
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O0", "-O2", "-O4,p", "-O4,s"):
+        run(compiler, *FLAGS, opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     source = work / "equality_ranges.c"
     source.write_text(
         """\

@@ -2504,6 +2504,75 @@ static UInt32 rotate_mask(PCode* instr) {
     return begin <= end ? (from_begin & through_end) : (from_begin | through_end);
 }
 
+static Boolean fold_li_insert(PCode* instr, const PCode* definition) {
+    PCodeArg* destination = &instr->args[0];
+    PCodeArg* source = &instr->args[1];
+    UInt32 shift;
+    UInt32 mask;
+    UInt32 constant;
+    UInt32 inserted;
+
+    if (!definition || definition->op != PC_LI ||
+        definition->args[1].kind != PCOp_IMMEDIATE ||
+        instr->args[2].kind != PCOp_IMMEDIATE ||
+        destination->data.reg.reg == source->data.reg.reg) {
+        return FALSE;
+    }
+    shift = (UInt32)instr->args[2].data.imm.value & 31;
+    mask = rotate_mask(instr);
+    constant = definition->args[1].data.imm.value;
+    inserted = ((constant << shift) | (constant >> ((32 - shift) & 31))) & mask;
+    if (!inserted) {
+        if (mask == 0xffffffffu) {
+            source->kind = PCOp_IMMEDIATE;
+            source->data.imm.value = 0;
+            change_num_operands(instr, 2);
+            change_opcode(instr, PC_LI);
+        } else {
+            short begin;
+            short end;
+            if (!ismaskconstant(~mask, &begin, &end)) {
+                return FALSE;
+            }
+            *source = *destination;
+            source->data.reg.effect &= ~EffectWrite;
+            instr->args[2].data.imm.value = 0;
+            instr->args[3].data.imm.value = begin;
+            instr->args[4].data.imm.value = end;
+            change_opcode(instr, PC_RLWINM);
+        }
+    } else {
+        if (inserted != mask || (instr->flags & (fIsVolatile | fSideEffects | fRecordBit))) {
+            return FALSE;
+        }
+        if ((mask & 0xffff0000u) && (mask & 0xffffu)) {
+            return FALSE;
+        }
+        *source = *destination;
+        source->data.reg.effect &= ~EffectWrite;
+        instr->args[2].kind = PCOp_IMMEDIATE;
+        if (mask & 0xffff0000u) {
+            instr->args[2].data.imm.value = mask >> 16;
+            change_opcode(instr, PC_ORIS);
+        } else {
+            instr->args[2].data.imm.value = mask;
+            change_opcode(instr, PC_ORI);
+        }
+        change_num_operands(instr, 3);
+    }
+    destination->data.reg.effect &= ~EffectRead;
+    return TRUE;
+}
+
+static int LI_RLWIMI(PCode* instr, UInt32* masks) {
+    PCode** definitions = &defininginstruction[instr->defID];
+    if (!fold_li_insert(instr, definitions[1])) {
+        return FALSE;
+    }
+    definitions[1] = definitions[0];
+    return TRUE;
+}
+
 static void copy_binary_operands(PCode* dest, PCode* source, int count) {
     int i;
 
@@ -3267,6 +3336,9 @@ static void installpeepholepatterns(void) {
     installpattern(PC_SRAWI, SRAWI_SRAWI);
     installpattern(PC_MR, MR_ADDI);
     installpattern(PC_OR, SRW_SUBFIC_RLW_OR);
+#if VERSION == VERSION_WII_1_0RC1
+    installpattern(PC_RLWIMI, LI_RLWIMI);
+#endif
 }
 
 void peepholeoptimizeforward(Object* func) {
@@ -3318,7 +3390,7 @@ static void update_live_registers(PCode* instr, UInt32* live[RegClassMax]) {
     }
 }
 
-static void backward_peephole(Object* func, Boolean fixed_point, Boolean fold_moves) {
+static void backward_peephole(Object* func, Boolean fixed_point, Boolean apply_patterns) {
     RegClass saved_class = coloring_class;
     LiveInfo* saved_info = liveinfo;
     LiveInfo* info[RegClassMax];
@@ -3348,13 +3420,17 @@ static void backward_peephole(Object* func, Boolean fixed_point, Boolean fold_mo
                     deletepcode(instr);
                     changed = TRUE;
                 } else {
-                    if (fold_moves && instr->op == PC_MR) {
+                    if (apply_patterns && instr->op == PC_MR) {
                         short src = instr->args[1].data.reg.reg;
                         PCode* def = find_def_backward(instr->prevPCode, RegClass_GPR, src);
                         if (move_into_definition(
                                 instr, def, bitvectorgetbit(src, live[RegClass_GPR]) != 0)) {
                             continue;
                         }
+                    }
+                    if (apply_patterns && instr->op == PC_RLWIMI) {
+                        short src = instr->args[1].data.reg.reg;
+                        fold_li_insert(instr, find_def_backward(instr->prevPCode, RegClass_GPR, src));
                     }
                     update_live_registers(instr, live);
                 }
