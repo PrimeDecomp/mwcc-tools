@@ -43,6 +43,7 @@ extern Object* IRO_IsVariable(IROLinear* linear);
 #if VERSION == VERSION_WII_1_0RC1
 extern Boolean IRO_IsValuePreservingTypcon(IROLinear* linear);
 extern Object* IRO_IsVariableEquIntConst(IROLinear* linear);
+extern Object* IRO_IsVariableMoreOrLessEqualIntConst(IROLinear* linear);
 #endif
 extern Boolean IRO_IsConstant(IROLinear* linear);
 extern Boolean IRO_IsPow2(IROLinear* linear, int* powvalue);

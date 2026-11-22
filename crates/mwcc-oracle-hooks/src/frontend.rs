@@ -9,7 +9,7 @@ const OFFSETS: (usize, usize, usize, usize) = (0xd8, 0x72, 0x68, 0xa2);
 #[cfg(any(feature = "frontend-gc26", feature = "frontend-gc27"))]
 const OFFSETS: (usize, usize, usize, usize) = (0xdc, 0x76, 0x6c, 0xa4);
 #[cfg(feature = "frontend-wii-rc1")]
-const OFFSETS: (usize, usize, usize, usize) = (0xe5, 0x7d, 0x6e, 0xb4);
+const OFFSETS: (usize, usize, usize, usize) = (0xe5, 0x7d, 0x6e, 0xb6);
 unsafe extern "C" {
     fn OracleRust_LinkName(object: *const u8) -> *const c_char;
     fn OracleRust_OriginFind(reference: *const u8) -> i32;

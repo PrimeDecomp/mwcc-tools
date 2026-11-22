@@ -288,6 +288,12 @@ void IRO_InitializeComplementaryOpLogicalArray(void) {
     ComplementaryOpLogical[ECONDASS] = MAXEXPR;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+ENodeType IRO_ComplementaryLogicalOp(ENodeType op) {
+    return ComplementaryOpLogical[op];
+}
+#endif
+
 static void DoTransformations(IROLinear* nd) {
     IROLinear* copy;
     IROLinear* nd2;

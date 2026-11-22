@@ -42,7 +42,7 @@
 _Static_assert(offsetof(CompilerLinkerOptions, alwaysinline) == 0xe5, "alwaysinline offset");
 _Static_assert(offsetof(CompilerLinkerOptions, inline_bottom_up) == 0x7d, "inline mode offset");
 _Static_assert(offsetof(CompilerLinkerOptions, inlinelevel) == 0x6e, "inlinelevel offset");
-_Static_assert(offsetof(CI_FuncData, can_inline) == 0xb4, "inlineability offset");
+_Static_assert(offsetof(CI_FuncData, can_inline) == 0xb6, "inlineability offset");
 #endif
 
 enum {

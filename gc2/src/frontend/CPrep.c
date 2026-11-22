@@ -236,6 +236,7 @@ CompilerOption compileroptions[] = {
     "opt_dead_assignments", OPT_OFFSET(deadstore),
 #if VERSION == VERSION_WII_1_0RC1
     "opt_removeemptyloops", OPT_OFFSET(removeemptyloops),
+    "opt_optimizecontrolflow", OPT_OFFSET(opt_optimizecontrolflow),
     "optimize_tail_call", OPT_OFFSET(optimize_tail_call),
 #endif
     "opt_vectorize_loops", OPT_OFFSET(vectorizeloops),

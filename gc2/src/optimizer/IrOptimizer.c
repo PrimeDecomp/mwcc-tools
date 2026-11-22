@@ -233,7 +233,7 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
     if (!DisableDueToAsm &&
         (copts.optimizationlevel > 0
 #if VERSION == VERSION_WII_1_0RC1
-         || copts.removeemptyloops
+         || copts.removeemptyloops || copts.opt_optimizecontrolflow
 #endif
         )) {
         passCount = copts.multiplepasses ? 2 : 1;
@@ -272,16 +272,25 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
 
             IRO_EvaluateConditionals();
             IRO_RemoveUnreachable();
-            IRO_SimplifyConditionals();
 
 #if VERSION == VERSION_WII_1_0RC1
-            if (IRO_OptimizeSwitches()) {
-                IRO_DumpAfterPhase("IRO_OptimizeSwitches", FALSE);
+            if (copts.opt_optimizecontrolflow) {
+                IRO_SimplifyConditionals();
+                if (IRO_SimplifyBoundedIntervalConditionals()) {
+                    IRO_DumpAfterPhase("IRO_SimplifyBoundedIntervalConditionals", FALSE);
+                }
+                if (IRO_OptimizeSwitches()) {
+                    IRO_DumpAfterPhase("IRO_OptimizeSwitches", FALSE);
+                }
+                if (IRO_SimplifyBoundedIntervalConditionals()) {
+                    IRO_DumpAfterPhase("IRO_SimplifyBoundedIntervalConditionals", FALSE);
+                }
             }
             if (copts.removeemptyloops && IRO_RemoveAllEmptyLoops()) {
                 IRO_DumpAfterPhase("IRO_RemoveAllEmptyLoops", FALSE);
             }
 #else
+            IRO_SimplifyConditionals();
             if (pass == 1 && copts.optimizationlevel > 2) {
                 IRO_RenumberInts();
                 IRO_DumpAfterPhase("Before IRO_FindEmptyLoops", FALSE);
@@ -449,5 +458,6 @@ void CodeGen_UpdateOptimizerOptions(void) {
     copts.multiplepasses = copts.optimizationlevel >= 4;
 #if VERSION == VERSION_WII_1_0RC1
     copts.removeemptyloops = copts.optimizationlevel >= 3;
+    copts.opt_optimizecontrolflow = copts.optimizationlevel >= 1;
 #endif
 }

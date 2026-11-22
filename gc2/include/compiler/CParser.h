@@ -297,6 +297,7 @@ struct CompilerLinkerOptions {
     struct HashNameNode* cursegmentname;
 #if VERSION == VERSION_WII_1_0RC1
     UInt8 removeemptyloops;
+    UInt8 opt_optimizecontrolflow;
     Boolean e500_floatingpoint;
     Boolean e500v2_floatingpoint;
     Boolean optimize_tail_call;

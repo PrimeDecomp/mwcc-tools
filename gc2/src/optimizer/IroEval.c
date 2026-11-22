@@ -3,6 +3,7 @@
 #include "compiler/IroLinearForm.h"
 #include "compiler/IroMalloc.h"
 #include "compiler/IroPointerAnalysis.h"
+#include "compiler/IroTransform.h"
 #include "compiler/IroUtil.h"
 #include "compiler/IroVars.h"
 #include "compiler/CInt64.h"
@@ -581,7 +582,7 @@ Boolean IRO_EvaluateConditionals(void) {
 }
 
 #if VERSION == VERSION_WII_1_0RC1
-static IRONode* EqualityBranchTarget(IRONode* node) {
+static IRONode* TakenBranchTarget(IRONode* node) {
     IRONode* fallthrough = node->nextnode;
     IRONode* first;
     IRONode* second;
@@ -595,6 +596,17 @@ static IRONode* EqualityBranchTarget(IRONode* node) {
         return second;
     }
     return second == fallthrough ? first : NULL;
+}
+
+static Boolean HasTopLevelExpressions(IRONode* node) {
+    IROLinear* linear;
+    for (linear = node->first; linear != node->last; linear = linear->next) {
+        if (linear->type != IROLinearNop && linear->type != IROLinearLabel &&
+            !(linear->flags & IROLF_Reffed)) {
+            return TRUE;
+        }
+    }
+    return FALSE;
 }
 
 static Boolean StartsWithLabel(IRONode* node, CLabel* label) {
@@ -613,7 +625,7 @@ static Boolean StartsWithLabel(IRONode* node, CLabel* label) {
 static IRONode* FindLastEqualityBranch(IRONode* first) {
     CLabel* label = first->last->u.label.label;
     Object* object = IRO_IsVariableEquIntConst(first->last->u.label.cond);
-    IRONode* target = EqualityBranchTarget(first);
+    IRONode* target = TakenBranchTarget(first);
     IRONode* last = NULL;
     IRONode* scan;
 
@@ -624,22 +636,15 @@ static IRONode* FindLastEqualityBranch(IRONode* first) {
     for (scan = first->nextnode; scan; scan = scan->nextnode) {
         IROLinear* branch = scan->last;
         IRONode* branchTarget;
-        IROLinear* linear;
 
         if (scan->numpred != 1 ||
             (branch->type != IROLinearIf && branch->type != IROLinearIfNot) ||
             IRO_IsVariableEquIntConst(branch->u.label.cond) != object) {
             break;
         }
-        branchTarget = EqualityBranchTarget(scan);
-        if (!branchTarget) {
+        branchTarget = TakenBranchTarget(scan);
+        if (!branchTarget || HasTopLevelExpressions(scan)) {
             break;
-        }
-        for (linear = scan->first; linear != branch; linear = linear->next) {
-            if (linear->type != IROLinearNop && linear->type != IROLinearLabel &&
-                !(linear->flags & IROLF_Reffed)) {
-                return last;
-            }
         }
         if (branch->type == IROLinearIfNot) {
             if (scan->nextnode == target && branch->u.label.label &&
@@ -656,19 +661,31 @@ static IRONode* FindLastEqualityBranch(IRONode* first) {
     return last;
 }
 
-static void MakeEqualityRange(IRONode* last, CInt64 lower, CInt64 upper) {
-    IROLinear* cond = last->last->u.label.cond;
+static void MakeRangeComparison(IROLinear* cond, CInt64 lower, CInt64 upper) {
     IROLinear* left = cond->u.diadic.left;
     IROLinear* right = cond->u.diadic.right;
     Type* unsignedType = IRO_UnsignedType(left->rtype);
-    IROLinear* add = IRO_NewLinear(IROLinearOp2Arg);
-    IROLinear* offset = IRO_NewIntConst(CInt64_Neg(lower), left->rtype);
+    IROLinear* leftCast = NULL;
+    IROLinear* rightCast = NULL;
+    IROLinear* add;
+    IROLinear* offset;
 
     cond->nodetype = ELESSEQU;
     right->u.node->data.intval = CInt64_Sub(upper, lower);
+    if (unsignedType != left->rtype) {
+        leftCast = IRO_NewLinear(IROLinearOp1Arg);
+        rightCast = IRO_NewLinear(IROLinearOp1Arg);
+        leftCast->nodetype = rightCast->nodetype = ETYPCON;
+        leftCast->rtype = rightCast->rtype = unsignedType;
+        leftCast->index = ++IRO_NumLinear;
+        rightCast->index = ++IRO_NumLinear;
+    }
+
+    add = IRO_NewLinear(IROLinearOp2Arg);
     add->nodetype = EADD;
     add->rtype = left->rtype;
     add->index = ++IRO_NumLinear;
+    offset = IRO_NewIntConst(CInt64_Neg(lower), left->rtype);
     add->u.diadic.left = left;
     add->u.diadic.right = offset;
     add->next = left->next;
@@ -676,13 +693,7 @@ static void MakeEqualityRange(IRONode* last, CInt64 lower, CInt64 upper) {
     left->next = offset;
     cond->u.diadic.left = add;
 
-    if (unsignedType != left->rtype) {
-        IROLinear* leftCast = IRO_NewLinear(IROLinearOp1Arg);
-        IROLinear* rightCast = IRO_NewLinear(IROLinearOp1Arg);
-        leftCast->nodetype = rightCast->nodetype = ETYPCON;
-        leftCast->rtype = rightCast->rtype = unsignedType;
-        leftCast->index = ++IRO_NumLinear;
-        rightCast->index = ++IRO_NumLinear;
+    if (leftCast) {
         leftCast->u.monadic = add;
         rightCast->u.monadic = right;
         leftCast->next = add->next;
@@ -692,6 +703,139 @@ static void MakeEqualityRange(IRONode* last, CInt64 lower, CInt64 upper) {
         cond->u.diadic.left = leftCast;
         cond->u.diadic.right = rightCast;
     }
+}
+
+static Boolean FindBoundedInterval(IRONode* first, ENodeType* firstOp, ENodeType* secondOp) {
+    IROLinear* firstBranch = first->last;
+    IRONode* failure;
+    IRONode* second = first->nextnode;
+    IRONode* secondTarget;
+    IROLinear* secondBranch;
+    Object* object;
+
+    if (firstBranch->type != IROLinearIf && firstBranch->type != IROLinearIfNot) {
+        return FALSE;
+    }
+    object = IRO_IsVariableMoreOrLessEqualIntConst(firstBranch->u.label.cond);
+    failure = TakenBranchTarget(first);
+    if (!object || !failure || second->numpred != 1) {
+        return FALSE;
+    }
+    secondBranch = second->last;
+    if ((secondBranch->type != IROLinearIf && secondBranch->type != IROLinearIfNot) ||
+        HasTopLevelExpressions(second) ||
+        IRO_IsVariableMoreOrLessEqualIntConst(secondBranch->u.label.cond) != object) {
+        return FALSE;
+    }
+    secondTarget = TakenBranchTarget(second);
+    if (!secondTarget || (secondTarget != failure && second->nextnode != failure)) {
+        return FALSE;
+    }
+
+    // Use the relations along the path on which both interval bounds hold.
+    *firstOp = firstBranch->u.label.cond->nodetype;
+    if (firstBranch->type == IROLinearIf) {
+        *firstOp = IRO_ComplementaryLogicalOp(*firstOp);
+    }
+    *secondOp = secondBranch->u.label.cond->nodetype;
+    if ((secondTarget == failure) == (secondBranch->type == IROLinearIf)) {
+        *secondOp = IRO_ComplementaryLogicalOp(*secondOp);
+    }
+    return TRUE;
+}
+
+static void MakeBoundedInterval(IRONode* first, CInt64 lower, CInt64 upper) {
+    IROLinear* branch = first->last;
+    if (first->nextnode->nextnode == TakenBranchTarget(first)) {
+        branch->type = IROLinearIf;
+        branch->u.label.label = first->nextnode->last->u.label.label;
+    } else {
+        branch->type = IROLinearIfNot;
+    }
+    MakeRangeComparison(branch->u.label.cond, lower, upper);
+}
+
+static Boolean ReduceBoundedInterval(IRONode* first, ENodeType firstOp, ENodeType secondOp) {
+    IROLinear* secondBranch = first->nextnode->last;
+    IROLinear* secondCond = secondBranch->u.label.cond;
+    ENode* constants[2];
+    ENodeType relations[2];
+    CInt64 signedMin = cint64_max;
+    CInt64 signedMax = cint64_min;
+    CInt64 unsignedMin = cint64_negone;
+    CInt64 unsignedMax = cint64_zero;
+    ENodeType lowerOp = MAXEXPR;
+    ENodeType upperOp = MAXEXPR;
+    Boolean unsignedRange = FALSE;
+    CInt64 lower;
+    CInt64 upper;
+    int i;
+
+    constants[0] = first->last->u.label.cond->u.diadic.right->u.node;
+    constants[1] = secondCond->u.diadic.right->u.node;
+    relations[0] = firstOp;
+    relations[1] = secondOp;
+    for (i = 0; i < 2; i++) {
+        CInt64 value = constants[i]->data.intval;
+        if (is_unsigned(constants[i]->rtype)) {
+            unsignedRange = TRUE;
+            if (CInt64_LessU(value, unsignedMin)) {
+                unsignedMin = value;
+                lowerOp = relations[i];
+            }
+            if (CInt64_GreaterU(value, unsignedMax)) {
+                unsignedMax = value;
+                upperOp = relations[i];
+            }
+        } else {
+            if (CInt64_Less(value, signedMin)) {
+                signedMin = value;
+                lowerOp = relations[i];
+            }
+            if (CInt64_Greater(value, signedMax)) {
+                signedMax = value;
+                upperOp = relations[i];
+            }
+        }
+    }
+    if ((lowerOp != EGREATER && lowerOp != EGREATEREQU) ||
+        (upperOp != ELESS && upperOp != ELESSEQU)) {
+        return FALSE;
+    }
+    lower = unsignedRange ? unsignedMin : signedMin;
+    upper = unsignedRange ? unsignedMax : signedMax;
+    if (lowerOp == EGREATER) {
+        lower = CInt64_Add(lower, cint64_one);
+    }
+    if (upperOp == ELESS) {
+        upper = CInt64_Sub(upper, cint64_one);
+    }
+    if (!(unsignedRange ? CInt64_LessU(lower, upper) : CInt64_Less(lower, upper))) {
+        return FALSE;
+    }
+
+    IRO_NopOut(secondBranch);
+    IRO_NopOut(secondCond);
+    MakeBoundedInterval(first, lower, upper);
+    return TRUE;
+}
+
+Boolean IRO_SimplifyBoundedIntervalConditionals(void) {
+    Boolean changed = FALSE;
+    IRONode* scan;
+    for (scan = IRO_FirstNode; scan; scan = scan->nextnode) {
+        ENodeType firstOp;
+        ENodeType secondOp;
+        if (FindBoundedInterval(scan, &firstOp, &secondOp) && ReduceBoundedInterval(scan, firstOp, secondOp)) {
+            changed = TRUE;
+        }
+    }
+    if (changed) {
+        IRO_UpdateFlagsOnInts();
+        IRO_BuildFlowgraph(IRO_FirstLinear);
+    }
+    IRO_CheckForUserBreak();
+    return changed;
 }
 
 static Boolean ReduceEqualityBranches(IRONode* first, IRONode* last) {
@@ -758,7 +902,7 @@ static Boolean ReduceEqualityBranches(IRONode* first, IRONode* last) {
         IRO_NopOut(scan->last);
         IRO_NopOut(scan->last->u.label.cond);
     }
-    MakeEqualityRange(last, lower, upper);
+    MakeRangeComparison(last->last->u.label.cond, lower, upper);
     return TRUE;
 }
 

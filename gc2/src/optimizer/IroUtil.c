@@ -58,13 +58,9 @@ Boolean IRO_IsValuePreservingTypcon(IROLinear* linear) {
     return is_unsigned(source) && source->size < target->size;
 }
 
-Object* IRO_IsVariableEquIntConst(IROLinear* linear) {
+static Object* IRO_VariableComparedToIntConst(IROLinear* linear) {
     IROLinear* left;
-    IROLinear* right;
-    if (!linear || !IS_LINEAR_DIADIC(linear, EEQU)) {
-        return NULL;
-    }
-    right = linear->u.diadic.right;
+    IROLinear* right = linear->u.diadic.right;
     if (!IRO_IsIntConstant(right) || !IS_TYPE_INT(right->rtype)) {
         return NULL;
     }
@@ -73,6 +69,28 @@ Object* IRO_IsVariableEquIntConst(IROLinear* linear) {
         left = left->u.monadic;
     }
     return IRO_IsVariable(left);
+}
+
+Object* IRO_IsVariableEquIntConst(IROLinear* linear) {
+    if (!linear || !IS_LINEAR_DIADIC(linear, EEQU)) {
+        return NULL;
+    }
+    return IRO_VariableComparedToIntConst(linear);
+}
+
+Object* IRO_IsVariableMoreOrLessEqualIntConst(IROLinear* linear) {
+    if (!linear || linear->type != IROLinearOp2Arg) {
+        return NULL;
+    }
+    switch (linear->nodetype) {
+        case ELESS:
+        case EGREATER:
+        case ELESSEQU:
+        case EGREATEREQU:
+            return IRO_VariableComparedToIntConst(linear);
+        default:
+            return NULL;
+    }
 }
 #endif
 

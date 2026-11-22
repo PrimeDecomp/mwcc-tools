@@ -2264,6 +2264,40 @@ TEST(signed_range, int, x == -2 || x == -1)
     run(compiler, *FLAGS, "-O4,p", "-func_align", "4", "-c", source, "-o", obj, cwd=work)
     results[f"{source.name} -O4,p"] = obj.read_bytes()
 
+    source = work / "bounded_intervals.c"
+    source.write_text(
+        """\
+extern int hit(void), miss(void), alternate(void);
+int inclusive(int x) {
+    if (x >= 3 && x <= 4) return hit();
+    return miss();
+}
+int exclusive(unsigned x) {
+    if (x <= 12 && x > 8) return hit();
+    return miss();
+}
+int from_switch(int x) {
+    switch (x) {
+        case 3: case 4: return hit();
+        case 1: return miss();
+        default: return alternate();
+    }
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for options in (
+        ("-O0",),
+        ("-O1",),
+        ("-O4,p",),
+        ("-O4,s",),
+        ("-O0", "-pragma", "opt_optimizecontrolflow on"),
+        ("-O4,p", "-pragma", "opt_optimizecontrolflow off"),
+    ):
+        run(compiler, *FLAGS, *options, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {' '.join(options)}"] = obj.read_bytes()
+
     source = work / "local_declaration_weight.c"
     source.write_text(
         "void declaration_weight(int x) {\n"

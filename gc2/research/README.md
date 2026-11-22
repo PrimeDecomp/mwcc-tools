@@ -260,10 +260,14 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   comparisons. The emitter at `0x61e6b0` tests wider ranges first and uses
   source order for equally wide ranges. It evaluates selectors with side
   effects once. Stock runs `IRO_SimplifyBoundedIntervalConditionals` at
-  `0x62b860` after switch lowering and can combine the two comparisons for an
-  interior range. In Corruption's `TRKNubMainLoop`, stock reaches the
-  range rewrite at `0x62b8e0` and tests event types 3 and 4 with one
-  unsigned comparison. The source still emits both comparisons.
+  `0x62b860` before and after switch lowering. Its matcher at `0x62bef0`
+  looks for consecutive bounds on one variable with a shared failure path.
+  The rewrite at `0x62b8e0` adjusts strict bounds and emits the unsigned
+  comparison `(x - lower) <= (upper - lower)`. The pragma
+  `opt_optimizecontrolflow` enables the pass by default at `-O1` and above.
+  Stock saves the flag at offset `0x5a` in the IPA function options.
+  Corruption's optimized MetroTRK `mainloop.c` now matches all compared ELF
+  sections, including the single range check for event types 3 and 4.
 - RC1's equality-chain pass at `0x62c0e0` follows fallthrough blocks and
   checks each successor against the original branch destination. It can
   end the chain at an inverted branch whose fallthrough is that
@@ -291,7 +295,8 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   the result as an argument initializer. The late forward pass replaces
   a redundant zero extension with a move at `0x5b8bba`. The source
   still extends an unsigned byte before comparing it with one in the
-  minimal argument test.
+  minimal argument test. It also emits an extra `clrlwi` for an unsigned
+  short compared against 65000 and 65530 with `opt_optimizecontrolflow off`.
 - RC1's class-specific liveness pass calls `0x63a9e0` at `0x63a491` before
   building the interference graph. It restricts entry live-ins to physical
   registers and walks blocks forward, masking live-outs by live-ins and local
