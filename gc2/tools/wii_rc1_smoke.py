@@ -2922,6 +2922,48 @@ int times_signed_minimum(int x) { return x * (-2147483647 - 1); }
             run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
             results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
 
+    source = work / "immediate_reuse.c"
+    source.write_text(
+        """
+typedef struct File {
+    int handle;
+    unsigned mode:7;
+    unsigned flags:3;
+    unsigned rest:22;
+    int offset;
+} File;
+extern int process(File*);
+extern void use(int);
+extern void barrier(void);
+int clear_for_close(File* f) {
+    int x = process(f);
+    f->flags = 0;
+    f->handle = 0;
+    if (f->offset) use(x);
+    return x;
+}
+void clear_for_flush(File* f, int offset) {
+    f->mode = 0;
+    f->offset = offset;
+    f->handle = 0;
+}
+void clear_with_call(File* f) { f->flags = 0; barrier(); f->handle = 0; }
+void clear_with_volatile(File* f, volatile int* p) { f->flags = 0; *p = 1; f->handle = 0; }
+void clear_other_bit_pattern(File* f) { f->flags = 3; f->handle = 3; }
+void use_lis(File* f) { f->offset = 0x12340000; f->handle = 0x12340000; }
+void overwrite(File* f, int a) { f->flags = 0; f->offset = a; f->handle = 0; use(7); }
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    for options in (
+        ("-O0",), ("-O2",), ("-O4,p",), ("-O4,s",), ("-O4,p", "-pragma", "scheduling off"),
+    ):
+        run(compiler, *FLAGS, *options, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+        results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
+
     source = work / "local_declaration_weight.c"
     source.write_text(
         "void declaration_weight(int x) {\n"

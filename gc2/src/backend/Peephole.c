@@ -2822,6 +2822,51 @@ static void forward_stored_value(PCode* store) {
     }
 }
 
+static void forward_immediate(PCode* instr) {
+    const UInt32 barrier = fIsVolatile | fSideEffects | fIsArgInit;
+    short source = instr->args[0].data.reg.reg;
+    PCode* scan;
+
+    if ((instr->flags & barrier) || instr->args[1].kind != PCOp_IMMEDIATE) {
+        return;
+    }
+
+    for (scan = instr->nextPCode; scan && !(scan->flags & barrier); scan = scan->nextPCode) {
+        int i;
+        for (i = 0; i < scan->argCount; i++) {
+            if (PC_OP_IS_WRITE_REGISTER(&scan->args[i], RegClass_GPR, source)) {
+                return;
+            }
+        }
+
+        if (scan->op == instr->op && scan->args[1].kind == PCOp_IMMEDIATE &&
+            scan->args[1].data.imm.value == instr->args[1].data.imm.value) {
+            short duplicate = scan->args[0].data.reg.reg;
+            PCode* use;
+
+            for (use = scan->nextPCode; use && !(use->flags & barrier); use = use->nextPCode) {
+                Boolean overwritten = FALSE;
+                for (i = 0; i < use->argCount; i++) {
+                    PCodeArg* op = &use->args[i];
+                    if (!PC_OP_IS_ANY_REGISTER(op, RegClass_GPR)) {
+                        continue;
+                    }
+                    if (op->data.reg.effect & EffectWrite) {
+                        if (op->data.reg.reg == source || op->data.reg.reg == duplicate) {
+                            overwritten = TRUE;
+                        }
+                    } else if ((op->data.reg.effect & EffectRead) && op->data.reg.reg == duplicate) {
+                        op->data.reg.reg = source;
+                    }
+                }
+                if (overwritten) {
+                    break;
+                }
+            }
+        }
+    }
+}
+
 static Boolean can_remove_argument_extension(PCode* instr, short source) {
     return (instr->flags & (fIsArgInit | fSideEffects | fRecordBit)) == fIsArgInit &&
         source < n_real_registers[RegClass_GPR];
@@ -3214,6 +3259,8 @@ static void adjustforward(PCodeBlock* block, Boolean removeArgumentExtensions) {
             }
         } else if (instr->flags & fIsWrite) {
             forward_stored_value(instr);
+        } else if (instr->op == PC_LI || instr->op == PC_LIS) {
+            forward_immediate(instr);
 #endif
         } else if (instr->op == PC_ADDI &&
                    (destReg = instr->args[0].data.reg.reg) == instr->args[1].data.reg.reg &&

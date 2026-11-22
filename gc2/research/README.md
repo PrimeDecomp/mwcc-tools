@@ -172,7 +172,7 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   emits `GETCRBIT` with a virtual condition-register field.
   `pcode_expand_pseudo_ops` (`0x5a6ed0`) expands it to `mfcr` and `rlwinm`
   after register coloring. Corruption's `fclose` now matches the stock
-  return sequence. Register choices for the preceding stores still differ.
+  return sequence.
 - Stock RC1 `FactorExpression` (`0x60e380`) replaces repeated integer
   addends such as `x+x+x` with `x*(1+1+1)`. Constant folding and another
   transformation pass then lower powers of two to shifts. `IRO_IsPow2`
@@ -313,6 +313,13 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   recalculates liveness after deletions at `0x46b180` and `0x46b19d` until both
   passes around register coloring stabilize. The source reproduces these
   sweeps. The remaining early backward patterns are installed at `0x654d37`.
+- The forward pass at `0x5b9133` calls the immediate reuse helper at
+  `0x5b9840` for `LI` and `LIS`. It redirects read-only uses of a duplicate
+  immediate load to the earlier register within the block. Volatile,
+  side-effecting, and argument-initialization instructions stop the scan,
+  as do writes to the registers carrying the shared value. This lets the
+  backward pass discard the later load after folding a bitfield clear.
+  Corruption's `file_io.c` now matches stock at its project settings.
 - The `gen_AND` paths at `0x526920` and `0x527060` recognize a contiguous
   mask in each 16-bit half. They emit two masked rotates and an OR with
   peephole optimization enabled, or a masked rotate and an insert otherwise.
