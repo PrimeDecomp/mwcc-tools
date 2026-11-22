@@ -141,6 +141,7 @@ CompilerOption compileroptions[] = {
     "oldalignment", OPT_OFFSET(oldalignment),
 #if VERSION == VERSION_WII_1_0RC1
     "legacy_struct_alignment", OPT_OFFSET(legacy_struct_alignment),
+    "ppc_dont_balance_exp", OPT_OFFSET(ppc_dont_balance_exp),
     "ppc_no_fp_blockmove", OPT_OFFSET(ppc_no_fp_blockmove),
 #endif
     "multibyteaware", OPT_OFFSET(multibyteaware),

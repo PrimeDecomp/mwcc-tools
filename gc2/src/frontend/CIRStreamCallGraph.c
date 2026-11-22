@@ -500,6 +500,7 @@ Boolean CIRStream_UnpackFunctionHeader(CIRStreamReader* stream, CIRStreamFunctio
     X(0x9f, use_lmw_stmw) \
     X(0xa1, switch_tables) \
     X(0xb0, gprfloatcopy) \
+    X(0xbb, ppc_dont_balance_exp) \
     X(0xbc, ppc_no_fp_blockmove) \
     X(0xcc, legacy_struct_alignment)
 

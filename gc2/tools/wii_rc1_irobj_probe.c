@@ -677,6 +677,7 @@ static Boolean check_function_options(const CIRStreamFunctionHeader* function) {
         options.unroll_factor_limit == 123 &&
         options.fp_contract &&
         options.legacy_struct_alignment &&
+        options.ppc_dont_balance_exp &&
         options.force_cats &&
         options.inlinelevel == 19;
 }

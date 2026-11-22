@@ -335,6 +335,20 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   loop depth. This keeps the two tests of the masked integer in `s_cos.c`,
   `s_sin.c`, and `s_tan.c` on one definition and preserves stock numbering
   of the floating-point constant symbols. All three objects match stock.
+- In `combine` at `0x5aec58`, RC1 adds the two registers of the indexed
+  operand first, unless expression balancing is enabled and the preceding
+  instruction's first operand is one of those registers. In that case it
+  computes the sum of the other two registers first. The pragma
+  `ppc_dont_balance_exp` controls this choice and is preserved at byte
+  `0xbb` in program IPA function options. In `__va_arg.c`, the address
+  calculation now matches stock. The backward move rule at `0x65b140`
+  also runs before register coloring, where it retargets the earlier of
+  the two pointer copies. The optimized `__va_arg.c` object now matches
+  stock with the project's flags.
+  At `-O0`, native GPR allocation at `0x46d200` counts 53 uses of local
+  and TOC variables and sets the local usage cutoff to five at `0x46d28a`.
+  The source allocator's fixed cutoff of two places four additional
+  locals in nonvolatile GPRs.
 - `CMach_StructLayoutPackedBitfield` at `0x4f2117` closes the previous
   allocation unit at the first unused byte when it encounters a zero-width
   field, then aligns the offset for that field. This affects both the next

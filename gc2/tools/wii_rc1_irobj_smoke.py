@@ -509,6 +509,7 @@ def main():
             "#pragma ppc_unroll_instructions_limit 333\n"
             "#pragma ppc_unroll_factor_limit 123\n"
             "#pragma legacy_struct_alignment on\n"
+            "#pragma ppc_dont_balance_exp on\n"
             "#pragma force_cats on\n"
             "int options(int x) { return x + 17; }\n",
             "ascii",

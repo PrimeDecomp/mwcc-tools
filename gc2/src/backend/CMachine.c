@@ -2670,6 +2670,7 @@ void CMach_GetBackEndOptions(struct CInlineBackendOptions* options) {
     options->optimizesize = copts.optimizesize;
 #if VERSION == VERSION_WII_1_0RC1
     options->legacy_struct_alignment = copts.legacy_struct_alignment;
+    options->ppc_dont_balance_exp = copts.ppc_dont_balance_exp;
     options->ppc_no_fp_blockmove = copts.ppc_no_fp_blockmove;
     options->e500_floatingpoint = copts.e500_floatingpoint;
     options->e500v2_floatingpoint = copts.e500v2_floatingpoint;
@@ -2749,6 +2750,7 @@ void CMach_SetBackEndOptions(struct CInlineBackendOptions* options) {
     copts.optimizesize = options->optimizesize;
 #if VERSION == VERSION_WII_1_0RC1
     copts.legacy_struct_alignment = options->legacy_struct_alignment;
+    copts.ppc_dont_balance_exp = options->ppc_dont_balance_exp;
     copts.ppc_no_fp_blockmove = options->ppc_no_fp_blockmove;
     copts.e500_floatingpoint = options->e500_floatingpoint;
     copts.e500v2_floatingpoint = options->e500v2_floatingpoint;

@@ -1754,6 +1754,61 @@ double classify(int x) {
     run(objcopy, f"--dump-section=.strtab={section}", obj, cwd=work)
     results[f"{source.name} .strtab"] = section.read_bytes()
 
+    source = work / "pointer_balance.c"
+    source.write_text(
+        """\
+char* index_product(char* base, int offset, int index, int scale) {
+    return base + offset + index * scale;
+}
+
+char* loaded_base(char** base, int offset, int index) {
+    return *base + offset + index;
+}
+
+char* loaded_offset(char* base, const int* offset, int index) {
+    return base + *offset + index;
+}
+
+#pragma ppc_dont_balance_exp on
+
+char* unbalanced_offset(char* base, const int* offset, int index) {
+    return base + *offset + index;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    run(compiler, *FLAGS, "-O2", "-c", source, "-o", obj, cwd=work)
+    run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+    results[source.name] = section.read_bytes()
+
+    source = work / "precolor_move.c"
+    source.write_text(
+        """\
+int update(signed char* p, int kind) {
+    signed char* slot = p;
+    int value = *p;
+    int limit = 8;
+    if (kind == 3) {
+        slot = p + 1;
+        value = p[1];
+    }
+    if (kind == 2)
+        limit = 7;
+    if (value < limit)
+        *slot = value + 1;
+    return value;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    run(compiler, *FLAGS, "-Cpp_exceptions", "off", "-O4,p", "-c", source, "-o", obj, cwd=work)
+    run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+    results[source.name] = section.read_bytes()
+
     source = work / "compare_zero.c"
     source.write_text(
         "extern void a(void); extern void b(void);\n"

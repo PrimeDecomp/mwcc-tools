@@ -3481,6 +3481,13 @@ void peepholeoptimizeprecolor(Object* func) {
             for (instr = block->lastPCode; instr; instr = instr->prevPCode) {
                 if (instr->op == PC_BT || instr->op == PC_BF) {
                     changed |= fold_branch_zero_compare(instr, cr_live);
+                } else if (instr->op == PC_MR) {
+                    short src = instr->args[1].data.reg.reg;
+                    PCode* def = find_def_backward(instr->prevPCode, RegClass_GPR, src);
+                    if (move_into_definition(instr, def, bitvectorgetbit(src, gpr_live) != 0)) {
+                        changed = TRUE;
+                        continue;
+                    }
                 } else if (instr->op == PC_ADDI && instr->args[2].kind == PCOp_MEMORY &&
                            PC_OP_IS_WRITE_ANY_REGISTER(&instr->args[0], RegClass_GPR) &&
                            PC_OP_IS_READ_ANY_REGISTER(&instr->args[1], RegClass_GPR) &&

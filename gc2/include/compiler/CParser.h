@@ -120,6 +120,7 @@ struct CompilerLinkerOptions {
     char min_struct_alignment;
 #if VERSION == VERSION_WII_1_0RC1
     Boolean legacy_struct_alignment;
+    Boolean ppc_dont_balance_exp;
     Boolean ppc_no_fp_blockmove;
 #endif
     UInt8 unsafe_global_reg_vars;

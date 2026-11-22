@@ -321,6 +321,32 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
             opA = opB;
             opB = swapOp;
         case COMBO_OP(OpndType_GPR_Indexed, OpndType_GPR):
+#if VERSION == VERSION_WII_1_0RC1
+        {
+            const PCode* last = pclastblock->lastPCode;
+            short left = opA->reg;
+            short right = opA->regOffset;
+            short base = opB->reg;
+
+            if (!copts.ppc_dont_balance_exp && last && last->argCount &&
+                PC_OP_IS_ANY_REGISTER(&last->args[0], RegClass_GPR)) {
+                short reg = last->args[0].data.reg.reg;
+                if (reg == left) {
+                    left = base;
+                    base = reg;
+                } else if (reg == right) {
+                    right = left;
+                    left = base;
+                    base = reg;
+                }
+            }
+            opOut->optype = OpndType_GPR_Indexed;
+            opOut->reg = base;
+            opOut->regOffset = ALLOC_GPR();
+            emitpcode(PC_ADD, opOut->regOffset, left, right);
+            break;
+        }
+#else
             opOut->optype = OpndType_GPR_Indexed;
             opOut->reg = opA->reg;
             opOut->regOffset = (output_reg && (output_reg != opA->reg))
@@ -328,6 +354,7 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
                 : ALLOC_GPR();
             emitpcode(PC_ADD, opOut->regOffset, opA->regOffset, opB->reg);
             break;
+#endif
         case COMBO_OP(OpndType_GPR_ImmOffset, OpndType_GPR_Indexed):
             swapOp = opA;
             opA = opB;

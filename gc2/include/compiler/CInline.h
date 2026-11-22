@@ -71,7 +71,11 @@ struct CInlineBackendOptions {
 #endif
     UInt8 opt_bcc_lr_ctr;
     UInt8 use_lmw_stmw;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean ppc_dont_balance_exp;
+#else
     UInt8 report_heap_info;
+#endif
     UInt8 misaligned_mem_access;
     UInt8 switch_tables;
     UInt8 prepare_compress;
