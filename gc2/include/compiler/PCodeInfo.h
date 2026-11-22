@@ -522,6 +522,7 @@ typedef enum Opcode {
 #define SPE_OPCODE(op, mnemonic, native, format, count, rank, flags, bits, cpus, encoding, width) PC_##op,
 #include "compiler/SPEOpcodes.def"
 #undef SPE_OPCODE
+    PC_GETCRBIT,
     OPCODE_MAX,
     PC_PENTRY = OPCODE_MAX,
     PC_PEXIT
@@ -556,8 +557,8 @@ typedef struct SPEOpcodeInfo {
     UInt8 memoryWidth;
 } SPEOpcodeInfo;
 
-#define IS_SPE_OPCODE(op) ((op) >= PC_EVOR && (op) < OPCODE_MAX)
-extern const SPEOpcodeInfo spe_opcodeinfo[OPCODE_MAX - PC_EVOR];
+#define IS_SPE_OPCODE(op) ((op) >= PC_EVOR && (op) < PC_GETCRBIT)
+extern const SPEOpcodeInfo spe_opcodeinfo[PC_GETCRBIT - PC_EVOR];
 extern Opcode find_spe_opcode(UInt32 nativeOpcode);
 #endif
 

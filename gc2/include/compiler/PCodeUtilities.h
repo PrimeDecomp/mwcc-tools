@@ -22,6 +22,7 @@ extern void branch_subroutine(Object* obj, short add_nop, UInt32* masks);
 extern void branch_subroutine_ctr(UInt32* masks);
 extern void add_immediate(short dest_reg, short base_reg, Object* obj, SInt16 offset);
 #if VERSION == VERSION_WII_1_0RC1
+extern void pcode_expand_pseudo_ops(void);
 extern void add_immediate_before(
     PCode* before, short dest_reg, short base_reg, Object* obj, SInt16 offset
 );

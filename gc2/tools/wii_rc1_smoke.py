@@ -2890,6 +2890,38 @@ int times_signed_minimum(int x) { return x * (-2147483647 - 1); }
         run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
         results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
 
+    logical_masks = (
+        "int sign_or(int a, int b) { return (a || b) ? -1 : 0; }\n"
+        "int sign_and(int a, int b) { return (a && b) ? -1 : 0; }\n"
+        "int logical(int a, int b) { return (a || b) ? 1 : 0; }\n"
+        "int inverse_sign(int a, int b) { return (a || b) ? 0 : -1; }\n"
+        "int inverse_logical(int a, int b) { return (a && b) ? 0 : 1; }\n"
+        "int sign_call(int a, int (*b)(void)) { return (a || b()) ? -1 : 0; }\n"
+        "int inverse_ordered(double a, double b) { return (a < b) ? 0 : -1; }\n"
+        "int floating_value(double a, double b) { return a >= b; }\n"
+        "int inverse_float(double a, double b) { return !(a < b); }\n"
+        "long long wide_mask(int a, int b) { return (a || b) ? -1LL : 0LL; }\n"
+    )
+    for suffix, flags, extra in (
+        (".c", (), ""),
+        (
+            ".cpp", ("-bool", "on"),
+            "int sign_bool(bool a) { return a ? -1 : 0; }\n"
+            "int inverse_bool(bool a) { return a ? 0 : -1; }\n",
+        ),
+    ):
+        source = work / f"logical_masks{suffix}"
+        source.write_text(logical_masks + extra, encoding="ascii")
+        obj = source.with_suffix(".o")
+        section = source.with_suffix(".text")
+        for options in (
+            ("-O0",), ("-O1",), ("-O2",), ("-O4,p",), ("-O4,s",),
+            ("-O4,p", "-pragma", "scheduling off"),
+        ):
+            run(compiler, *FLAGS, *flags, *options, "-c", source, "-o", obj, cwd=work)
+            run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+            results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
+
     source = work / "local_declaration_weight.c"
     source.write_text(
         "void declaration_weight(int x) {\n"

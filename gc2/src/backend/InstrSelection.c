@@ -4843,9 +4843,15 @@ void gen_condition_gpr(ENode* cond, Operand* output, short outputReg) {
     }
 
     gen_condition(cond, &condOp);
+#if VERSION != VERSION_WII_1_0RC1
     emitpcode(PC_MFCR, tmpReg = ALLOC_GPR());
+#endif
     invert = 0;
+#if VERSION == VERSION_WII_1_0RC1
+    bit = 0;
+#else
     bit = condOp.reg * 4;
+#endif
     switch (condOp.regOffset) {
         case ENOTEQU:
             invert = 1;
@@ -4865,12 +4871,22 @@ void gen_condition_gpr(ENode* cond, Operand* output, short outputReg) {
     }
 
     finalReg = outputReg ? outputReg : ALLOC_GPR();
+#if VERSION == VERSION_WII_1_0RC1
+    if (invert) {
+        tmpReg = ALLOC_GPR();
+        emitpcode(PC_GETCRBIT, tmpReg, condOp.reg, bit);
+        emitpcode(PC_XORI, finalReg, tmpReg, 1);
+    } else {
+        emitpcode(PC_GETCRBIT, finalReg, condOp.reg, bit);
+    }
+#else
     if (invert) {
         emitpcode(PC_RLWINM, tmpReg, tmpReg, bit + 1, 31, 31);
         emitpcode(PC_XORI, finalReg, tmpReg, 1);
     } else {
         emitpcode(PC_RLWINM, finalReg, tmpReg, bit + 1, 31, 31);
     }
+#endif
     output->optype = OpndType_GPR;
     output->reg = finalReg;
 }

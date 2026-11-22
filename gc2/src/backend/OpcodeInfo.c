@@ -479,6 +479,7 @@ OpcodeInfo opcodeinfo[] = {
     #op, format, count, rank, flags, bits,
 #include "compiler/SPEOpcodes.def"
 #undef SPE_OPCODE
+    "GETCRBIT",     "=r,c,u2",         3,  5, fPseudoOp | fOpTypeGPR,                                                       0x7C000000,
 #endif
     "PENTRY",       "",                0,  0, 0,                                                                           0x00000000,
     "PEXIT",        "",                0,  0, 0,                                                                           0x00000000
@@ -486,7 +487,7 @@ OpcodeInfo opcodeinfo[] = {
 // clang-format on
 
 #if VERSION == VERSION_WII_1_0RC1
-const SPEOpcodeInfo spe_opcodeinfo[OPCODE_MAX - PC_EVOR] = {
+const SPEOpcodeInfo spe_opcodeinfo[PC_GETCRBIT - PC_EVOR] = {
 #define SPE_OPCODE(op, mnemonic, native, format, count, rank, flags, bits, cpus, encoding, width) \
     {native, encoding, width},
 #include "compiler/SPEOpcodes.def"

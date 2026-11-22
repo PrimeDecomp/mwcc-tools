@@ -164,6 +164,15 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   read still needs the stack slot. The source now emits the same instruction
   bytes for that case and for controls with calls and partial writes.
   The optimized Corruption `s_frexp.c` and `s_ldexp.c` objects now match.
+- RC1 runs `IRO_DoTransformations` after expression regeneration. Its
+  ternary rewrite at `0x611f90` folds integer `0`/`1` and `0`/`-1` arms
+  through `IRO_LogicalizeExpr` and `IRO_LogicalNotExpr`. The negation path
+  preserves short-circuit evaluation and ordered floating-point comparisons.
+  For a comparison used as a value, `gen_condition_gpr` at `0x51dd0d`
+  emits `GETCRBIT` with a virtual condition-register field.
+  `pcode_expand_pseudo_ops` (`0x5a6ed0`) expands it to `mfcr` and `rlwinm`
+  after register coloring. Corruption's `fclose` now matches the stock
+  return sequence. Register choices for the preceding stores still differ.
 - Stock RC1 `FactorExpression` (`0x60e380`) replaces repeated integer
   addends such as `x+x+x` with `x*(1+1+1)`. Constant folding and another
   transformation pass then lower powers of two to shifts. `IRO_IsPow2`

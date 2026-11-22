@@ -2073,6 +2073,118 @@ static void DoDiadic(IROLinear* nd) {
 }
 
 #if VERSION == VERSION_WII_1_0RC1
+static Boolean IRO_IsBoolType(Type* type) {
+    return type->type == TYPEINT && TYPE_INTEGRAL(type)->integral == IT_BOOL;
+}
+
+static Boolean IRO_IsLogicalExpr(IROLinear* nd) {
+    if (nd->type == IROLinearOp1Arg || nd->type == IROLinearOp2Arg) {
+        switch (nd->nodetype) {
+            case ELOGNOT:
+            case ELESS:
+            case EGREATER:
+            case ELESSEQU:
+            case EGREATEREQU:
+            case EEQU:
+            case ENOTEQU:
+            case ELAND:
+            case ELOR:
+                return TRUE;
+            case ETYPCON:
+                return IRO_IsBoolType(nd->rtype) || IRO_IsLogicalExpr(nd->u.monadic);
+            default:
+                break;
+        }
+    }
+    return IRO_IsBoolType(nd->rtype);
+}
+
+static IROLinear* InsertMonadicAfter(IROLinear* operand, IROLinear* model, ENodeType op, Type* type) {
+    IROLinear* result = IRO_NewLinear(IROLinearOp1Arg);
+    *result = *model;
+    result->type = IROLinearOp1Arg;
+    result->nodetype = op;
+    result->index = IRO_NumLinear++;
+    result->rtype = type;
+    result->u.monadic = operand;
+    IRO_PasteAfter(result, result, operand);
+    return result;
+}
+
+static IROLinear* IRO_LogicalizeExpr(IROLinear* nd) {
+    Type* type = IRO_LogicalType();
+
+    if (!IRO_IsLogicalExpr(nd)) {
+        nd = InsertMonadicAfter(nd, nd, ELOGNOT, type);
+        return InsertMonadicAfter(nd, nd, ELOGNOT, type);
+    }
+    return IRO_TypesEqual(nd->rtype, type) ? nd : InsertTypeConversion(nd, type);
+}
+
+static IROLinear* IRO_LogicalNotExpr(IROLinear* nd) {
+    IROLinear* op = nd;
+    Type* type = IRO_LogicalType();
+
+    if (IS_LINEAR_MONADIC(nd, ELOGNOT) && IRO_TypesEqual(nd->rtype, nd->u.monadic->rtype)) {
+        nd = nd->u.monadic;
+        op->type = IROLinearNop;
+        op->expr = NULL;
+    } else {
+        while (IS_LINEAR_MONADIC(op, ETYPCON)) {
+            op = op->u.monadic;
+        }
+        if (op->type == IROLinearOp2Arg && IRO_IsLogicalExpr(nd) &&
+            (op->nodetype == EEQU || op->nodetype == ENOTEQU ||
+             ((op->nodetype >= ELESS && op->nodetype <= EGREATEREQU) &&
+              (IS_TYPE_INT(op->u.diadic.left->rtype) || IS_TYPE_POINTER(op->u.diadic.left->rtype) ||
+               IS_TYPE_ENUM(op->u.diadic.left->rtype))))) {
+            op->nodetype = ComplementaryOpLogical[op->nodetype];
+        } else {
+            return InsertMonadicAfter(nd, nd, ELOGNOT, type);
+        }
+    }
+
+    return nd->rtype == type ? nd : InsertTypeConversion(nd, type);
+}
+
+static void DoTriadic(IROLinear* nd) {
+    IROLinear* condition = nd->u.args3.a;
+    IROLinear* yes = nd->u.args3.b;
+    IROLinear* no = nd->u.args3.c;
+    IROLinear* nonzero;
+    Boolean invert;
+    Boolean negate;
+
+    if (nd->nodetype != ECOND || !IRO_IsIntConstant(yes) || !IRO_IsIntConstant(no)) {
+        return;
+    }
+
+    invert = IRO_IsConstantZero(yes);
+    if (!invert && !IRO_IsConstantZero(no)) {
+        return;
+    }
+    nonzero = invert ? no : yes;
+    negate = IRO_IsConstantNegativeOne(nonzero);
+    if (!negate && !IRO_IsConstantOne(nonzero)) {
+        return;
+    }
+    if (invert) {
+        condition = IRO_LogicalNotExpr(condition);
+    }
+    condition = IRO_LogicalizeExpr(condition);
+    if (!IRO_TypesEqual(condition->rtype, nd->rtype)) {
+        condition = InsertTypeConversion(condition, nd->rtype);
+    }
+    if (negate) {
+        condition = InsertMonadicAfter(condition, yes, EMONMIN, yes->rtype);
+    }
+    IRO_NopOut(yes);
+    IRO_NopOut(no);
+    nd->type = IROLinearNop;
+    nd->expr = NULL;
+    IRO_LocateFather_Cut_And_Paste_Without_Nopping(nd, condition);
+}
+
 static Boolean IsIntegerSum(IROLinear* nd) {
     return nd->type == IROLinearOp2Arg && nd->nodetype == EADD && IS_TYPE_INT(nd->rtype);
 }
@@ -2160,6 +2272,14 @@ void IRO_DoTransformations(void) {
 
     for (nd = IRO_FirstLinear; nd; nd = nd->next) {
         switch (nd->type) {
+#if VERSION == VERSION_WII_1_0RC1
+            case IROLinearOp3Arg:
+                RemoveUnreffed(nd);
+                if (nd->type == IROLinearOp3Arg) {
+                    DoTriadic(nd);
+                }
+                break;
+#endif
             case IROLinearOp2Arg:
                 DoDiadic(nd);
                 break;
@@ -2182,6 +2302,7 @@ void IRO_DoTransformations(void) {
         next = nd->next;
         FactorExpression(nd);
     }
+    IRO_UpdateFlagsOnInts();
 #endif
     IRO_CheckForUserBreak();
 }

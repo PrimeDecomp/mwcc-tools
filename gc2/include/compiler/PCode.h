@@ -87,6 +87,9 @@ enum {
     fIsConst = 0x40,
     fIsVolatile = 0x80,
     fSideEffects = 0x100,
+#if VERSION == VERSION_WII_1_0RC1
+    fPseudoOp = 0x1000,
+#endif
     fCommutative = 0x2000,
     fIsCSE = 0x4000,
     fIsArgInit = 0x8000,

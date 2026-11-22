@@ -1927,6 +1927,7 @@ void CodeGen_Generator(
     if (copts.optimizationlevel > 0) {
         eliminatedeadpcode(func, TRUE);
     }
+    pcode_expand_pseudo_ops();
 #endif
     if (ORACLE_LISTING(copts.debuglisting)) {
         pclistblocks(CMangler_GetLinkName(func)->name, "AFTER REGISTER COLORING");

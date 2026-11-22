@@ -12,6 +12,30 @@
 #include "compiler/Registers.h"
 #include "compiler/StackFrame.h"
 
+#if VERSION == VERSION_WII_1_0RC1
+void pcode_expand_pseudo_ops(void) {
+    PCodeBlock* block;
+    PCode* instr;
+    PCode* next;
+
+    for (block = pcbasicblocks; block; block = block->nextBlock) {
+        for (instr = block->firstPCode; instr; instr = next) {
+            next = instr->nextPCode;
+            if (instr->op == PC_GETCRBIT) {
+                int dest = instr->args[0].data.reg.reg;
+                int cr = instr->args[1].data.reg.reg;
+                int bit = instr->args[2].data.imm.value;
+                insertpcodebefore(instr, makepcode(PC_MFCR, dest));
+                insertpcodebefore(
+                    instr, makepcode(PC_RLWINM, dest, dest, (4 * cr + bit + 1) & 31, 31, 31)
+                );
+                deletepcode(instr);
+            }
+        }
+    }
+}
+#endif
+
 void pcsetrecordbit(PCode* pc) {
     int reg;
     PCodeArg* arg;

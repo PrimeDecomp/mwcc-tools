@@ -408,7 +408,9 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
             IRO_SplitLifetimes();
         }
 
+#if VERSION != VERSION_WII_1_0RC1
         IRO_DoTransformations();
+#endif
         IRO_DumpAfterPhase("Before RebuildCondExpressions", FALSE);
     }
 
@@ -420,6 +422,12 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
     if (!DisableDueToAsm) {
         IRO_RegenerateExpressions();
         IRO_DumpAfterPhase("IRO_RegenerateExpressions", FALSE);
+#if VERSION == VERSION_WII_1_0RC1
+        if (copts.optimizationlevel > 0) {
+            IRO_DoTransformations();
+            IRO_DumpAfterPhase("IRO_DoTransformations", FALSE);
+        }
+#endif
     }
 
     CountUsage();
