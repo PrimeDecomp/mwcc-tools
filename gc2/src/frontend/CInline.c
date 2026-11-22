@@ -2066,7 +2066,146 @@ static SInt32 EstimateExpandedSizeOfFunction(Statement* stmt) {
     return size;
 }
 
-static Boolean CInline_InlineFunctionCheck(ENode* expr) {
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean CInline_IsObjectRegable(const Type* type, Boolean referenced) {
+    return !referenced && (IS_TYPE_INT_OR_ENUM(type) || IS_TYPE_POINTER_ONLY(type));
+}
+
+static UInt32 CInline_ExpressionComplexity(const ENode* expr, const CI_FuncData* body) {
+    const ENode* operand;
+    const ENodeList* arg;
+    const CI_Var* var;
+    const Object* object;
+    UInt32 cost;
+
+    if (!expr) {
+        return 0;
+    }
+    switch (expr->type) {
+        case EINDIRECT:
+            operand = expr->data.monadic;
+            if (operand->type == EOBJREF) {
+                object = operand->data.objref;
+                return object->datatype != DLOCAL ||
+                    !CInline_IsObjectRegable(object->type, object->flags & OBJECT_REFERENCED);
+            }
+            if (body && ENODE_IS2(operand, EARGOBJ, ELOCOBJ)) {
+                var = operand->type == EARGOBJ ? body->arguments : body->locals;
+                var += operand->data.longval;
+                return !CInline_IsObjectRegable(var->type, var->sflags & CI_SFLAGS_Referenced);
+            }
+            return 1 + CInline_ExpressionComplexity(operand, body);
+        case EFORCELOAD:
+            return CInline_ExpressionComplexity(expr->data.monadic, body);
+        case ETYPCON:
+            operand = expr->data.monadic;
+            return (expr->rtype->type != operand->rtype->type ||
+                    expr->rtype->size != operand->rtype->size) +
+                CInline_ExpressionComplexity(operand, body);
+        case EPOSTINC:
+        case EPOSTDEC:
+        case EPREINC:
+        case EPREDEC:
+        case EMONMIN:
+        case EBINNOT:
+        case ELOGNOT:
+        case EBITFIELD:
+            return 1 + CInline_ExpressionComplexity(expr->data.monadic, body);
+        ENODE_CASE_DIADIC_ALL:
+            return (expr->type != ECOMMA) +
+                CInline_ExpressionComplexity(expr->data.diadic.left, body) +
+                CInline_ExpressionComplexity(expr->data.diadic.right, body);
+        case ECOND:
+            return 1 + CInline_ExpressionComplexity(expr->data.cond.cond, body) +
+                CInline_ExpressionComplexity(expr->data.cond.expr1, body) +
+                CInline_ExpressionComplexity(expr->data.cond.expr2, body);
+        case EFUNCCALL:
+        case EFUNCCALLP:
+            cost = 1 + CInline_ExpressionComplexity(expr->data.funccall.funcref, body);
+            for (arg = expr->data.funccall.args; arg; arg = arg->next) {
+                cost += CInline_ExpressionComplexity(arg->node, body);
+            }
+            return cost;
+        case EMFPOINTER:
+            return 1 + CInline_ExpressionComplexity(expr->data.mfpointer.accessnode, body) +
+                CInline_ExpressionComplexity(expr->data.mfpointer.mfpointer, body);
+        case ENULLCHECK:
+            return 1 + CInline_ExpressionComplexity(expr->data.nullcheck.nullcheckexpr, body) +
+                CInline_ExpressionComplexity(expr->data.nullcheck.condexpr, body);
+        case EMEMBER:
+            return CInline_ExpressionComplexity(expr->data.emember->expr, body);
+        case EINTCONST:
+        case EFLOATCONST:
+        case EOBJREF:
+        case EARGOBJ:
+        case ELOCOBJ:
+        case EPRECOMP:
+        case ESCOPE:
+            return 0;
+        default:
+            return 1;
+    }
+}
+
+static UInt32 CInline_ComputeInlineability(const CI_FuncData* body) {
+    const CI_Statement* statement;
+    UInt32 cost = 0;
+    SInt32 i;
+
+    for (i = 0, statement = body->statements; i < body->numstatements; i++, statement++) {
+        switch (statement->type) {
+            case ST_NOP:
+            case ST_LABEL:
+                break;
+            case ST_GOTO:
+            case ST_ASM:
+                cost++;
+                break;
+            case ST_SWITCH:
+                cost += 1 + CInline_ExpressionComplexity(statement->u.switchdata->expr, body);
+                break;
+            case ST_EXPRESSION:
+                if (statement->u.expr->type == ESCOPE) {
+                    break;
+                }
+                /* fall through */
+            case ST_IFGOTO:
+            case ST_IFNGOTO:
+            case ST_RETURN:
+            case ST_BEGINCATCH:
+            case ST_ENDCATCH:
+            case ST_ENDCATCHDTOR:
+            case ST_GOTOEXPR:
+                cost += 1 + CInline_ExpressionComplexity(statement->u.expr, body);
+                break;
+            default:
+                break;
+        }
+    }
+    return cost;
+}
+
+static Boolean CInline_LargeCallGrowsForSize(const ENode* call, const CI_FuncData* body) {
+    const ENodeList* arg;
+    UInt32 cost = CInline_ComputeInlineability(body);
+    UInt32 overhead = 5;
+
+    if (cost <= 10 || CInline_ExpressionComplexity(call, NULL) >= (cost - 10) / 2) {
+        return FALSE;
+    }
+    for (arg = call->data.funccall.args; arg; arg = arg->next) {
+        /* Constant arguments can reduce the body after substitution. */
+        if (ENODE_IS2(arg->node, EINTCONST, EFLOATCONST)) {
+            return FALSE;
+        }
+        overhead++;
+    }
+    return cost > overhead + 1;
+}
+#endif
+
+static Boolean CInline_InlineFunctionCheck(ENode* call) {
+    ENode* expr = call->data.funccall.funcref;
     Object* object;
     SInt32 level;
 
@@ -2116,6 +2255,12 @@ static Boolean CInline_InlineFunctionCheck(ENode* expr) {
             }
         }
 
+#if VERSION == VERSION_WII_1_0RC1
+        if (copts.inlineforsize && copts.optimizesize && object->u.func.u.ifuncdata &&
+            CInline_LargeCallGrowsForSize(call, object->u.func.u.ifuncdata)) {
+            return FALSE;
+        }
+#endif
         return TRUE;
     } else {
         return FALSE;
@@ -2201,7 +2346,7 @@ static ENode* CInline_ExpandExpression(ENode* expr) {
             }
 
             if (ENODE_IS(expr->data.funccall.funcref, EOBJREF) &&
-                CInline_InlineFunctionCheck(expr->data.funccall.funcref)) {
+                CInline_InlineFunctionCheck(expr)) {
                 expr = CInline_InlineFunctionExpression(expr);
             }
             break;
@@ -3156,7 +3301,7 @@ static Statement* CInline_ExpandStatement(Statement* stmt) {
 
     if (((expr = stmt->expr)->type == EFUNCCALL || expr->type == EFUNCCALLP) &&
         ENODE_IS(expr->data.funccall.funcref, EOBJREF) &&
-        CInline_InlineFunctionCheck(expr->data.funccall.funcref)) {
+        CInline_InlineFunctionCheck(expr)) {
         stmt = CInline_InlineFunctionStatement(stmt, &changed);
         if (changed) {
             any_inline_expanded = TRUE;

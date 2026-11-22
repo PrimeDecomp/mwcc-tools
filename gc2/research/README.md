@@ -575,10 +575,17 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   `0x449CA0` and `0x4654A0`. The driver handles the `Ai` and `Fa` optimization flags in
   `TargetSetOptFlags` at `0x435850`. `CInline_CheckInlineability` at `0x55D210`
   uses the auto-inline statement and local-storage limits in its speed path.
-  With `-O4,s`, stock emits a weak `_ftell` called from `ftell` and
-  `_fseek`, even with `-inline always`. Turning `inlineforsize` off
-  makes stock inline `_ftell` into both callers. The source currently
-  inlines it at the default `-O4,s` settings.
+  With `-O4,s`, the call-site check at `0x55dad0` compares the estimated
+  sizes before and after expansion. The fast estimate at `0x55f833`
+  applies when the callee costs more than ten units and the call costs
+  less than half the amount over ten. For `_ftell`, the callee costs
+  76 units, the call expression costs one, and the call overhead costs
+  six. This leaves a weak `_ftell` called from both `ftell` and `_fseek`.
+  The source applies this fast estimate to calls without numeric literal
+  arguments.
+  It still emits an extra move in the out-of-line `_ftell`. The estimator
+  that expands a copy of smaller callees and applies argument-dependent
+  savings remains to be recovered.
 - `CMach_GetObjectAlignment`, `CMach_AllocationAlignment`, and `move_block` start at
   `0x4F4AA0`, `0x4F4BB0`, and `0x5BD1F0`. The source smoke test compares an 8-byte
   aggregate copy with the default options, legacy struct alignment, and floating-point moves enabled.

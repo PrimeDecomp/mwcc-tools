@@ -2629,6 +2629,46 @@ double repeated_int_to_float(int a, double x) {
                 run(objcopy, f"--dump-section={section}={output}", obj, cwd=work)
                 results[f"{source.name} {' '.join(options)} {section}"] = output.read_bytes()
 
+    source = work / "size_inlining.c"
+    source.write_text(
+        """\
+extern unsigned visit(unsigned x);
+
+static inline unsigned sum_visits(unsigned count) {
+    unsigned i;
+    unsigned total = 0;
+    for (i = 0; i < count; i++)
+        total += visit(i ^ count);
+    return total;
+}
+
+unsigned count_visits(unsigned n) {
+    return sum_visits(n) + 3;
+}
+
+unsigned count_extra_visits(unsigned n) {
+    return sum_visits(n);
+}
+
+static inline unsigned adjust(unsigned x) {
+    if (x > 3)
+        return x + 1;
+    return x * 8;
+}
+
+unsigned known_adjustment(void) {
+    return adjust(7) + 3;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    run(
+        compiler, *FLAGS, "-Cpp_exceptions", "off", "-O4,s", "-inline", "auto", "-c", source,
+        "-o", obj, cwd=work,
+    )
+    results[source.name] = obj.read_bytes()
+
     source = work / "inline_saved_uids.c"
     source.write_text(
         """
