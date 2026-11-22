@@ -118,6 +118,9 @@ extern Boolean CodeGen_CollapseVectorExpression(ENode* expr, MWVector128* vec, T
 extern void CodeGen_InsertSpecialMacros(void);
 extern char* CodeGen_ExpandSpecialMacro(Macro* macro);
 extern ENode* CodeGen_CheckExpr(ENode* expr);
+#if VERSION == VERSION_WII_1_0RC1
+extern Boolean CodeGen_IsSubableExpression(IROLinear* nd);
+#endif
 extern void CodeGen_InitialSanityCheck(void);
 
 #ifdef __cplusplus

@@ -174,6 +174,22 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   a power of two on the performance path. Corruption's `e_fmod.c` now
   matches at `-O4,p`. The general case of factoring mixed sums still differs
   in some configurations.
+- RC1 `fp_binary_operator` (`0x51fb20`) evaluates both operands before
+  coercing either to a floating-point register if the right operand has
+  no call. `fp_multiply_add` (`0x51f750`) follows the same rule when neither
+  of its last two operands has a call. Their call paths still coerce each
+  operand immediately in the native evaluation order. Corruption's
+  `k_cos.c` and `k_sin.c` now match. The instructions and relocations in
+  `e_atan2.c` match. Stock `CodeGen_IsSubableExpression` (`0x4647f0`)
+  excludes integer-to-integer casts from common subexpression elimination.
+  The source previously allocated two unnecessary temporaries for those
+  casts in `e_atan2.c`, shifting generated constant names by four IDs.
+  The remaining one-ID offset occurs when the source allocates a fresh
+  object for an inline parameter. Stock `0x5606b0` receives that object from
+  its saved argument list with UID 1, then names and attaches it starting
+  at `0x55ab35`.
+  A standalone inline `__fabs` wrapper followed by a floating-point literal
+  reproduces the offset when the wrapper's argument is itself a call.
 - The native loop alignment pass at `0x59c710` requests instruction alignment
   on the size-optimized path (`0x59c7b8` through `0x59c7d8`). For the Gekko
   backend this is four bytes, so the source skips eight-byte loop padding in

@@ -2494,6 +2494,76 @@ double inspect_then_store(double x, unsigned high) {
         run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
         results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
 
+    floating_operands = (
+        (
+            "floating_operands",
+            "off",
+            """
+static const double upper = 3.1415926535897931160E+00;
+static const double lower = 1.2246467991473531772E-16;
+double right_nested(double x) { return upper - (x - lower); }
+double left_nested(double x) { return (x - lower) - upper; }
+double sum_right(double x) { return upper + (x - lower); }
+double sum_left(double x) { return (x - lower) + upper; }
+double volatile_nested(double x, const volatile double *v) { return v[0] - (x - v[1]); }
+extern double next_double(void);
+double right_call(double x) { return upper - (next_double() - x); }
+""",
+        ),
+        (
+            "fused_operands",
+            "on",
+            """
+extern double first_call(void), second_call(void), third_call(void);
+double fused_no_calls(double x, const volatile double *v) { return v[0] * (x - v[1]) + v[2]; }
+float fused_added_complex(float x, const volatile float *v) { return v[0] * v[1] + (x - v[2]); }
+double fused_left_call(double x, const volatile double *v) { return first_call() * (x - v[0]) + v[1]; }
+double fused_right_call(double x, const volatile double *v) { return v[0] * (x - second_call()) + v[1]; }
+double fused_two_calls(double x, const volatile double *v) { return v[0] * (x - second_call()) + third_call(); }
+float fused_subtracted(float x, const volatile float *v) { return v[0] - v[1] * (x - v[2]); }
+""",
+        ),
+        (
+            "cast_operands",
+            "off",
+            """
+static const double upper = 1.23456789, lower = 0.9536128;
+double repeated_integer_casts(int a, int b, unsigned low_a, unsigned low_b, double x) {
+    if (((unsigned)a | ((low_a | -low_a) >> 31)) > 0x7ff00000U ||
+        ((unsigned)b | ((low_b | -low_b) >> 31)) > 0x7ff00000U)
+        return upper;
+    if (((unsigned)b | low_b) == 0)
+        return lower;
+    if (((unsigned)a | low_a) == 0)
+        return upper - x;
+    return x + lower;
+}
+double repeated_int_to_float(int a, double x) {
+    if ((double)a > x) return (double)a;
+    return upper + (double)a;
+}
+""",
+        ),
+    )
+    for name, contract, body in floating_operands:
+        source = work / f"{name}.c"
+        source.write_text(body, encoding="ascii")
+        obj = source.with_suffix(".o")
+        sections = (".text", ".strtab") if name == "cast_operands" else (".text",)
+        for options in (
+            ("-O0",), ("-O1",), ("-O2",), ("-O3",), ("-O4,p",), ("-O4,s",),
+            ("-O4,p", "-pragma", "scheduling off"),
+            ("-O4,p", "-pragma", "peephole off"),
+        ):
+            run(
+                compiler, *FLAGS, *options, "-fp_contract", contract, "-func_align", "4",
+                "-c", source, "-o", obj, cwd=work,
+            )
+            for section in sections:
+                output = source.with_suffix(section)
+                run(objcopy, f"--dump-section={section}={output}", obj, cwd=work)
+                results[f"{source.name} {' '.join(options)} {section}"] = output.read_bytes()
+
     source = work / "integer_factoring.c"
     source.write_text(
         """

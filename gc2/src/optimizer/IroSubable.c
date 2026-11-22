@@ -1,4 +1,5 @@
 #include "compiler/IroSubable.h"
+#include "compiler/CodeGen.h"
 #include "compiler/IroLinearForm.h"
 #include "compiler/IroPropagate.h"
 #include "compiler/IroUtil.h"
@@ -97,7 +98,15 @@ static int IsSubscript(IROLinear* nd) {
     return FALSE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
 Boolean IRO_IsSubableExpression(IROLinear* nd) {
+    return CodeGen_IsSubableExpression(nd);
+}
+
+Boolean IRO_IsSubableExpressionDefault(IROLinear* nd) {
+#else
+Boolean IRO_IsSubableExpression(IROLinear* nd) {
+#endif
     Object* varobj;
     Boolean result;
 

@@ -26,6 +26,8 @@
 #include "compiler/InlineAsmPPC.h"
 #include "compiler/InstrSelection.h"
 #include "compiler/Intrinsics.h"
+#include "compiler/IroLinearForm.h"
+#include "compiler/IroSubable.h"
 #include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/OracleProbes.h"
@@ -4228,6 +4230,32 @@ static void CodeGen_heaperror(void) {
         saveheaperror();
     }
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+Boolean CodeGen_IsSubableExpression(IROLinear* nd) {
+    if (IS_LINEAR_DIADIC_2(nd, EADD, ESUB)) {
+        IROLinear* left = nd->u.diadic.left;
+        IROLinear* right = nd->u.diadic.right;
+        if ((IS_LINEAR_ENODE(left, EOBJREF) && IS_LINEAR_ENODE(right, EINTCONST)) ||
+            (IS_LINEAR_ENODE(left, EINTCONST) && IS_LINEAR_ENODE(right, EOBJREF))) {
+            return FALSE;
+        }
+    } else if (IS_LINEAR_MONADIC(nd, ETYPCON)) {
+        Type* from = nd->u.monadic->rtype;
+        Type* to = nd->rtype;
+        if ((TYPE_FITS_IN_REGISTER(to) && TYPE_FITS_IN_REGISTER(from)) ||
+            (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(to) && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(from)) ||
+            ((IS_TYPE_VECTOR(to) || IS_TYPE_SPE(to)) && (IS_TYPE_VECTOR(from) || IS_TYPE_SPE(from))) ||
+            (copts.processor == CPU_PPCGEKKO && IS_TYPE_VEC2X32FLOAT(to) && IS_TYPE_VEC2X32FLOAT(from))) {
+            return FALSE;
+        }
+    } else if (IS_LINEAR_ENODE(nd, EFLOATCONST)) {
+        return TRUE;
+    }
+
+    return IRO_IsSubableExpressionDefault(nd);
+}
+#endif
 
 void CodeGen_InitialSanityCheck(void) {
     ok_to_compress = FALSE;

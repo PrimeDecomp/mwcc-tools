@@ -9,6 +9,9 @@ extern "C" {
 
 extern void IRO_InitializeIsSubableOpArray(void);
 extern Boolean IRO_IsSubableExpression(IROLinear* nd);
+#if VERSION == VERSION_WII_1_0RC1
+extern Boolean IRO_IsSubableExpressionDefault(IROLinear* nd);
+#endif
 
 #ifdef __cplusplus
 }

@@ -3558,8 +3558,15 @@ static void fp_binary_operator(
         GEN_NODE_TO_FPR(right, &opright, right->rtype, 0);
         GEN_NODE_TO_FPR(left, &opleft, left->rtype, 0);
     } else {
+#if VERSION == VERSION_WII_1_0RC1
+        GEN_NODE(left, &opleft);
+        GEN_NODE(right, &opright);
+        ENSURE_FPR(&opleft, left->rtype, 0);
+        ENSURE_FPR(&opright, right->rtype, 0);
+#else
         GEN_NODE_TO_FPR(left, &opleft, left->rtype, 0);
         GEN_NODE_TO_FPR(right, &opright, right->rtype, 0);
+#endif
     }
 
     reg = outputReg ? outputReg : ALLOC_FPR();
@@ -3608,16 +3615,23 @@ void fp_multiply_add(
             GEN_NODE_TO_FPR(a, &opA, a->rtype, 0);
             GEN_NODE_TO_FPR(b, &opB, b->rtype, 0);
         }
+    } else if (b->hascall) {
+        GEN_NODE_TO_FPR(b, &opB, b->rtype, 0);
+        GEN_NODE_TO_FPR(a, &opA, a->rtype, 0);
+        GEN_NODE_TO_FPR(c, &opC, c->rtype, 0);
     } else {
-        if (b->hascall) {
-            GEN_NODE_TO_FPR(b, &opB, b->rtype, 0);
-            GEN_NODE_TO_FPR(a, &opA, a->rtype, 0);
-            GEN_NODE_TO_FPR(c, &opC, c->rtype, 0);
-        } else {
-            GEN_NODE_TO_FPR(a, &opA, a->rtype, 0);
-            GEN_NODE_TO_FPR(b, &opB, b->rtype, 0);
-            GEN_NODE_TO_FPR(c, &opC, c->rtype, 0);
-        }
+#if VERSION == VERSION_WII_1_0RC1
+        GEN_NODE(a, &opA);
+        GEN_NODE(b, &opB);
+        GEN_NODE(c, &opC);
+        ENSURE_FPR(&opA, a->rtype, 0);
+        ENSURE_FPR(&opB, b->rtype, 0);
+        ENSURE_FPR(&opC, c->rtype, 0);
+#else
+        GEN_NODE_TO_FPR(a, &opA, a->rtype, 0);
+        GEN_NODE_TO_FPR(b, &opB, b->rtype, 0);
+        GEN_NODE_TO_FPR(c, &opC, c->rtype, 0);
+#endif
     }
 
     reg = outputReg ? outputReg : ALLOC_FPR();
