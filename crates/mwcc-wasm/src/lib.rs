@@ -2081,6 +2081,9 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                                        data: u32|
      -> u32 {
         let pattern = read_string(c, pattern)?;
+        if pattern.ends_with(['\\', '/']) {
+            return fail(c, ERROR_FILE_NOT_FOUND);
+        }
         let (directory, wildcard) = match pattern.rfind(['\\', '/']) {
             Some(i) => (pattern[..i + 1].to_owned(), pattern[i + 1..].to_owned()),
             None => (String::new(), pattern.clone()),
