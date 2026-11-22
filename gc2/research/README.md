@@ -272,10 +272,19 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
 - RC1's `make_distinct_virtual_alias` at `0x5bfab0` allocates a named
   virtual alias even for ordinary writable pointer parameters. In
   `TRKDispatchMessage` it allocates `@87` before `create_switch_table`
-  allocates the emitted `@88`. The source preserves that name allocation.
-  Reproducing the alias itself also requires porting its membership and
-  propagation rules. Attaching it to the older alias graph changed code
-  that already matched in `mem_funcs.c` and `__init_cpp_exceptions.cpp`.
+  allocates the emitted `@88`. The virtual object records the pointee type
+  and starts at offset `0x07ffff00`. Ordinary writable pointer aliases join
+  the conservative pointer set. `0x5bec90` resolves nested membership and
+  records the enclosing sets on virtual objects. When an instruction writes
+  through a virtual object, `0x5be660` invalidates values in those sets,
+  including aliases reached through other pointers. The source now matches
+  `s_modf.c` and retains the `mem_funcs.c` and `__init_cpp_exceptions.cpp`
+  matches. RC1's pointer propagation at `0x6655a0` still has target-specific
+  paths to recover.
+- In `__prep_buffer`, both stores to offset 40 reach stock's global
+  optimizer at `0x5b33f0`. The forward peephole deletes the earlier store
+  at `0x5ba1a4` before local value numbering. The source still emits both
+  stores, which accounts for its extra instruction in this function.
 - `CMach_StructLayoutPackedBitfield` at `0x4f2117` closes the previous
   allocation unit at the first unused byte when it encounters a zero-width
   field, then aligns the offset for that field. This affects both the next

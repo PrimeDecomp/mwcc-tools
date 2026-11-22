@@ -1881,6 +1881,36 @@ def check(compiler, objcopy, nm, objdump, work):
         run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    source = work / "pointer_aliases.c"
+    source.write_text(
+        """\
+struct Words { unsigned high, low; };
+
+unsigned overlapping(struct Words *dst, struct Words *other, unsigned high) {
+    dst->high = high;
+    other->high = 2;
+    return dst->high;
+}
+
+unsigned adjacent(struct Words *dst, unsigned high) {
+    dst->high = high;
+    dst->low = 2;
+    return dst->high;
+}
+
+unsigned read_only(const struct Words *src, unsigned *dst) {
+    unsigned first = src->high;
+    *dst = 3;
+    return first + src->high;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O2", "-O4,p"):
+        run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     zero_trip = (
         "int f(volatile int* p) {\n"
         "    int i;\n"

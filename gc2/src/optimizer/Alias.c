@@ -21,10 +21,20 @@
 void add_alias_member(Alias* parent, Alias* child);
 
 static Alias* aliases;
-static Alias* set_aliases;
 static int n_aliases;
 static int n_gathered_aliases;
-static Alias* alias_hash[997];
+#if VERSION == VERSION_WII_1_0RC1
+enum {
+    AliasHashSize = 2039,
+    VirtualAliasBase = 0x07FFFF00,
+    VirtualObjectSize = 0x0FEDCBA0
+};
+static UInt32* killed_aliases;
+static UInt32* killed_alias_parents;
+#else
+enum { AliasHashSize = 997 };
+#endif
+static Alias* alias_hash[AliasHashSize];
 Alias* worst_case_ptr;
 #if VERSION >= VERSION_GC_2_5
 Alias* worst_case_func;
@@ -32,8 +42,16 @@ Alias* worst_case_func;
 Object worst_case_obj;
 
 static TypePointer worst_case_memory_type = {TYPEARRAY, 0xFFFFFF, TYPE(&stchar)};
-#if VERSION >= VERSION_GC_2_5
+#if VERSION >= VERSION_GC_2_5 && VERSION != VERSION_WII_1_0RC1
 static TypePointer virtual_object_type = {TYPEARRAY, 0xFFFFFF, TYPE(&stchar)};
+#endif
+
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean is_virtual_object(Object* object) {
+    return IS_TYPE_ARRAY(object->type) &&
+           object->type->size == VirtualObjectSize &&
+           TYPE_POINTER(object->type)->qual == 0;
+}
 #endif
 
 static Boolean is_safe_const(Object* obj) {
@@ -94,6 +112,11 @@ Alias* make_distinct_virtual_alias(Object* obj, SInt32 offset, SInt32 size) {
 #else
 Alias* make_distinct_virtual_alias(Object* obj) {
     Boolean is_readonly;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean may_alias_other_objects = FALSE;
+    TypePointer* virtual_type;
+    Alias* alias;
+#endif
     Type* type;
     Object* object;
     HashNameNode* name;
@@ -112,11 +135,10 @@ Alias* make_distinct_virtual_alias(Object* obj) {
             is_readonly = TRUE;
         } else {
 #if VERSION == VERSION_WII_1_0RC1
-            /* RC1 creates a named alias in this path. Preserve the ID used
-               by following symbols while retaining the conservative alias. */
-            CParser_GetUniqueName();
-#endif
+            may_alias_other_objects = TRUE;
+#else
             return NULL;
+#endif
         }
     }
 
@@ -124,13 +146,30 @@ Alias* make_distinct_virtual_alias(Object* obj) {
     object = lalloc(sizeof(Object));
     memclrw(object, sizeof(Object));
     object->otype = OT_OBJECT;
+#if VERSION == VERSION_WII_1_0RC1
+    virtual_type = lalloc(sizeof(TypePointer));
+    memclrw(virtual_type, sizeof(TypePointer));
+    virtual_type->type = TYPEARRAY;
+    virtual_type->size = VirtualObjectSize;
+    virtual_type->target = TPTR_TARGET(type);
+    object->type = TYPE(virtual_type);
+#else
     object->type = TYPE(&virtual_object_type);
+#endif
     object->datatype = DDATA;
     object->name = name;
     if (is_readonly) {
         object->qual = Q_CONST;
     }
+#if VERSION == VERSION_WII_1_0RC1
+    alias = make_alias(object, VirtualAliasBase, 1);
+    if (may_alias_other_objects) {
+        add_alias_member(worst_case_ptr, alias);
+    }
+    return alias;
+#else
     return make_alias(object, 0x7FFFFF, 1);
+#endif
 }
 #endif
 
@@ -139,17 +178,23 @@ static inline Boolean same_object(Object* a, Object* b) {
     if (a == b) {
         return TRUE;
     }
+#if VERSION != VERSION_WII_1_0RC1
     if (a->name == b->name &&
         a->nspace == b->nspace &&
         a->datatype == b->datatype &&
         (a->datatype == DFUNC || a->datatype == DDATA)) {
         return CMangler_GetLinkName(a) == CMangler_GetLinkName(b);
     }
+#endif
     return FALSE;
 }
 
 static inline Boolean is_virtual_or_local_static(Object* obj) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (is_virtual_object(obj)) {
+#else
     if (obj->type == TYPE(&virtual_object_type)) {
+#endif
         return TRUE;
     }
     if (obj->datatype == DDATA && obj->u.data.islocalstatic) {
@@ -196,7 +241,11 @@ void add_aliased_locals_to_worst_case(Alias* alias) {
 #endif
 
 static inline UInt32 hash_alias(Object* object, int offset, int size) {
-    return (UInt32)(object->name->hashval * offset * size) % 997;
+#if VERSION == VERSION_WII_1_0RC1
+    return ((UInt32)object->name->hashval * ((UInt32)offset + 1) * (UInt32)size) % AliasHashSize;
+#else
+    return (UInt32)(object->name->hashval * offset * size) % AliasHashSize;
+#endif
 }
 
 static inline Alias* create_alias(
@@ -238,12 +287,15 @@ void initialize_aliases(void) {
     worst_case_obj.name = GetHashNameNodeExport("@worst_case@");
 
     aliases = NULL;
-    set_aliases = NULL;
     n_aliases = 0;
     n_gathered_aliases = 0;
-    for (i = 0; i < 997; i++) {
+    for (i = 0; i < AliasHashSize; i++) {
         alias_hash[i] = NULL;
     }
+#if VERSION == VERSION_WII_1_0RC1
+    killed_aliases = NULL;
+    killed_alias_parents = NULL;
+#endif
 
     worst_case_ptr = make_alias_set();
     add_alias_member(worst_case_ptr, make_alias(&worst_case_obj, 0, 0));
@@ -287,7 +339,11 @@ found:
                     add_alias_member(worst_case_ptr, make_alias(object, 0, 0));
                 }
 #else
+#if VERSION == VERSION_WII_1_0RC1
+                if (!is_virtual_object(object) && !is_safe_const(object)) {
+#else
                 if (!is_safe_const(object)) {
+#endif
                     if (!is_virtual_or_local_static(object)) {
                         add_alias_member(worst_case_ptr, make_alias(object, 0, 0));
                     } else {
@@ -298,12 +354,21 @@ found:
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if ((!IS_TYPE_ARRAY(object->type) || object->type->size > 0) &&
+        (SInt32)((UInt32)offset + (UInt32)size) > object->type->size) {
+        add_alias_member(worst_case_ptr, make_alias(object, 0, 0));
+        return worst_case_ptr;
+    }
+    return alias;
+#else
     if ((object->type->type != TYPEARRAY || object->type->size > 0) &&
         offset > object->type->size) {
         return NULL;
     } else {
         return alias;
     }
+#endif
 }
 
 static inline Alias* create_alias_union(Alias* a, Alias* b) {
@@ -329,33 +394,38 @@ void add_alias_member(Alias* parent, Alias* child) {
         return;
     }
 
+#if VERSION != VERSION_WII_1_0RC1
     if (child->type == AliasType_Set) {
         for (member = child->parents; member; member = member->nextParent) {
             add_alias_member(parent, member->child);
         }
-    } else {
-#if VERSION < VERSION_GC_2_5
-        if (parent == worst_case_ptr && child->type == AliasType_ObjectPart) {
-#else
-        if (parent->type == AliasType_Set && child->type == AliasType_ObjectPart) {
-#endif
-            child = make_alias(child->object, 0, 0);
-        }
-
-        for (member = parent->parents; member; member = member->nextParent) {
-            if (member->child == child) {
-                return;
-            }
-        }
-
-        member = lalloc(sizeof(AliasMember));
-        member->parent = parent;
-        member->child = child;
-        member->nextParent = parent->parents;
-        parent->parents = member;
-        member->nextChild = child->children;
-        child->children = member;
+        return;
     }
+#endif
+#if VERSION < VERSION_GC_2_5
+    if (parent == worst_case_ptr && child->type == AliasType_ObjectPart) {
+#else
+    if (parent->type == AliasType_Set && child->type == AliasType_ObjectPart) {
+#endif
+        child = make_alias(child->object, 0, 0);
+    }
+#if VERSION == VERSION_WII_1_0RC1
+    CError_ASSERT(1501, parent->type == AliasType_Set || child->type != AliasType_Set);
+#endif
+
+    for (member = parent->parents; member; member = member->nextParent) {
+        if (member->child == child) {
+            return;
+        }
+    }
+
+    member = lalloc(sizeof(AliasMember));
+    member->parent = parent;
+    member->child = child;
+    member->nextParent = parent->parents;
+    parent->parents = member;
+    member->nextChild = child->children;
+    child->children = member;
 }
 
 #if VERSION == VERSION_GC_1_3_2
@@ -1207,10 +1277,96 @@ static void report_aliases(void) {
 }
 #endif
 
-void gather_alias_info(void) {
+#if VERSION == VERSION_WII_1_0RC1
+static void gather_alias_members(void) {
     Alias* alias;
     AliasMember* member;
+    AliasMember* part;
+    int words = (n_aliases + 31) >> 5;
+    Boolean grow = words != ((n_gathered_aliases + 31) >> 5);
+    Boolean changed;
+    int i;
+
+    for (alias = aliases; alias; alias = alias->next) {
+        if (alias->type != AliasType_Set &&
+            (alias->type != AliasType_Object || !is_virtual_object(alias->object))) {
+            continue;
+        }
+        if (!alias->membervec || grow) {
+            alias->membervec = lalloc(words * sizeof(UInt32));
+        }
+        bitvectorinitialize(alias->membervec, n_aliases, 0);
+        bitvectorsetbit(alias->index, alias->membervec);
+        for (member = alias->parents; member; member = member->nextParent) {
+            bitvectorsetbit(member->child->index, alias->membervec);
+            if (member->child->type != AliasType_Set) {
+                for (part = member->child->parents; part; part = part->nextParent) {
+                    bitvectorsetbit(part->child->index, alias->membervec);
+                }
+            }
+        }
+    }
+
+    /* Close the sets before adding the enclosing sets to each virtual object. */
+    do {
+        changed = FALSE;
+        for (alias = aliases; alias; alias = alias->next) {
+            if (!alias->membervec) {
+                continue;
+            }
+            for (member = alias->parents; member; member = member->nextParent) {
+                if (member->child->membervec) {
+                    for (i = 0; i < words; i++) {
+                        UInt32 combined = alias->membervec[i] | member->child->membervec[i];
+                        if (combined != alias->membervec[i]) {
+                            alias->membervec[i] = combined;
+                            changed = TRUE;
+                        }
+                    }
+                }
+            }
+        }
+    } while (changed);
+
+    for (alias = aliases; alias; alias = alias->next) {
+        if (alias->type == AliasType_Object && alias->membervec) {
+            for (member = alias->children; member; member = member->nextChild) {
+                if (member->parent->membervec) {
+                    bitvectorunion(alias->membervec, member->parent->membervec, n_aliases);
+                }
+            }
+        }
+    }
+
+    if (grow || !killed_aliases) {
+        killed_aliases = lalloc(words * sizeof(UInt32));
+        killed_alias_parents = lalloc(words * sizeof(UInt32));
+    }
+    n_gathered_aliases = n_aliases;
+}
+
+static Alias* whole_object_alias(Alias* alias) {
+    AliasMember* member;
+
+    if (alias->type == AliasType_ObjectPart) {
+        for (member = alias->children; member; member = member->nextChild) {
+            if (member->parent->type == AliasType_Object &&
+                member->parent->object == alias->object) {
+                return member->parent;
+            }
+        }
+        CError_FATAL(343);
+    }
+    return alias;
+}
+#endif
+
+void gather_alias_info(void) {
+    Alias* alias;
+#if VERSION != VERSION_WII_1_0RC1
+    AliasMember* member;
     AliasMember* member2;
+#endif
     PCodeBlock* block;
     PCode* pcode;
     RegUseOrDef* list;
@@ -1273,6 +1429,9 @@ void gather_alias_info(void) {
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    gather_alias_members();
+#else
     if (n_gathered_aliases != n_aliases) {
         for (alias = aliases; alias; alias = alias->next) {
             if (alias->type == AliasType_Set) {
@@ -1288,6 +1447,7 @@ void gather_alias_info(void) {
         }
         n_gathered_aliases = n_aliases;
     }
+#endif
 
     ORACLE_PROBE(report_aliases());
 }
@@ -1301,6 +1461,22 @@ void gather_alias_info(void) {
 #define CError_LINE_SHIFT (-81 + CError_LINE_DELTA)
 #endif
 static Boolean may_alias_alias(Alias* a, Alias* b) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (a->type != AliasType_Set && b->type != AliasType_Set) {
+        if (a->object == b->object) {
+            return a->type == AliasType_Object ||
+                   b->type == AliasType_Object ||
+                   aliases_overlap(a, b);
+        }
+        a = whole_object_alias(a);
+        b = whole_object_alias(b);
+        if (a->membervec && b->index < n_gathered_aliases) {
+            return bitvectorgetbit(b->index, a->membervec) != 0;
+        }
+        return b->membervec && a->index < n_gathered_aliases &&
+               bitvectorgetbit(a->index, b->membervec);
+    }
+#endif
     switch ((a->type * 3) + b->type) {
         case (AliasType_Object * 3) + AliasType_Object:
             return a == b;
@@ -1465,12 +1641,22 @@ Boolean uniquely_aliases(PCode* a, PCode* b) {
 #endif
 
 Boolean may_alias_object(PCode* pcode, Object* object) {
+#if VERSION == VERSION_WII_1_0RC1
+    Alias* alias = make_alias(object, 0, 0);
+    if (n_aliases != n_gathered_aliases) {
+        gather_alias_members();
+    }
+    Boolean result = may_alias_alias(pcode->alias, alias);
+    ORACLE_PROBE(OracleProbe_AliasQuery(2, pcode, NULL, object, result));
+    return result;
+#else
 #ifdef ORACLE_PROBES
     Boolean result = may_alias_alias(pcode->alias, make_alias(object, 0, 0));
     ORACLE_PROBE(OracleProbe_AliasQuery(2, pcode, NULL, object, result));
     return result;
 #else
     return may_alias_alias(pcode->alias, make_alias(object, 0, 0));
+#endif
 #endif
 }
 
@@ -1499,7 +1685,75 @@ void initialize_alias_values(void) {
 #undef CError_LINE_SHIFT
 #define CError_LINE_SHIFT (-140 + CError_LINE_DELTA)
 #endif
+#if VERSION == VERSION_WII_1_0RC1
+static void kill_alias_members(Alias* alias, Boolean descend, Boolean ascend) {
+    AliasMember* member;
+
+    if (descend) {
+        bitvectorsetbit(alias->index, killed_aliases);
+        for (member = alias->parents; member; member = member->nextParent) {
+            Alias* child = member->child;
+            if (!bitvectorgetbit(child->index, killed_aliases)) {
+                killmemory(child, NULL);
+                kill_alias_members(child, TRUE, FALSE);
+            }
+        }
+    }
+
+    /* A write through a virtual object also invalidates its enclosing sets. */
+    if (alias->type == AliasType_Object && is_virtual_object(alias->object)) {
+        for (member = alias->children; member; member = member->nextChild) {
+            Alias* parent = member->parent;
+            killmemory(parent, NULL);
+            kill_alias_members(parent, TRUE, FALSE);
+        }
+    }
+
+    if (ascend) {
+        bitvectorsetbit(alias->index, killed_alias_parents);
+        for (member = alias->children; member; member = member->nextChild) {
+            Alias* parent = member->parent;
+            if (!bitvectorgetbit(parent->index, killed_alias_parents)) {
+                killmemory(parent, NULL);
+                kill_alias_members(parent, FALSE, TRUE);
+            }
+        }
+    }
+}
+#endif
+
 void update_alias_value(Alias* alias, PCode* pcode) {
+#if VERSION == VERSION_WII_1_0RC1
+    AliasMember* member;
+    AliasMember* part;
+
+    CError_ASSERT(2108, alias);
+    if (((n_aliases + 31) >> 5) != ((n_gathered_aliases + 31) >> 5) || !killed_aliases) {
+        gather_alias_members();
+    }
+    bitvectorinitialize(killed_aliases, n_aliases, 0);
+    bitvectorinitialize(killed_alias_parents, n_aliases, 0);
+
+    killmemory(alias, alias->type == AliasType_Set ? NULL : pcode);
+    if (alias->type == AliasType_ObjectPart) {
+        bitvectorsetbit(alias->index, killed_aliases);
+        for (member = alias->children; member; member = member->nextChild) {
+            Alias* parent = member->parent;
+            CError_ASSERT(2151, parent->type == AliasType_Object);
+            for (part = parent->parents; part; part = part->nextParent) {
+                Alias* sibling = part->child;
+                if (sibling != alias && aliases_overlap(alias, sibling)) {
+                    killmemory(sibling, NULL);
+                }
+                bitvectorsetbit(sibling->index, killed_aliases);
+            }
+            killmemory(parent, NULL);
+            kill_alias_members(parent, TRUE, TRUE);
+        }
+    } else {
+        kill_alias_members(alias, TRUE, TRUE);
+    }
+#else
     AliasMember* member2;
     AliasMember* member3;
     AliasMember* member;
@@ -1559,6 +1813,7 @@ void update_alias_value(Alias* alias, PCode* pcode) {
             }
             break;
     }
+#endif
 }
 
 void update_all_alias_values(void) {
