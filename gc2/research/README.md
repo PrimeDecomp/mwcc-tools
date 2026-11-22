@@ -164,6 +164,16 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   read still needs the stack slot. The source now emits the same instruction
   bytes for that case and for controls with calls and partial writes.
   The optimized Corruption `s_frexp.c` and `s_ldexp.c` objects now match.
+- Stock RC1 `FactorExpression` (`0x60e380`) replaces repeated integer
+  addends such as `x+x+x` with `x*(1+1+1)`. Constant folding and another
+  transformation pass then lower powers of two to shifts. `IRO_IsPow2`
+  (`0x5d0190`) checks the entire 64-bit constant, which distinguishes
+  `0x80000000U` from the sign-extended result of `-2147483647 - 1`.
+  `gen_MUL` (`0x528eb0`) and `shift_left_immediate` (`0x520030`) also
+  use shifts and additions or subtractions for constants one away from
+  a power of two on the performance path. Corruption's `e_fmod.c` now
+  matches at `-O4,p`. The general case of factoring mixed sums still differs
+  in some configurations.
 - The native loop alignment pass at `0x59c710` requests instruction alignment
   on the size-optimized path (`0x59c7b8` through `0x59c7d8`). For the Gekko
   backend this is four bytes, so the source skips eight-byte loop padding in

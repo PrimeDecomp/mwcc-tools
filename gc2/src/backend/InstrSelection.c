@@ -24,12 +24,23 @@
 PrecomputedOperand* precomputedoperands;
 void (*cgdispatch[MAXEXPR + 1])(ENode*, short, short, Operand*);
 
+typedef enum ShiftLeftMode {
+    ShiftOnly,
+    ShiftNegate,
+#if VERSION == VERSION_WII_1_0RC1
+    ShiftSubtractInput,
+    ShiftAddInput,
+    ShiftSubtractFromInput,
+    ShiftNegateSum,
+#endif
+} ShiftLeftMode;
+
 static int ispowerof2(SInt32 val);
 static void binary_immediate(
     short opcode, ENode* left, SInt32 value, short outputReg, Operand* output
 );
 static void shift_left_immediate(
-    ENode* expr, short shift, short negate, short outputReg, Operand* output
+    ENode* expr, short shift, ShiftLeftMode mode, short outputReg, Operand* output
 );
 static void shift_right_immediate(
     ENode* expr, Type* type, short shift, short outputReg, Operand* output
@@ -505,6 +516,38 @@ void gen_FORCELOAD(ENode* expr, short outputReg, short outputRegHi, Operand* out
 #define CError_LINE_DELTA 0
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean shift_multiply_constant(
+    ENode* operand, ENode* constant, Boolean allowNearPower, short outputReg, Operand* output
+) {
+    UInt32 factor;
+    int shift;
+    ShiftLeftMode mode;
+
+    if (!ENODE_IS(constant, EINTCONST)) {
+        return FALSE;
+    }
+    factor = constant->data.intval.lo;
+    if ((shift = ispowerof2(factor))) {
+        mode = ShiftOnly;
+    } else if ((shift = ispowerof2(0u - factor))) {
+        mode = ShiftNegate;
+    } else if (!allowNearPower) {
+        return FALSE;
+    } else if ((shift = ispowerof2(factor + 1))) {
+        mode = ShiftSubtractInput;
+    } else if ((shift = ispowerof2(factor - 1))) {
+        mode = ShiftAddInput;
+    } else if ((shift = ispowerof2(1u - factor))) {
+        mode = ShiftSubtractFromInput;
+    } else {
+        return FALSE;
+    }
+    shift_left_immediate(operand, shift, mode, outputReg, output);
+    return TRUE;
+}
+#endif
+
 void gen_MUL(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* left;
     ENode* right;
@@ -529,18 +572,33 @@ void gen_MUL(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
         fp_binary_operator((type->size == 4) ? PC_FMULS : PC_FMUL, left, right, outputReg, output);
     } else if (IS_TYPE_VEC2X32FLOAT(type)) {
         fp_binary_operator(PC_PS_MUL, left, right, outputReg, output);
+#if VERSION == VERSION_WII_1_0RC1
+    } else if (shift_multiply_constant(left, right, !copts.optimizesize, outputReg, output) ||
+               shift_multiply_constant(right, left, TRUE, outputReg, output)) {
+        return;
+#else
     } else if (ENODE_IS(right, EINTCONST) && (shift = ispowerof2(right->data.intval.lo))) {
-        shift_left_immediate(left, shift, 0, outputReg, output);
+        shift_left_immediate(left, shift, ShiftOnly, outputReg, output);
     } else if (ENODE_IS(right, EINTCONST) && (shift = ispowerof2(-right->data.intval.lo))) {
-        shift_left_immediate(left, shift, 1, outputReg, output);
+        shift_left_immediate(left, shift, ShiftNegate, outputReg, output);
     } else if (ENODE_IS(left, EINTCONST) && (shift = ispowerof2(left->data.intval.lo))) {
-        shift_left_immediate(right, shift, 0, outputReg, output);
+        shift_left_immediate(right, shift, ShiftOnly, outputReg, output);
     } else if (ENODE_IS(left, EINTCONST) && (shift = ispowerof2(-left->data.intval.lo))) {
-        shift_left_immediate(right, shift, 1, outputReg, output);
+        shift_left_immediate(right, shift, ShiftNegate, outputReg, output);
+#endif
     } else if (ENODE_IS(right, EINTCONST) && FITS_IN_SHORT(right->data.intval.lo)) {
         binary_immediate(PC_MULLI, left, right->data.intval.lo, outputReg, output);
+#if VERSION == VERSION_WII_1_0RC1
+    } else if (ENODE_IS(right, EINTCONST) && !copts.optimizesize &&
+               (shift = ispowerof2(~right->data.intval.lo))) {
+        shift_left_immediate(left, shift, ShiftNegateSum, outputReg, output);
+#endif
     } else if (ENODE_IS(left, EINTCONST) && FITS_IN_SHORT(left->data.intval.lo)) {
         binary_immediate(PC_MULLI, right, left->data.intval.lo, outputReg, output);
+#if VERSION == VERSION_WII_1_0RC1
+    } else if (ENODE_IS(left, EINTCONST) && (shift = ispowerof2(~left->data.intval.lo))) {
+        shift_left_immediate(right, shift, ShiftNegateSum, outputReg, output);
+#endif
     } else {
         binary_operator(PC_MULLW, left, right, outputReg, output);
     }
@@ -1199,7 +1257,7 @@ void gen_SHL(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     }
 
     if (ENODE_IS(right, EINTCONST)) {
-        shift_left_immediate(left, right->data.intval.lo, 0, outputReg, output);
+        shift_left_immediate(left, right->data.intval.lo, ShiftOnly, outputReg, output);
     } else {
         binary_operator(PC_SLW, left, right, outputReg, output);
     }
@@ -3335,7 +3393,7 @@ static void or_xor_immediate(
 }
 
 static void shift_left_immediate(
-    ENode* expr, short shift, short negate, short outputReg, Operand* output
+    ENode* expr, short shift, ShiftLeftMode mode, short outputReg, Operand* output
 ) {
     Operand op;
     int reg;
@@ -3343,7 +3401,7 @@ static void shift_left_immediate(
     memclrw(&op, sizeof(Operand));
     GEN_NODE_TO_GPR(expr, &op, expr->rtype, 0);
 
-    if (negate) {
+    if (mode != ShiftOnly) {
         reg = ALLOC_GPR();
     } else {
         reg = outputReg ? outputReg : ALLOC_GPR();
@@ -3352,10 +3410,37 @@ static void shift_left_immediate(
     shift &= 31;
     emitpcode(PC_RLWINM, reg, op.reg, shift, 0, 31 - shift);
 
-    if (negate) {
-        int negReg = outputReg ? outputReg : ALLOC_GPR();
-        emitpcode(PC_NEG, negReg, reg);
-        reg = negReg;
+#if VERSION == VERSION_WII_1_0RC1
+    if (mode == ShiftNegateSum) {
+        int sumReg = ALLOC_GPR();
+        emitpcode(PC_ADD, sumReg, reg, op.reg);
+        reg = sumReg;
+    }
+#endif
+    if (mode != ShiftOnly) {
+        int resultReg = outputReg ? outputReg : ALLOC_GPR();
+        switch (mode) {
+            case ShiftNegate:
+#if VERSION == VERSION_WII_1_0RC1
+            case ShiftNegateSum:
+#endif
+                emitpcode(PC_NEG, resultReg, reg);
+                break;
+#if VERSION == VERSION_WII_1_0RC1
+            case ShiftSubtractInput:
+                emitpcode(PC_SUBF, resultReg, op.reg, reg);
+                break;
+            case ShiftAddInput:
+                emitpcode(PC_ADD, resultReg, reg, op.reg);
+                break;
+            case ShiftSubtractFromInput:
+                emitpcode(PC_SUBF, resultReg, reg, op.reg);
+                break;
+#endif
+            case ShiftOnly:
+                break;
+        }
+        reg = resultReg;
     }
 
     output->optype = OpndType_GPR;

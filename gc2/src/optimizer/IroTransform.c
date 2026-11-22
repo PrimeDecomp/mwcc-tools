@@ -520,6 +520,11 @@ static void switchFatherLeft(IROLinear* nd, int isRight) {
         nd->u.diadic.left = child->u.diadic.left;
         child->u.diadic.left = nd;
         grandchild = child->u.diadic.right;
+#if VERSION == VERSION_WII_1_0RC1
+        if (child->nodetype == EMUL && IS_TYPE_INT(nd->rtype)) {
+            IRO_SwitchChildren(child);
+        }
+#endif
     } else {
         nd->u.diadic.left = child->u.diadic.right;
         child->u.diadic.right = nd;
@@ -2067,6 +2072,89 @@ static void DoDiadic(IROLinear* nd) {
     DoTransformations25(nd);
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean IsIntegerSum(IROLinear* nd) {
+    return nd->type == IROLinearOp2Arg && nd->nodetype == EADD && IS_TYPE_INT(nd->rtype);
+}
+
+static unsigned CountRepeatedAddends(IROLinear* nd, IROLinear* term) {
+    if (IsIntegerSum(nd) && IRO_TypesEqual(nd->rtype, term->rtype)) {
+        unsigned left = CountRepeatedAddends(nd->u.diadic.left, term);
+        unsigned right = CountRepeatedAddends(nd->u.diadic.right, term);
+        return left && right ? left + right : 0;
+    }
+    return IRO_ExprsSame(nd, term);
+}
+
+static IROLinear* AppendFactoredOperator(
+    IROList* list, ENodeType op, Type* type, IROLinear* left, IROLinear* right
+) {
+    IROLinear* nd = IRO_NewLinear(IROLinearOp2Arg);
+    nd->index = ++IRO_NumLinear;
+    nd->nodetype = op;
+    nd->rtype = type;
+    nd->flags |= IROLF_Reffed;
+    nd->u.diadic.left = left;
+    nd->u.diadic.right = right;
+    IRO_AddToList(nd, list);
+    return nd;
+}
+
+static void FactorExpression(IROLinear* nd) {
+    IROList list;
+    IROLinear* term;
+    IROLinear* coefficient;
+    IROLinear* product;
+    IROLinear* parent;
+    IROLinear* root;
+    Type* type;
+    unsigned count;
+
+    if (!IsIntegerSum(nd) || IRO_HasSideEffect(nd)) {
+        return;
+    }
+    type = nd->rtype;
+    term = nd->u.diadic.left;
+    while (IsIntegerSum(term) && IRO_TypesEqual(term->rtype, type)) {
+        term = term->u.diadic.left;
+    }
+    if (IRO_IsIntConstant(term) || !IRO_TypesEqual(term->rtype, type)) {
+        return;
+    }
+
+    count = CountRepeatedAddends(nd, term);
+    if (!count) {
+        return;
+    }
+    for (root = nd; (parent = IRO_LocateFather(root)) && IsIntegerSum(parent); root = parent) {
+        unsigned parentCount = CountRepeatedAddends(parent, term);
+        if (!parentCount) {
+            break;
+        }
+        count = parentCount;
+    }
+    if (!parent) {
+        return;
+    }
+
+    IRO_InitList(&list);
+    term = IRO_DuplicateExpr(term, &list);
+    coefficient = IRO_NewIntConst(cint64_one, type);
+    coefficient->flags |= IROLF_Reffed;
+    IRO_AddToList(coefficient, &list);
+    while (--count) {
+        IROLinear* one = IRO_NewIntConst(cint64_one, type);
+        one->flags |= IROLF_Reffed;
+        IRO_AddToList(one, &list);
+        coefficient = AppendFactoredOperator(&list, EADD, type, coefficient, one);
+    }
+    product = AppendFactoredOperator(&list, EMUL, type, term, coefficient);
+    IRO_Dump("factoring expression %d\n", root->index);
+    IRO_PasteAfter(list.head, list.tail, root);
+    IRO_LocateFather_Cut_And_Paste(root, product);
+}
+#endif
+
 void IRO_DoTransformations(void) {
     IROLinear* nd;
 
@@ -2088,6 +2176,13 @@ void IRO_DoTransformations(void) {
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    IROLinear* next;
+    for (nd = IRO_FirstLinear; nd; nd = next) {
+        next = nd->next;
+        FactorExpression(nd);
+    }
+#endif
     IRO_CheckForUserBreak();
 }
 

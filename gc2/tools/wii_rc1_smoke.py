@@ -2494,6 +2494,37 @@ double inspect_then_store(double x, unsigned high) {
         run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
         results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
 
+    source = work / "integer_factoring.c"
+    source.write_text(
+        """
+int doubled(int x) { return x + x; }
+int tripled(int x) { return x + x + x; }
+unsigned doubled_with_carry(int x, unsigned low) { return x + x + (low >> 31); }
+long long doubled_wide(long long x) { return x + x; }
+int common_factor(int x, int a, int b) { return a * x + b * x; }
+int through_pointer(const int* p) { return *p + *p; }
+int volatile_pair(const volatile int* p) { return *p + *p; }
+double floating_point(double x) { return x + x; }
+extern int next_value(void);
+int with_calls(void) { return next_value() + next_value(); }
+int times_five(int x) { return x * 5; }
+int times_negative_three(int x) { return x * -3; }
+int times_negative_65537(int x) { return x * -65537; }
+unsigned times_high_bit(unsigned x) { return x * 0x80000000U; }
+int times_signed_minimum(int x) { return x * (-2147483647 - 1); }
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    for options in (
+        ("-O0",), ("-O1",), ("-O2",), ("-O3",), ("-O4,p",), ("-O4,s",),
+        ("-O4,p", "-pragma", "peephole off"),
+    ):
+        run(compiler, *FLAGS, *options, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+        results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
+
     source = work / "local_declaration_weight.c"
     source.write_text(
         "void declaration_weight(int x) {\n"

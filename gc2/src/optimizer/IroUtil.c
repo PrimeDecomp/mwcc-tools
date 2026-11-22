@@ -103,6 +103,25 @@ Boolean IRO_IsConstant(IROLinear* linear) {
 }
 
 Boolean IRO_IsPow2(IROLinear* linear, int* powvalue) {
+#if VERSION == VERSION_WII_1_0RC1
+    CInt64 value;
+    int bit = 0;
+
+    *powvalue = 0;
+    if (!IRO_IsIntConstant(linear) || !IS_TYPE_INT(linear->rtype)) {
+        return FALSE;
+    }
+    value = linear->u.node->data.intval;
+    while (!CInt64_IsZero(&value) && !(value.lo & 1)) {
+        value = CInt64_ShrU(value, cint64_one);
+        bit++;
+    }
+    if (CInt64_IsOne(&value)) {
+        *powvalue = bit;
+        return TRUE;
+    }
+    return FALSE;
+#else
     UInt32 desired;
     UInt32 value;
     UInt32 i;
@@ -125,6 +144,7 @@ Boolean IRO_IsPow2(IROLinear* linear, int* powvalue) {
     }
 
     return FALSE;
+#endif
 }
 
 Boolean IRO_IsIntConstant(IROLinear* linear) {
