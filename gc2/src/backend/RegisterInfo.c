@@ -319,6 +319,36 @@ void init_target_registers(void) {
     optimizing = (copts.optimizationlevel > 0) && !disable_optimizer;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+RegClass Registers_ClassForType(Type* type) {
+    switch (type->type) {
+        case TYPEINT:
+            return TYPE_INTEGRAL(type)->integral < IT_23 ? RegClass_GPR : RegClassMax;
+        case TYPEENUM:
+        case TYPEPOINTER:
+            return RegClass_GPR;
+        case TYPEMEMBERPOINTER:
+            return IS_TYPE_FUNC(TYPE_MEMBER_POINTER(type)->ty1) ? RegClassMax : RegClass_GPR;
+        case TYPEFLOAT:
+            if (IS_TYPE_VEC2X32FLOAT(type)) {
+                return copts.processor == CPU_PPCGEKKO ? RegClass_FPR : RegClassMax;
+            }
+            return copts.soft_float ? RegClass_GPR : RegClass_FPR;
+        case TYPESTRUCT:
+            if ((IS_TYPE_VECTOR(type) || IS_TYPE_SPE(type)) && type->size == 8) {
+                return RegClass_GPR;
+            }
+            if ((IS_TYPE_VECTOR(type) || IS_TYPE_SPE(type)) && type->size == 16) {
+                return RegClass_VR;
+            }
+            break;
+        default:
+            break;
+    }
+    return RegClassMax;
+}
+#endif
+
 void assign_register_by_type(Object* obj) {
     VarInfo* vi;
     Type* ty;
@@ -331,6 +361,10 @@ void assign_register_by_type(Object* obj) {
     vi->reg = 0;
     vi->regHi = 0;
 
+#if VERSION == VERSION_WII_1_0RC1
+    vi->rclass = Registers_ClassForType(ty);
+    needsPair = vi->rclass == RegClass_GPR && TYPE_IS_GPR_PAIR(ty) && !TYPE_IS_DPFP(ty);
+#else
     if ((ty->type == TYPEINT) ||
         (ty->type == TYPEENUM) ||
         ((ty->type == TYPEPOINTER || ty->type == TYPEARRAY) && (ty->type != TYPEARRAY)) ||
@@ -350,6 +384,7 @@ void assign_register_by_type(Object* obj) {
     } else {
         return;
     }
+#endif
 
     if (vi->rclass < RegClassMax) {
         if (needsPair) {

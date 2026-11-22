@@ -1809,6 +1809,50 @@ int update(signed char* p, int kind) {
     run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
     results[source.name] = section.read_bytes()
 
+    for name, value_type, processor, extra_flags, statement, repeats in (
+        ("integer", "int", "gekko", (), "hot += *out;", 24),
+        ("floating", "double", "gekko", (), "hot += *out;", 24),
+        ("vector", "vector unsigned int", "7400", ("-vector", "on"), "*out = hot;", 48),
+        ("toc", "int", "gekko", ("-sdata", "0", "-sdata2", "0"), "hot += first; hot += second;", 12),
+    ):
+        source = work / f"local_usage_{name}.c"
+        source.write_text(
+            f"typedef {value_type} RegValue;\n"
+            "extern volatile int first, second;\n"
+            "void store(RegValue a, RegValue b, volatile RegValue* out) {\n"
+            "    RegValue hot = a;\n"
+            "    RegValue warm = b;\n"
+            + f"    {statement}\n" * repeats
+            + "    *out = warm;\n"
+            "    *out = hot;\n"
+            "}\n",
+            encoding="ascii",
+        )
+        obj = source.with_suffix(".o")
+        section = source.with_suffix(".text")
+        run(
+            compiler, "-nodefaults", "-proc", processor, "-fp", "hard", "-Cpp_exceptions", "off",
+            *extra_flags, "-O0", "-c", source, "-o", obj, cwd=work,
+        )
+        run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+        results[source.name] = section.read_bytes()
+
+    source = work / "relocated_index.c"
+    source.write_text(
+        """\
+extern unsigned char records[];
+extern void publish(void* dest, const void* data, unsigned size);
+
+void slice(void* dest, unsigned index) {
+    publish(dest, records + index, 256);
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    run(compiler, *FLAGS, "-Cpp_exceptions", "off", "-O0", "-c", source, "-o", obj, cwd=work)
+    results[source.name] = obj.read_bytes()
+
     source = work / "compare_zero.c"
     source.write_text(
         "extern void a(void); extern void b(void);\n"

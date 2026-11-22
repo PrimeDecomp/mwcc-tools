@@ -396,6 +396,32 @@ static void allocate_local_vregs(void) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static SInt32 local_register_usage_cutoff(RegClass rclass) {
+    ObjectList* list;
+    SInt32 usage = 0;
+
+    if (!(disable_optimizer & 2)) {
+        for (list = locals; list; list = list->next) {
+            VarInfo* vi = Registers_GetVarInfo(list->object);
+            if (rclass == RegClass_VR && (vi->flags & VarInfoFlag_AsmNamed)) {
+                vi->usage = 100000;
+            }
+            if (Registers_ClassForType(list->object->type) == rclass) {
+                usage += vi->usage;
+            }
+        }
+    }
+    if (rclass == RegClass_GPR) {
+        for (list = toclist; list; list = list->next) {
+            usage += Registers_GetVarInfo(list->object)->usage;
+        }
+    }
+    usage /= 10;
+    return usage > 2 ? usage : 2;
+}
+#endif
+
 #if VERSION == VERSION_GC_1_3_2
 #undef CError_LINE_DELTA
 #define CError_LINE_DELTA -1
@@ -407,6 +433,13 @@ static void allocate_local_GPRs(void) {
     SInt32 winning_usage;
     VarInfo* vi;
     Type* type;
+#if VERSION == VERSION_WII_1_0RC1
+    SInt32 local_cutoff = local_register_usage_cutoff(RegClass_GPR);
+    SInt32 toc_cutoff = local_cutoff * 3 / 2;
+#else
+    SInt32 local_cutoff = 2;
+    SInt32 toc_cutoff = 3;
+#endif
 
     while (assignable_registers[RegClass_GPR]) {
         winning_obj = NULL;
@@ -423,8 +456,11 @@ static void allocate_local_GPRs(void) {
                     if (!OBJ_GET_TARGET_VOLATILE(obj) &&
                         vi->usage >= winning_usage &&
                         vi->usage >= 2) {
-                        if ((TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type) ||
-                             IS_TYPE_SPE(type)) &&
+#if VERSION == VERSION_WII_1_0RC1
+                        if (Registers_ClassForType(type) == RegClass_GPR &&
+#else
+                        if ((TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type)) &&
+#endif
                             (!TYPE_IS_GPR_PAIR(type) || TYPE_IS_DPFP(type) || assignable_registers[RegClass_GPR] >= 2)) {
                             winning_obj = obj;
                             winning_usage = vi->usage;
@@ -444,9 +480,12 @@ static void allocate_local_GPRs(void) {
                 if (!vi->reg && vi->used && !vi->noregister) {
                     if (!OBJ_GET_TARGET_VOLATILE(obj) &&
                         vi->usage >= winning_usage &&
-                        vi->usage >= 2) {
-                        if ((TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type) ||
-                             IS_TYPE_SPE(type)) &&
+                        vi->usage >= local_cutoff) {
+#if VERSION == VERSION_WII_1_0RC1
+                        if (Registers_ClassForType(type) == RegClass_GPR &&
+#else
+                        if ((TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type)) &&
+#endif
                             (!TYPE_IS_GPR_PAIR(type) || TYPE_IS_DPFP(type) || assignable_registers[RegClass_GPR] >= 2)) {
                             winning_obj = obj;
                             winning_usage = vi->usage;
@@ -462,7 +501,7 @@ static void allocate_local_GPRs(void) {
                 vi->usage = 100000;
             }
             if (!vi->reg && vi->used) {
-                if (vi->usage >= winning_usage && vi->usage >= 3) {
+                if (vi->usage >= winning_usage && vi->usage >= toc_cutoff) {
                     winning_obj = obj;
                     winning_usage = vi->usage;
                 }
@@ -493,6 +532,11 @@ static void allocate_local_FPRs(void) {
     SInt32 winning_usage;
     VarInfo* vi;
     Type* type;
+#if VERSION == VERSION_WII_1_0RC1
+    SInt32 local_cutoff = local_register_usage_cutoff(RegClass_FPR);
+#else
+    SInt32 local_cutoff = 2;
+#endif
 
     while (assignable_registers[RegClass_FPR]) {
         winning_obj = NULL;
@@ -509,8 +553,12 @@ static void allocate_local_FPRs(void) {
                     if (!OBJ_GET_TARGET_VOLATILE(obj) &&
                         vi->usage >= winning_usage &&
                         vi->usage >= 2) {
+#if VERSION == VERSION_WII_1_0RC1
+                        if (Registers_ClassForType(type) == RegClass_FPR) {
+#else
                         if ((IS_TYPE_VEC2X32FLOAT(type) && copts.processor == CPU_PPCGEKKO) ||
                             (type->type == TYPEFLOAT && !IS_TYPE_VEC2X32FLOAT(type))) {
+#endif
                             winning_obj = obj;
                             winning_usage = vi->usage;
                         }
@@ -529,9 +577,13 @@ static void allocate_local_FPRs(void) {
                 if (!vi->reg && vi->used && !vi->noregister) {
                     if (!OBJ_GET_TARGET_VOLATILE(obj) &&
                         vi->usage >= winning_usage &&
-                        vi->usage >= 2) {
+                        vi->usage >= local_cutoff) {
+#if VERSION == VERSION_WII_1_0RC1
+                        if (Registers_ClassForType(type) == RegClass_FPR) {
+#else
                         if ((IS_TYPE_VEC2X32FLOAT(type) && copts.processor == CPU_PPCGEKKO) ||
                             (obj->type->type == TYPEFLOAT && !IS_TYPE_VEC2X32FLOAT(obj->type))) {
+#endif
                             winning_obj = obj;
                             winning_usage = vi->usage;
                         }
@@ -563,6 +615,11 @@ static void allocate_local_VRs(void) {
     Object* winning_obj;
     SInt32 winning_usage;
     VarInfo* vi;
+#if VERSION == VERSION_WII_1_0RC1
+    SInt32 local_cutoff = local_register_usage_cutoff(RegClass_VR);
+#else
+    SInt32 local_cutoff = 2;
+#endif
 
     while (assignable_registers[RegClass_VR]) {
         winning_obj = NULL;
@@ -578,7 +635,11 @@ static void allocate_local_VRs(void) {
                     if (!OBJ_GET_TARGET_VOLATILE(obj) &&
                         vi->usage >= winning_usage &&
                         vi->usage >= 2) {
+#if VERSION == VERSION_WII_1_0RC1
+                        if (Registers_ClassForType(obj->type) == RegClass_VR) {
+#else
                         if (IS_TYPE_VECTOR(obj->type)) {
+#endif
                             winning_obj = obj;
                             winning_usage = vi->usage;
                         }
@@ -596,8 +657,12 @@ static void allocate_local_VRs(void) {
                 if (!vi->reg && vi->used && !vi->noregister) {
                     if (!OBJ_GET_TARGET_VOLATILE(obj) &&
                         vi->usage >= winning_usage &&
-                        vi->usage >= 2) {
+                        vi->usage >= local_cutoff) {
+#if VERSION == VERSION_WII_1_0RC1
+                        if (Registers_ClassForType(obj->type) == RegClass_VR) {
+#else
                         if (IS_TYPE_VECTOR(obj->type)) {
+#endif
                             winning_obj = obj;
                             winning_usage = vi->usage;
                         }

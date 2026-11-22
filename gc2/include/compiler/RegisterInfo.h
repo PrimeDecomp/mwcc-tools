@@ -42,6 +42,9 @@ extern void setup_global_registers(void);
 extern void finish_global_registers(void);
 extern void setup_diagnostic_reg_strings(void);
 extern void init_target_registers(void);
+#if VERSION == VERSION_WII_1_0RC1
+extern RegClass Registers_ClassForType(Type* type);
+#endif
 extern void assign_register_by_type(Object* obj);
 extern void open_fe_temp_registers(void);
 extern void set_last_exception_registers(void);

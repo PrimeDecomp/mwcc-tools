@@ -345,10 +345,24 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   also runs before register coloring, where it retargets the earlier of
   the two pointer copies. The optimized `__va_arg.c` object now matches
   stock with the project's flags.
-  At `-O0`, native GPR allocation at `0x46d200` counts 53 uses of local
-  and TOC variables and sets the local usage cutoff to five at `0x46d28a`.
-  The source allocator's fixed cutoff of two places four additional
-  locals in nonvolatile GPRs.
+- The non-coloring allocator classifies types at `0x590530`. Native
+  GPR, FPR, and vector allocation at `0x46d200`, `0x46cf60`, and
+  `0x46ccd0` set the local usage cutoff to one tenth of the total use
+  count for the class, with a minimum of two. The GPR total also includes
+  TOC entries, whose own cutoff is three halves of the local cutoff.
+  Arguments use a fixed cutoff of two. At `-O0`, RC1 counts 53 uses for
+  `__va_arg.c` and requires five uses for register allocation of a local.
+  This places four locals on the stack. `__va_arg.c`, `e_fmod.c`, and
+  `s_floor.c` now match stock at `-O0` with the other project flags.
+- In `combine` at `0x5aebd9` and `0x5aec14`, RC1 uses a fresh register
+  when combining a non-stack displacement with a register. This restores
+  the use of `r0` for the relocated address in the `TRK_memcpy` arguments
+  in `dolphin_trk.c` at `-O0`. The `e_log10.c` object now matches stock
+  at `-O0`. The inlined destination pointer in `__TRK_copy_vectors` still
+  has a different allocation. Stock receives 43 uses and sets a cutoff of
+  four. The source receives 39 uses and sets a cutoff of three. Both count
+  three uses of the inlined pointer. The counts for
+  `r29`, `i`, `isrOffsetPtr`, and `r3` differ by one each before allocation.
 - `CMach_StructLayoutPackedBitfield` at `0x4f2117` closes the previous
   allocation unit at the first unused byte when it encounters a zero-width
   field, then aligns the offset for that field. This affects both the next

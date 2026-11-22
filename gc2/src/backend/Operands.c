@@ -303,14 +303,22 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
                 add_immediate(opOut->reg, opB->reg, opA->object, LOW_PART(opA->immOffset));
             } else if (opA->object) {
                 opOut->optype = OpndType_GPR_Indexed;
+#if VERSION == VERSION_WII_1_0RC1
+                opOut->reg = ALLOC_GPR();
+#else
                 opOut->reg = (output_reg && (output_reg != opB->reg))
                     ? output_reg
                     : ALLOC_GPR();
+#endif
                 opOut->regOffset = opB->reg;
                 add_immediate(opOut->reg, opA->reg, opA->object, LOW_PART(opA->immOffset));
             } else {
                 opOut->optype = OpndType_GPR_ImmOffset;
+#if VERSION == VERSION_WII_1_0RC1
+                opOut->reg = ALLOC_GPR();
+#else
                 opOut->reg = output_reg ? output_reg : ALLOC_GPR();
+#endif
                 opOut->immOffset = opA->immOffset;
                 opOut->object = opA->object;
                 emitpcode(PC_ADD, opOut->reg, opA->reg, opB->reg);
