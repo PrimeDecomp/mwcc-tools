@@ -22,6 +22,12 @@ struct IROExpr {
     VarRecord* var;
     IROLinear* indOperand;
     IROExpr* next;
+#if VERSION == VERSION_WII_1_0RC1
+    UInt32 cseGroup;
+    struct IROCSEDefinition* cseDefinitions;
+    Boolean cseFromPredecessors;
+    Boolean cseUsedOutsideBlock;
+#endif
 };
 #pragma pack(pop)
 
@@ -37,7 +43,9 @@ extern void IRO_FindDepends_NoAlloc(IROLinear* linear);
 extern void IRO_FindDepends(IROLinear* linear);
 extern void IRO_FindExpressions(BitVector* bv, Boolean unused);
 extern void IRO_RemoveExpr(IROExpr* expr);
+#if VERSION != VERSION_WII_1_0RC1
 extern void IRO_ComputeAvail(void);
+#endif
 extern void IRO_CommonSubs(void);
 
 #ifdef __cplusplus

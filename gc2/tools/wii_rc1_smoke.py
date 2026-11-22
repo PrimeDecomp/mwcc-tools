@@ -1947,6 +1947,45 @@ unsigned read_only(const struct Words *src, unsigned *dst) {
         run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    source = work / "cse_reaching_defs.c"
+    source.write_text(
+        """\
+struct Buffer { unsigned length; unsigned other; unsigned cursor; };
+extern int first(unsigned x);
+extern int second(unsigned x);
+
+unsigned branch_defs(unsigned a, unsigned b, int condition) {
+    unsigned result;
+    if (condition)
+        result = first((a * b) + 1);
+    else
+        result = second((b * a) + 3);
+    return result + a * b;
+}
+
+unsigned branches(struct Buffer *p, int condition) {
+    unsigned result;
+    if (condition)
+        result = (p->cursor ^ 3) + p->length;
+    else
+        result = (p->other ^ 1) + p->length;
+    return result * p->length;
+}
+
+unsigned after_kill(unsigned a, unsigned b, int condition) {
+    unsigned result = (a ^ b) * (a + 1);
+    if (condition)
+        b = 3;
+    return result + (b ^ a);
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O0", "-O2", "-O4,p", "-O4,s"):
+        run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     source = work / "cse_materialization.c"
     source.write_text(
         """\

@@ -312,11 +312,16 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   a shared expression before the defining statement. After
   `MWEnterCriticalSection` in `CircleBuffer.c`, this puts the read or
   write pointer load ahead of the start-pointer load before either
-  scheduling pass. The source now reproduces that placement for eligible
-  cross-block reuse and `CircleBuffer.c` matches stock. The local use
-  selection still needs the RC1 data-flow and kill rules. Moving the
-  source's existing local candidates changes the stock constant order in
-  `e_pow.c` because it selects additional expressions there.
+  scheduling pass. `CircleBuffer.c` matches stock. The source now groups
+  expressions before computing availability and assigns one temporary to
+  definitions that reach the same use. An unsigned multiply with reversed
+  operands in the two branches and a field load in both branches each
+  reuse the value at the join. A write on one path prevents reuse there.
+  The pass still uses the source's per-expression kill rules to build
+  group kills. Local materialization uses an enclosing comma expression
+  where needed to keep definitions ahead of their uses. In `e_pow.c`,
+  selecting additional direct loads of local floating-point variables
+  such as `t` at line 228 still separates the source from stock.
 - `CMach_StructLayoutPackedBitfield` at `0x4f2117` closes the previous
   allocation unit at the first unused byte when it encounters a zero-width
   field, then aligns the offset for that field. This affects both the next

@@ -749,6 +749,9 @@ static void IRO_GetExprKills(IROLinear* linear) {
             }
             break;
         case IROLinearAsm:
+#if VERSION == VERSION_WII_1_0RC1
+            Bv_Clear(IRO_VarKills);
+#endif
             IRO_GetKills(linear);
             for (expr = IRO_FirstExpr; expr; expr = expr->next) {
                 if (Bv_BitsInCommon(expr->depends, IRO_VarKills)) {
@@ -764,7 +767,57 @@ static void IRO_GetExprKills(IROLinear* linear) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static UInt32 GroupCommonSubexpressions(void) {
+    IROExpr** representatives = oalloc((IRO_NumExprs + 1) * sizeof(IROExpr*));
+    IROExpr* expr;
+    UInt32 count = 0;
+    UInt32 group;
+
+    for (expr = IRO_FirstExpr; expr; expr = expr->next) {
+        expr->cseGroup = 0;
+        expr->cseDefinitions = NULL;
+        expr->cseFromPredecessors = FALSE;
+        expr->cseUsedOutsideBlock = FALSE;
+        if (expr->notSubable || IRO_HasSideEffect(expr->linear) ||
+            IRO_ExprHasFloatingPointEffects(expr->linear)) {
+            continue;
+        }
+        for (group = 1; group <= count; group++) {
+            if (IRO_ExprsSameSemantically(expr->linear, representatives[group]->linear)) {
+                break;
+            }
+        }
+        if (group > count) {
+            count = group;
+        }
+        representatives[group] = expr;
+        expr->cseGroup = group;
+    }
+    return count;
+}
+
+static void IRO_GetUExprKills(IROLinear* linear, BitVector* kills) {
+    IROExpr* expr;
+
+    Bv_Clear(kills);
+    IRO_GetExprKills(linear);
+    if (Bv_IsEmpty(IRO_ExprKills)) {
+        return;
+    }
+    for (expr = IRO_FirstExpr; expr; expr = expr->next) {
+        if (expr->cseGroup && Bv_IsBitSet(expr->index, IRO_ExprKills)) {
+            Bv_SetBit(expr->cseGroup, kills);
+        }
+    }
+}
+
+static void ComputeAvailability(UInt32 expression_count, BitVector* kills) {
+#else
 void IRO_ComputeAvail(void) {
+    UInt32 expression_count = IRO_NumExprs;
+    BitVector* kills;
+#endif
     IRONode* node;
     IROLinear* linear;
     SInt32 counter;
@@ -775,23 +828,33 @@ void IRO_ComputeAvail(void) {
     node = IRO_FirstNode;
     Bv_AllocVector(&IRO_VarKills, IRO_NumVars + 1);
     Bv_AllocVector(&IRO_ExprKills, IRO_NumExprs + 1);
+#if VERSION != VERSION_WII_1_0RC1
+    kills = IRO_ExprKills;
+#endif
 
     while (node) {
-        Bv_AllocVector(&node->in, IRO_NumExprs);
+        Bv_AllocVector(&node->in, expression_count);
         if (node->numpred) {
             Bv_Set(node->in);
         }
-        Bv_AllocVector(&node->kill, IRO_NumExprs);
-        Bv_AllocVector(&node->gen, IRO_NumExprs);
-        Bv_AllocVector(&node->out, IRO_NumExprs);
+        Bv_AllocVector(&node->kill, expression_count);
+        Bv_AllocVector(&node->gen, expression_count);
+        Bv_AllocVector(&node->out, expression_count);
 
         for (linear = node->first; linear; linear = linear->next) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (linear->expr && linear->expr->cseGroup) {
+                Bv_SetBit(linear->expr->cseGroup, node->gen);
+            }
+            IRO_GetUExprKills(linear, kills);
+#else
             if (linear->expr) {
                 Bv_SetBit(linear->expr->index, node->gen);
             }
             IRO_GetExprKills(linear);
-            Bv_Or(IRO_ExprKills, node->kill);
-            Bv_Minus(IRO_ExprKills, node->gen);
+#endif
+            Bv_Or(kills, node->kill);
+            Bv_Minus(kills, node->gen);
             if (linear == node->last) {
                 break;
             }
@@ -812,7 +875,7 @@ void IRO_ComputeAvail(void) {
 
     IRO_CheckForUserBreak();
 
-    Bv_AllocVector(&bv, IRO_NumExprs);
+    Bv_AllocVector(&bv, expression_count);
     do {
         IRONode* scan;
         changed = FALSE;
@@ -845,7 +908,9 @@ static void IRO_MakeReplacementEmbedded(IROExpr* expr) {
     IROLinear* ind;
     IROLinear* ass;
 
+#if VERSION != VERSION_WII_1_0RC1
     IRO_GetTemp(expr);
+#endif
 
     opnd = IRO_NewLinear(IROLinearOperand);
     opnd->u.node = create_objectrefnode(expr->temp);
@@ -873,6 +938,7 @@ static void IRO_MakeReplacementEmbedded(IROExpr* expr) {
     IRO_PasteAfter(opnd, ass, expr->linear);
 }
 
+#if VERSION != VERSION_WII_1_0RC1
 static void IRO_ActUnmarkSubExpressions(IROLinear* linear, Boolean isFirst) {
     if (isFirst) {
         linear->flags &= ~IROLF_ReplaceCSE;
@@ -895,18 +961,16 @@ static void CheckCommonSub(IROLinear* linear) {
         }
     }
 }
+#endif
 
 #if VERSION == VERSION_WII_1_0RC1
-static Boolean place_cross_block_common_sub(IROExpr* expr, IROExpr* use) {
+static Boolean place_common_sub_before_statement(IROExpr* expr) {
     IROLinear* root = expr->linear;
     IROLinear* parent;
     IROLinear* start;
     IROLinear* expr_start;
     IROLinear* scan;
 
-    if (use->node == expr->node) {
-        return FALSE;
-    }
     while ((parent = IRO_LocateFather(root))) {
         if ((IS_LINEAR_DIADIC_2(parent, ELAND, ELOR) && root == parent->u.diadic.right) ||
             (parent->type == IROLinearOp3Arg && parent->nodetype == ECOND &&
@@ -934,7 +998,6 @@ static Boolean place_cross_block_common_sub(IROExpr* expr, IROExpr* use) {
     }
 
     /* RC1 materializes a shared value before evaluating the defining statement. */
-    IRO_GetTemp(expr);
     IRO_Dump("Moving common sub from node %d before statement starting at %d\n",
              expr->linear->index, start->index);
     IRO_ReplaceReference(expr->linear, expr->temp, expr->linear);
@@ -942,8 +1005,59 @@ static Boolean place_cross_block_common_sub(IROExpr* expr, IROExpr* use) {
     IRO_AssignToTemp(expr)->stmt = root == expr->linear ? parent->stmt : root->stmt;
     return TRUE;
 }
-#endif
 
+static IROLinear* FindLocalCommonSubParent(IROExpr* expr) {
+    IROExpr* use;
+    IROLinear* common = NULL;
+
+    for (use = IRO_FirstExpr; use; use = use->next) {
+        IROLinear* parent;
+        if (use->use != expr) {
+            continue;
+        }
+        parent = common ? common : IRO_LocateFather(expr->linear);
+        for (; parent; parent = IRO_LocateFather(parent)) {
+            IROLinear* ancestor = IRO_LocateFather(use->linear);
+            while (ancestor && ancestor != parent) {
+                ancestor = IRO_LocateFather(ancestor);
+            }
+            if (ancestor) {
+                common = parent;
+                break;
+            }
+        }
+    }
+    return common;
+}
+
+static void MoveCommonSub(IROExpr* expr) {
+    IROLinear* parent;
+    IROLinear* start;
+    IROLinear* comma;
+
+    if (expr->cseUsedOutsideBlock && place_common_sub_before_statement(expr)) {
+        return;
+    }
+    parent = FindLocalCommonSubParent(expr);
+    if (!parent) {
+        IRO_MakeReplacementEmbedded(expr);
+        return;
+    }
+
+    IRO_Dump("Moving common sub from node %d to %d\n", expr->linear->index, parent->index);
+    start = IRO_FindStart(parent);
+    IRO_ReplaceReference(expr->linear, expr->temp, expr->linear);
+    IRO_MoveExpression(expr, start);
+    comma = IRO_NewLinear(IROLinearOp2Arg);
+    comma->nodetype = ECOMMA;
+    comma->rtype = parent->rtype;
+    comma->u.diadic.left = IRO_AssignToTemp(expr);
+    comma->u.diadic.right = parent;
+    comma->stmt = parent->stmt;
+    IRO_ReplaceReferenceWithNode(parent, comma);
+    IRO_PasteAfter(comma, comma, parent);
+}
+#else
 static void MoveCommonSub(IROExpr* expr) {
     IROExpr* scanexpr;
     SInt32 sz1;
@@ -1022,13 +1136,7 @@ static void MoveCommonSub(IROExpr* expr) {
 static void ReplaceCommonSub(IROLinear* linear) {
     IROExpr* expr = linear->expr->use;
     if (!expr->temp) {
-#if VERSION == VERSION_WII_1_0RC1
-        if (!place_cross_block_common_sub(expr, linear->expr)) {
-            MoveCommonSub(expr);
-        }
-#else
         MoveCommonSub(expr);
-#endif
         if (!expr->temp) {
             return;
         }
@@ -1093,6 +1201,180 @@ void IRO_CommonSubs(void) {
 
     IRO_CheckForUserBreak();
 }
+#endif
+
+#if VERSION == VERSION_WII_1_0RC1
+typedef struct IROCSEDefinition {
+    IROExpr* expr;
+    struct IROCSEDefinition* next;
+} IROCSEDefinition;
+
+static IROCSEDefinition* NewCommonSubDefinition(IROExpr* expr) {
+    IROCSEDefinition* result = oalloc(sizeof(IROCSEDefinition));
+    result->expr = expr;
+    result->next = NULL;
+    return result;
+}
+
+static void LinkLocalCommonSubs(UInt32 count, BitVector* kills) {
+    IRONode* node;
+    IROLinear* linear;
+    IROExpr** definitions = oalloc((count + 1) * sizeof(IROExpr*));
+    BitVector* local;
+    BitVector* seen;
+    BitVector* incoming;
+    UInt32 group;
+
+    Bv_AllocVector(&local, count);
+    Bv_AllocVector(&seen, count);
+    Bv_AllocVector(&incoming, count);
+    for (node = IRO_FirstNode; node; node = node->nextnode) {
+        Bv_Clear(local);
+        Bv_Clear(seen);
+        Bv_Copy(node->in, incoming);
+        for (linear = node->first; linear; linear = linear->next) {
+            IROExpr* expr = linear->expr;
+            if (expr && (group = expr->cseGroup)) {
+                if (Bv_IsBitSet(group, local)) {
+                    expr->cseDefinitions = NewCommonSubDefinition(definitions[group]);
+                    expr->use = definitions[group];
+                } else {
+                    if (!Bv_IsBitSet(group, seen) && Bv_IsBitSet(group, incoming)) {
+                        expr->cseFromPredecessors = TRUE;
+                    }
+                    definitions[group] = expr;
+                }
+                Bv_SetBit(group, local);
+                Bv_SetBit(group, seen);
+                Bv_SetBit(group, incoming);
+            }
+            IRO_GetUExprKills(linear, kills);
+            Bv_Minus(kills, local);
+            Bv_Minus(kills, incoming);
+            if (linear == node->last) {
+                break;
+            }
+        }
+        IRO_CheckForUserBreak();
+    }
+}
+
+static IROCSEDefinition** FindCommonSubDefinitions(
+    IRONode* node, UInt32 group, BitVector* visited, IROCSEDefinition** tail
+) {
+    IROExpr* reaching = NULL;
+    IROLinear* linear;
+    UInt16 i;
+
+    if (Bv_IsBitSet(node->index, visited) || !Bv_IsBitSet(group, node->out)) {
+        return tail;
+    }
+    Bv_SetBit(node->index, visited);
+    for (linear = node->first; linear; linear = linear->next) {
+        IROExpr* expr = linear->expr;
+        if (expr && expr->cseGroup == group && !expr->cseDefinitions) {
+            reaching = expr;
+        }
+        if (linear == node->last) {
+            break;
+        }
+    }
+    if (reaching && !reaching->cseFromPredecessors) {
+        *tail = NewCommonSubDefinition(reaching);
+        return &(*tail)->next;
+    }
+    for (i = 0; i < node->numpred; i++) {
+        tail = FindCommonSubDefinitions(IRO_NodeTable[node->pred[i]], group, visited, tail);
+    }
+    return tail;
+}
+
+static void LinkIncomingCommonSubs(void) {
+    IROExpr* expr;
+    BitVector* visited;
+
+    Bv_AllocVector(&visited, IRO_NumNodes);
+    for (expr = IRO_FirstExpr; expr; expr = expr->next) {
+        if (expr->cseFromPredecessors) {
+            IRONode* node = expr->node;
+            IROCSEDefinition** tail = &expr->cseDefinitions;
+            UInt16 i;
+
+            Bv_Clear(visited);
+            for (i = 0; i < node->numpred; i++) {
+                tail = FindCommonSubDefinitions(IRO_NodeTable[node->pred[i]], expr->cseGroup, visited, tail);
+            }
+        }
+    }
+}
+
+static void AllocateCommonSubTemps(void) {
+    IROExpr* expr;
+    IROCSEDefinition* def;
+    Boolean changed;
+
+    do {
+        changed = FALSE;
+        for (expr = IRO_FirstExpr; expr; expr = expr->next) {
+            Object* temp = NULL;
+            if (!expr->cseDefinitions) {
+                continue;
+            }
+            for (def = expr->cseDefinitions; def; def = def->next) {
+                if (def->expr->temp && (!temp || (size_t)def->expr->temp < (size_t)temp)) {
+                    temp = def->expr->temp;
+                }
+            }
+            if (!temp) {
+                IRO_GetTemp(expr->cseDefinitions->expr);
+                temp = expr->cseDefinitions->expr->temp;
+            }
+            for (def = expr->cseDefinitions; def; def = def->next) {
+                if (def->expr->temp && def->expr->temp != temp) {
+                    changed = TRUE;
+                }
+                def->expr->temp = temp;
+                if (def->expr->node != expr->node) {
+                    def->expr->cseUsedOutsideBlock = TRUE;
+                }
+            }
+        }
+        IRO_CheckForUserBreak();
+    } while (changed);
+}
+
+static void RewriteCommonSubs(void) {
+    IROExpr* expr;
+
+    for (expr = IRO_FirstExpr; expr; expr = expr->next) {
+        IROLinear* linear = expr->linear;
+        if (expr->temp) {
+            MoveCommonSub(expr);
+        } else if (expr->cseDefinitions) {
+            IROExpr* def = expr->cseDefinitions->expr;
+            IRO_Dump("Replacing common sub at %d with %d\n", linear->index, def->linear->index);
+            IRO_ReplaceReference(linear, def->temp, linear);
+            IRO_RemoveExpr(expr);
+            IRO_NopOut(linear);
+        }
+        IRO_CheckForUserBreak();
+    }
+}
+
+void IRO_CommonSubs(void) {
+    UInt32 count;
+    BitVector* kills;
+
+    IRO_FindExpressions(NULL, FALSE);
+    count = GroupCommonSubexpressions();
+    Bv_AllocVector(&kills, count);
+    ComputeAvailability(count, kills);
+    LinkLocalCommonSubs(count, kills);
+    LinkIncomingCommonSubs();
+    AllocateCommonSubTemps();
+    RewriteCommonSubs();
+}
+#endif
 
 static Boolean CountThisSubableOperandUse(IROUse* use) {
     return use->reachingDefCount != 0;

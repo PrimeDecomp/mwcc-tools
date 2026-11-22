@@ -302,12 +302,16 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
                 FALSE
             );
 
+#if VERSION != VERSION_WII_1_0RC1
             if (copts.commonsubs) {
                 IRO_FindExpressions(NULL, FALSE);
             }
+#endif
 
             if (copts.commonsubs) {
+#if VERSION != VERSION_WII_1_0RC1
                 IRO_ComputeAvail();
+#endif
                 IRO_CommonSubs();
             }
             IRO_DumpAfterPhase("IRO_CommonSubs", FALSE);
