@@ -103,11 +103,11 @@ static int isconstantoperand(PCodeArg* op, SInt16* resultValue) {
     }
 }
 
-static int isuint16constantoperand(PCodeArg* op, SInt16* resultValue) {
+static int isuint16constantoperand(PCodeArg* op, short loadOpcode, SInt16* resultValue) {
     PCode* instr;
 
     if ((instr = defininginstruction[op->data.reg.reg]) &&
-        instr->op == PC_LI &&
+        instr->op == loadOpcode &&
         instr->args[1].kind == PCOp_IMMEDIATE &&
         FITS_IN_USHORT(instr->args[1].data.imm.value)) {
         *resultValue = instr->args[1].data.imm.value;
@@ -116,6 +116,71 @@ static int isuint16constantoperand(PCodeArg* op, SInt16* resultValue) {
         return FALSE;
     }
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static void replace_xor_with_load(PCode* instr, short opcode, SInt32 value) {
+    change_opcode(instr, opcode);
+    instr->args[1].kind = PCOp_IMMEDIATE;
+    instr->args[1].data.imm.value = value;
+    instr->args[1].data.imm.obj = NULL;
+    change_num_operands(instr, 2);
+}
+
+static void replace_xor_with_immediate(PCode* instr, short opcode, SInt16 value) {
+    if (value) {
+        change_opcode(instr, opcode);
+        instr->args[2].kind = PCOp_IMMEDIATE;
+        instr->args[2].data.imm.value = value;
+        instr->args[2].data.imm.obj = NULL;
+    } else {
+        change_opcode(instr, PC_MR);
+        change_num_operands(instr, 2);
+    }
+}
+
+static Boolean propagate_xor_constants(PCode* instr) {
+    SInt16 right = 0;
+    SInt16 left;
+    Boolean folded = FALSE;
+
+    if (PCODE_FLAG_SET_F(instr) & fRecordBit) {
+        return FALSE;
+    }
+
+    if (isconstantoperand(&instr->args[2], &right)) {
+        if (isuint16constantoperand(&instr->args[2], PC_LI, &right) || right == 0) {
+            replace_xor_with_immediate(instr, PC_XORI, right);
+            folded = TRUE;
+        }
+    } else if (isuint16constantoperand(&instr->args[2], PC_LIS, &right)) {
+        replace_xor_with_immediate(instr, PC_XORIS, right);
+        folded = TRUE;
+    }
+
+    if (isconstantoperand(&instr->args[1], &left)) {
+        if (instr->op == PC_XORI || instr->op == PC_MR) {
+            replace_xor_with_load(instr, PC_LI, left ^ right);
+            return TRUE;
+        }
+        if (instr->op == PC_XOR &&
+            (isuint16constantoperand(&instr->args[1], PC_LI, &left) || left == 0)) {
+            instr->args[1] = instr->args[2];
+            replace_xor_with_immediate(instr, PC_XORI, left);
+            return TRUE;
+        }
+    } else if (isuint16constantoperand(&instr->args[1], PC_LIS, &left)) {
+        if (instr->op == PC_XORIS || instr->op == PC_MR) {
+            replace_xor_with_load(instr, PC_LIS, left ^ right);
+            // RC1 continues with the left immediate and the shortened operand list.
+        }
+        instr->args[1] = instr->args[2];
+        replace_xor_with_immediate(instr, PC_XORIS, left);
+        return TRUE;
+    }
+
+    return folded;
+}
+#endif
 
 static int isvectorconstantoperand(PCodeArg* op, SInt16* resultValue, short* resultNewOp) {
     PCode* instr;
@@ -483,7 +548,7 @@ static void propagateconstantstoblock(PCodeBlock* block) {
 
                 immAddend = value1 = 0;
                 if (isconstantoperand(&instr->args[2], &value1)) {
-                    if (isuint16constantoperand(&instr->args[2], &valueU16)) {
+                    if (isuint16constantoperand(&instr->args[2], PC_LI, &valueU16)) {
                         if (valueU16 != 0) {
                             change_opcode(instr, PC_ORI);
                             instr->args[2].kind = PCOp_IMMEDIATE;
@@ -512,7 +577,7 @@ static void propagateconstantstoblock(PCodeBlock* block) {
                         instr->args[1].data.imm.obj = NULL;
                         change_num_operands(instr, 2);
                         changed = propagatedconstants = TRUE;
-                    } else if (isuint16constantoperand(&instr->args[1], &valueU16)) {
+                    } else if (isuint16constantoperand(&instr->args[1], PC_LI, &valueU16)) {
                         if (valueU16 != 0) {
                             change_opcode(instr, PC_ORI);
                             instr->args[1] = instr->args[2];
@@ -534,6 +599,14 @@ static void propagateconstantstoblock(PCodeBlock* block) {
                     }
                 }
                 break;
+
+#if VERSION == VERSION_WII_1_0RC1
+            case PC_XOR:
+                if (propagate_xor_constants(instr)) {
+                    changed = propagatedconstants = TRUE;
+                }
+                break;
+#endif
 
             case PC_SUBF:
                 if (PCODE_FLAG_SET_F(instr) & fRecordBit) {

@@ -309,11 +309,19 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   operands for 64-bit integer types before choosing the single-register
   negated-compare path. A wide comparison uses `I8_gen_condition` and
   negates the resulting boolean, so the high words participate.
-  Optimized comparisons against a 64-bit constant still have excess
-  instructions in the source. Stock folds XOR inputs from `LI` and
-  `LIS` in the constant propagation pass at `0x646890`. Stock traces
-  of comparison with zero, one, and `0x7abc000000000000` reach the
-  move, `XORI`, and `XORIS` rewrites respectively.
+- The constant propagation pass at `0x646890` folds XOR inputs from
+  `LI` and `LIS`. Comparisons with zero, one, and
+  `0x7abc000000000000` reach the move, `XORI`, and `XORIS` rewrites.
+  When both XOR inputs come from eligible `LIS` definitions, stock
+  combines them at `0x6477d7`, then continues the left-immediate rewrite
+  at `0x646bf1` with the shortened operand list. The source preserves
+  the resulting code, including the `xoris r3,r0,0x1234` seen after an
+  opaque call in the two-constant regression.
+- Function-level assembly disables peephole optimization and sets the
+  optimization level to one around `assemblefunction` at `0x4bff7c`.
+  This bypasses late branch optimization, preserving explicit branches
+  to the next instruction in Corruption's `TRKRestoreExtended1Block`.
+  The optimized `mpc_7xx_603e.c` object now matches stock.
 - RC1's class-specific liveness pass calls `0x63a9e0` at `0x63a491` before
   building the interference graph. It restricts entry live-ins to physical
   registers and walks blocks forward, masking live-outs by live-ins and local

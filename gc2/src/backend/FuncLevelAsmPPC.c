@@ -231,6 +231,9 @@ void Assembler(Object* func) {
     Boolean save_unusedvar;
     Boolean save_unusedarg;
     Boolean save_peephole;
+#if VERSION == VERSION_WII_1_0RC1
+    SInt8 save_optimizationlevel;
+#endif
 
     frame_generated = FALSE;
     seen_frfree = FALSE;
@@ -503,8 +506,15 @@ void Assembler(Object* func) {
 
     save_peephole = copts.peephole;
     copts.peephole = FALSE;
+#if VERSION == VERSION_WII_1_0RC1
+    save_optimizationlevel = copts.optimizationlevel;
+    copts.optimizationlevel = 1;
+#endif
     assemblefunction(func, entrypoints_head);
     copts.peephole = save_peephole;
+#if VERSION == VERSION_WII_1_0RC1
+    copts.optimizationlevel = save_optimizationlevel;
+#endif
 
     if (ORACLE_LISTING(copts.debuglisting)) {
         pclistblocks(CMangler_GetLinkName(func)->name, "[FUNCTION-LEVEL ASM] FINAL CODE");

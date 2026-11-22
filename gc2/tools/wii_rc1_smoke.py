@@ -1922,6 +1922,24 @@ int compare_nonzero(const signed char *p) {
     run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
     results[source.name] = section.read_bytes()
 
+    source = work / "asm_branch_to_next.c"
+    source.write_text(
+        """\
+asm int branch_to_next(void) {
+    nofralloc
+    li r3, 7
+    b done
+done:
+    blr
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O0", "-O3", "-O4,p", "-O4,s"):
+        run(compiler, *FLAGS, opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     source = work / "tail_calls.c"
     source.write_text(
         "extern int step(int); extern int other(int);\n"
@@ -2344,13 +2362,51 @@ int halfword_ne(unsigned short x) { return x != 65535; }
         """\
 int equal_mask(unsigned long long x, unsigned long long y) { return -(x == y); }
 int unequal_mask(unsigned long long x) { return -(x != 0x100000000ULL); }
+int equal_zero(unsigned long long x) { return x == 0; }
+int equal_one(unsigned long long x) { return x == 1; }
+int equal_shifted(unsigned long long x) { return x == 0x7abc000000000000ULL; }
 """,
         encoding="ascii",
     )
     obj = source.with_suffix(".o")
-    for opt in ("-O0", "-O1", "-O2"):
+    for opt in ("-O0", "-O1", "-O2", "-O4,p", "-O4,s"):
         run(compiler, *FLAGS, opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
+
+    source = work / "xor_constants.c"
+    source.write_text(
+        """\
+extern void opaque(void);
+unsigned from_low(unsigned x) {
+    unsigned a = 0x1234;
+    opaque();
+    return x ^ a;
+}
+unsigned from_high(unsigned x) {
+    unsigned a = 0x789a0000;
+    opaque();
+    return a ^ x;
+}
+unsigned from_two_low(void) {
+    unsigned a = 0x34, b = 0x9a;
+    opaque();
+    return a ^ b;
+}
+unsigned from_two_high(void) {
+    unsigned a = 0x12340000, b = 0x789a0000;
+    opaque();
+    return a ^ b;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    run(
+        compiler, *FLAGS, "-O4,p", "-func_align", "4",
+        "-pragma", "opt_propagation off", "-pragma", "opt_common_subs off",
+        "-c", source, "-o", obj, cwd=work,
+    )
+    results[f"{source.name} -O4,p"] = obj.read_bytes()
 
     source = work / "local_declaration_weight.c"
     source.write_text(
