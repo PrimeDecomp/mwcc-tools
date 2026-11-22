@@ -1676,6 +1676,25 @@ def check(compiler, objcopy, nm, objdump, work):
     run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
     results[source.name] = section.read_bytes()
 
+    source = work / "induction_products.c"
+    source.write_text(
+        "extern void observe(unsigned);\n"
+        "void variable_stride(unsigned count, unsigned stride) {\n"
+        "    for (; count > 0; --count) observe(stride * (count - 1));\n"
+        "}\n"
+        "void fixed_stride(unsigned count) {\n"
+        "    for (; count > 0; --count) observe(13 * (count - 2));\n"
+        "}\n"
+        "void reversed_subtraction(unsigned count, unsigned stride) {\n"
+        "    for (; count > 0; --count) observe(stride * (3 - count));\n"
+        "}\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O4,p", "-O4,s"):
+        run(compiler, *FLAGS, opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     source = work / "count_split_loop.c"
     source.write_text(
         "int count_split_loop(volatile int* p) {\n"

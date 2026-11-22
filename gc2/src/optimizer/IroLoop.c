@@ -1,6 +1,7 @@
 #include "compiler/IroLoop.h"
 #include "compiler/IroCSE.h"
 #include "compiler/IroDump.h"
+#include "compiler/IroEval.h"
 #include "compiler/IroFlowgraph.h"
 #include "compiler/IroLinearForm.h"
 #include "compiler/IroPropagate.h"
@@ -1422,6 +1423,142 @@ static void UnmarkSubexpressionsOfInvariantExpressions(void) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+typedef struct RISProductSplit {
+    IROList original;
+    IROLinear* sum;
+    struct RISProductSplit* next;
+} RISProductSplit;
+
+static IROLinear* DuplicateProduct(
+    IROLinear* product, IROLinear* term, IROLinear* factor, IROList* list
+) {
+    IROLinear* copy = IRO_NewLinear(IROLinearOp2Arg);
+    *copy = *product;
+    copy->u.diadic.left = IRO_DuplicateExpr(term, list);
+    copy->u.diadic.right = IRO_DuplicateExpr(factor, list);
+    copy->next = NULL;
+    copy->expr = NULL;
+    IRO_AddToList(copy, list);
+    return copy;
+}
+
+static RISProductSplit* SplitStrengthReductionProducts(void) {
+    IROExpr* expr;
+    RISProductSplit* splits = NULL;
+
+    for (expr = IRO_FirstExpr; expr; expr = expr->next) {
+        IROLinear* product = expr->linear;
+        IROLinear* factor;
+        IROLinear* sum;
+        IROLinear* term;
+        IROLinear* offset;
+        IROLinear* replacement;
+        IROList list;
+        Object* object;
+        VarRecord* var;
+        RISProductSplit* split;
+
+        if (!Bv_IsBitSet(expr->node->index, InLoop) || expr->notSubable ||
+            (expr->couldError && !expr->node->mustreach) ||
+            !IS_LINEAR_DIADIC(product, EMUL)) {
+            continue;
+        }
+
+        factor = product->u.diadic.right;
+        sum = product->u.diadic.left;
+        if (!(factor->flags & IROLF_LoopInvariant)) {
+            factor = product->u.diadic.left;
+            sum = product->u.diadic.right;
+        }
+        if (!(factor->flags & IROLF_LoopInvariant) ||
+            (!copts.loopinvariants && !IRO_IsIntConstant(factor)) ||
+            !IS_LINEAR_DIADIC_2(sum, EADD, ESUB)) {
+            continue;
+        }
+
+        term = sum->u.diadic.left;
+        offset = sum->u.diadic.right;
+        if (sum->nodetype == EADD && !IRO_IsIntConstant(offset)) {
+            term = sum->u.diadic.right;
+            offset = sum->u.diadic.left;
+        }
+        if (!IRO_IsIntConstant(offset) || !(object = IRO_IsVariable(term)) ||
+            !(var = IRO_FindVar(object, FALSE, TRUE)) || var->inductionState != 2) {
+            continue;
+        }
+
+        split = oalloc(sizeof(*split));
+        IRO_InitList(&split->original);
+        IRO_DuplicateExpr(product, &split->original);
+
+        IRO_InitList(&list);
+        replacement = IRO_NewLinear(IROLinearOp2Arg);
+        *replacement = *sum;
+        replacement->u.diadic.left = DuplicateProduct(product, term, factor, &list);
+        replacement->u.diadic.right = DuplicateProduct(product, offset, factor, &list);
+        replacement->next = NULL;
+        replacement->expr = NULL;
+        IRO_AddToList(replacement, &list);
+        IRO_PasteAfter(list.head, list.tail, product);
+        IRO_LocateFather_Cut_And_Paste(product, replacement);
+
+        split->sum = replacement;
+        split->next = splits;
+        splits = split;
+    }
+
+    return splits;
+}
+
+static Boolean RestoreUnusedStrengthReductionProducts(RISProductSplit* splits) {
+    Boolean restored = FALSE;
+
+    for (; splits; splits = splits->next) {
+        IROLinear* sum = splits->sum;
+        if (IS_LINEAR_DIADIC_2(sum, EADD, ESUB) &&
+            IS_LINEAR_DIADIC(sum->u.diadic.left, EMUL) &&
+            IS_LINEAR_DIADIC(sum->u.diadic.right, EMUL) &&
+            !(sum->u.diadic.left->flags & IROLF_Ris) &&
+            !(sum->u.diadic.right->flags & IROLF_Ris)) {
+            IRO_PasteAfter(splits->original.head, splits->original.tail, sum);
+            IRO_LocateFather_Cut_And_Paste(sum, splits->original.tail);
+            restored = TRUE;
+        }
+    }
+    return restored;
+}
+
+static void FindSplitStrengthReductionExpressions(void) {
+    IRO_ConstantFolding();
+    IRO_FindExpressions(InLoop, TRUE);
+    if (copts.loopinvariants) {
+        UnmarkSubexpressionsOfInvariantExpressions();
+    }
+}
+#endif
+
+static void MarkStrengthReductionCandidates(void) {
+    IROExpr* expr;
+
+    for (expr = IRO_FirstExpr; expr; expr = expr->next) {
+        IROLinear* factor;
+        IROLinear* operand;
+        VarRecord* var;
+        if (!(expr->flags & 4) &&
+            Bv_IsBitSet(expr->node->index, InLoop) &&
+            !expr->notSubable &&
+            (!expr->couldError || expr->node->mustreach) &&
+            Reducable(expr->linear, &factor, &operand, &var)) {
+            IRO_WalkTree(expr->linear, IRO_ActUnmarkRISCandidate);
+            expr->linear->flags |= IROLF_Ris;
+            expr->factor = factor;
+            expr->var = var;
+            expr->indOperand = operand;
+        }
+    }
+}
+
 static void MyHandleLoop_Vector(IRONode* fnode) {
     IRONode* pred;
     UInt16 i;
@@ -1507,19 +1644,30 @@ static void MyHandleLoop_Vector(IRONode* fnode) {
     }
 
     if (!copts.optimizesize && copts.strengthreduction) {
-        for (expr = IRO_FirstExpr; expr; expr = expr->next) {
-            if (!(expr->flags & 4) &&
-                Bv_IsBitSet(expr->node->index, InLoop) &&
-                !expr->notSubable &&
-                (!expr->couldError || expr->node->mustreach) &&
-                Reducable(expr->linear, &reduceNd1, &reduceNd2, &var)) {
-                IRO_WalkTree(expr->linear, IRO_ActUnmarkRISCandidate);
-                expr->linear->flags |= IROLF_Ris;
-                expr->factor = reduceNd1;
-                expr->var = var;
-                expr->indOperand = reduceNd2;
+#if VERSION == VERSION_WII_1_0RC1
+        RISProductSplit* splits = SplitStrengthReductionProducts();
+        if (splits) {
+            FindSplitStrengthReductionExpressions();
+        }
+#endif
+        MarkStrengthReductionCandidates();
+#if VERSION == VERSION_WII_1_0RC1
+        if (RestoreUnusedStrengthReductionProducts(splits)) {
+            FindSplitStrengthReductionExpressions();
+            for (expr = IRO_FirstExpr; expr; expr = expr->next) {
+                expr->linear->flags &= ~IROLF_Ris;
+            }
+            MarkStrengthReductionCandidates();
+        }
+        /* Expose the offset to loop motion after choosing the induction product. */
+        for (; splits; splits = splits->next) {
+            IROLinear* sum = splits->sum;
+            if (IS_LINEAR_DIADIC_2(sum, EADD, ESUB) &&
+                IS_LINEAR_DIADIC(sum->u.diadic.right, EMUL)) {
+                sum->u.diadic.right->flags |= IROLF_LoopInvariant;
             }
         }
+#endif
     }
 
     if (!copts.optimizesize && copts.strengthreduction) {

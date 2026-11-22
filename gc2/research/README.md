@@ -397,6 +397,21 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   register number and skips the merge if any call pins the higher register.
   In the size build of `FILE_POS.c`, the buffer pointer and loop pointer in
   the out-of-line `_ftell` have no interference edge and merge into one GPR.
+- The target's return-register setup at `0x5910b0` always adds the stack
+  pointer before adding any return-value registers. The class-specific pass
+  at `0x63a4a4` marks these registers live at the final block. In `qsort`,
+  the stack pointer edges raise the degrees of the two heap index registers
+  enough to delay pushing them onto the coloring stack.
+- Before marking strength-reduction candidates, `0x667200` splits a product
+  of an invariant factor and an induction variable plus or minus an integer
+  offset. The helper at `0x6673f0` builds two products and preserves the
+  offset expression's addition or subtraction. The candidate scan can
+  reduce the induction product and hoist an invariant offset product.
+  `0x667120` restores the old tree when neither product is marked. In
+  Corruption's `qsort.c`, this turns `member_size * (l - 1)` into a
+  loop-carried product and a fixed offset. The default and `-O3` objects now
+  match stock. The `-O0` code and the build with the global optimizer disabled
+  still differ.
 - RC1 allocates a virtual condition field in each scalar comparison selector.
   In `e_sqrt.c`, value numbering at `0x5b4c01` copies the field from the
   first signed comparison with zero, so two branches can read it across an

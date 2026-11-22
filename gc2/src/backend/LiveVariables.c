@@ -140,6 +140,12 @@ void computelivevariables(Object* proc) {
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (coloring_class == RegClass_GPR) {
+        /* The stack pointer is live at function exit, even for void functions. */
+        bitvectorsetbit(1, liveinfo[pclastblock->blockIndex].use);
+    }
+#endif
     if (coloring_class == RegClass_GPR &&
         (TYPE_FITS_IN_REGISTER(returnType) || IS_TYPE_SPE(returnType))) {
         bitvectorsetbit(3, liveinfo[epilogue->blockIndex].use);
