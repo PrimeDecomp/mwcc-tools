@@ -392,6 +392,14 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   operands for 64-bit integer types before choosing the single-register
   negated-compare path. A wide comparison uses `I8_gen_condition` and
   negates the resulting boolean, so the high words participate.
+- The `AND` case of constant propagation (`0x6462f1`) follows `LI` and
+  `LIS` definitions. Contiguous masks become `RLWINM` with a zero shift.
+  Disjoint masks use `ANDI` or `ANDIS` and define CR0. The stock formatter
+  (`0x5a8716`) and copy helper (`0x59b848`) reserve six operand slots so a
+  later compare fold can add a CR0 definition to the five-operand `RLWINM`.
+  The left-hand disjoint `LIS` branch at `0x64683c` reads a stale register
+  when storing the immediate. Repeated stock builds of `x ? 0x50000u : 0u`
+  emit different masks. The source port uses the reaching `LIS` immediate.
 - The constant propagation pass at `0x646890` folds XOR inputs from
   `LI` and `LIS`. Comparisons with zero, one, and
   `0x7abc000000000000` reach the move, `XORI`, and `XORIS` rewrites.

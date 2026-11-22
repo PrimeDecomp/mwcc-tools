@@ -8,6 +8,12 @@
 extern "C" {
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+#define PCODE_MIN_OPERANDS 6
+#else
+#define PCODE_MIN_OPERANDS 5
+#endif
+
 #pragma pack(push, 2)
 #define PC_OP_IS_REGISTER(_op, _rclass, _reg) \
     ((_op)->kind == PCOp_REGISTER && (_op)->arg == (_rclass) && (_op)->data.reg.reg == (_reg))

@@ -51,8 +51,8 @@ PCode* copypcode(PCode* pcode) {
     if ((PCODE_FLAG_SET_F(pcode) & fCanSetRecordBit) && !(PCODE_FLAG_SET_F(pcode) & fRecordBit)) {
         extra_arg = 1;
     }
-    if (pcode->argCount + extra_arg < 5) {
-        extra_arg += 5 - (pcode->argCount + extra_arg);
+    if (pcode->argCount + extra_arg < PCODE_MIN_OPERANDS) {
+        extra_arg = PCODE_MIN_OPERANDS - pcode->argCount;
     }
 
     newpc = lalloc(offsetof(PCode, args) + sizeof(PCodeArg) * (pcode->argCount + extra_arg));

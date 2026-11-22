@@ -2952,6 +2952,38 @@ int choose_local(int a, int b) {
         run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
         results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
 
+    source = work / "conditional_masks.cpp"
+    source.write_text(
+        """
+extern int next_value();
+
+int choose(bool a, bool b) {
+    if (a && b) {
+        if (next_value() & 0x4000)
+            a = false;
+        else
+            b = false;
+    }
+    if (a) return 1;
+    if (b) return 2;
+    return 0;
+}
+
+unsigned contiguous_low(int x) { return x ? 2u : 0u; }
+unsigned disjoint_low(int x) { return x ? 5u : 0u; }
+unsigned contiguous_high(int x) { return x ? 0x40000u : 0u; }
+unsigned complementary_mask(int x) { return x ? 0u : 5u; }
+unsigned signed_immediate(int x) { return x ? -2u : 0u; }
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    for options in (("-O2",), ("-O3",), ("-O4,p",), ("-O4,s",)):
+        run(compiler, *FLAGS, "-bool", "on", *options, "-c", source, "-o", obj, cwd=work)
+        run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+        results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
+
     source = work / "immediate_reuse.c"
     source.write_text(
         """

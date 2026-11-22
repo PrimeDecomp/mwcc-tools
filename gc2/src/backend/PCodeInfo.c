@@ -149,8 +149,8 @@ PCode* vformatpcode(short opcode, va_list argList) {
         extra++;
     }
 
-    if ((argcount + extra) < 5) {
-        extra += 5 - (argcount + extra);
+    if (argcount + extra < PCODE_MIN_OPERANDS) {
+        extra = PCODE_MIN_OPERANDS - argcount;
     }
 
     pcode_size = (argcount + extra) * sizeof(PCodeArg) + offsetof(PCode, args);
@@ -1657,7 +1657,7 @@ int nbytes_loaded_or_stored_by(PCode* pcode) {
 void change_num_operands(PCode* pcode, int newNum) {
     int i;
 
-    CError_ASSERT(2150, ((pcode->argCount > 5) ? pcode->argCount : 5) >= newNum);
+    CError_ASSERT(2150, newNum <= PCODE_MIN_OPERANDS || newNum <= pcode->argCount);
 
     for (i = pcode->argCount - 1; i >= newNum; i--) {
         pcode->args[i].kind = PCOp_PLACEHOLDEROPERAND;

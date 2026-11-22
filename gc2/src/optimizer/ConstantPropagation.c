@@ -2,9 +2,11 @@
 #include "compiler/Alias.h"
 #include "compiler/BitVectors.h"
 #include "compiler/CompilerTools.h"
+#include "compiler/InstrSelection.h"
 #include "compiler/objects.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeInfo.h"
+#include "compiler/PCodeUtilities.h"
 #include "compiler/RegisterInfo.h"
 #include "compiler/Registers.h"
 #include "compiler/StackFrame.h"
@@ -118,12 +120,105 @@ static int isuint16constantoperand(PCodeArg* op, short loadOpcode, SInt16* resul
 }
 
 #if VERSION == VERSION_WII_1_0RC1
-static void replace_xor_with_load(PCode* instr, short opcode, SInt32 value) {
+static void replace_with_constant_load(PCode* instr, short opcode, SInt32 value) {
     change_opcode(instr, opcode);
     instr->args[1].kind = PCOp_IMMEDIATE;
     instr->args[1].data.imm.value = value;
     instr->args[1].data.imm.obj = NULL;
     change_num_operands(instr, 2);
+}
+
+static void replace_and_with_mask(PCode* instr, short opcode, SInt16 value, Boolean lhs) {
+    PCodeArg immediate = {0};
+    short first;
+    short last;
+    UInt32 mask = (UInt32)(SInt32)value;
+
+    if (value == 0) {
+        replace_with_constant_load(instr, PC_LI, 0);
+        return;
+    }
+    if (opcode == PC_ANDIS) {
+        mask <<= 16;
+    }
+    if (lhs) {
+        instr->args[1] = instr->args[2];
+    }
+
+    immediate.kind = PCOp_IMMEDIATE;
+    if (ismaskconstant((SInt32)mask, &first, &last)) {
+        change_opcode(instr, PC_RLWINM);
+        change_num_operands(instr, 5);
+        instr->args[2] = immediate;
+        immediate.data.imm.value = first;
+        instr->args[3] = immediate;
+        immediate.data.imm.value = last;
+        instr->args[4] = immediate;
+    } else {
+        change_opcode(instr, opcode);
+        change_num_operands(instr, 4);
+        immediate.data.imm.value = value;
+        instr->args[2] = immediate;
+        instr->args[3].kind = PCOp_REGISTER;
+        instr->args[3].arg = RegClass_CRFIELD;
+        instr->args[3].data.reg.reg = 0;
+        instr->args[3].data.reg.effect = EffectWrite;
+        pcsetrecordbit(instr);
+    }
+}
+
+static Boolean propagate_and_constants(PCode* instr) {
+    SInt16 right = 0;
+    SInt16 left;
+    Boolean folded = FALSE;
+
+    if (PCODE_FLAG_SET_F(instr) & fRecordBit) {
+        return FALSE;
+    }
+
+    if (isconstantoperand(&instr->args[2], &right)) {
+        if (isuint16constantoperand(&instr->args[2], PC_LI, &right) || right == 0) {
+            replace_and_with_mask(instr, PC_ANDI, right, FALSE);
+            if (instr->op != PC_ANDI) {
+                return TRUE;
+            }
+            folded = TRUE;
+        }
+    } else if (isuint16constantoperand(&instr->args[2], PC_LIS, &right)) {
+        replace_and_with_mask(instr, PC_ANDIS, right, FALSE);
+        if (instr->op != PC_ANDIS) {
+            return TRUE;
+        }
+        folded = TRUE;
+    }
+
+    if (isconstantoperand(&instr->args[1], &left)) {
+        if (isuint16constantoperand(&instr->args[1], PC_LI, &left)) {
+            if (instr->op == PC_ANDI) {
+                replace_with_constant_load(instr, PC_LI, left & right);
+            } else if (instr->op == PC_ANDIS) {
+                replace_with_constant_load(instr, PC_LI, 0);
+            } else {
+                replace_and_with_mask(instr, PC_ANDI, left, TRUE);
+            }
+            return TRUE;
+        }
+        if (left == 0) {
+            replace_with_constant_load(instr, PC_LI, 0);
+            return TRUE;
+        }
+    } else if (isuint16constantoperand(&instr->args[1], PC_LIS, &left)) {
+        if (instr->op == PC_ANDI || left == 0) {
+            replace_with_constant_load(instr, PC_LI, 0);
+        } else if (instr->op == PC_ANDIS) {
+            replace_with_constant_load(instr, PC_LIS, left & right);
+        } else {
+            replace_and_with_mask(instr, PC_ANDIS, left, TRUE);
+        }
+        return TRUE;
+    }
+
+    return folded;
 }
 
 static void replace_xor_with_immediate(PCode* instr, short opcode, SInt16 value) {
@@ -159,7 +254,7 @@ static Boolean propagate_xor_constants(PCode* instr) {
 
     if (isconstantoperand(&instr->args[1], &left)) {
         if (instr->op == PC_XORI || instr->op == PC_MR) {
-            replace_xor_with_load(instr, PC_LI, left ^ right);
+            replace_with_constant_load(instr, PC_LI, left ^ right);
             return TRUE;
         }
         if (instr->op == PC_XOR &&
@@ -170,7 +265,7 @@ static Boolean propagate_xor_constants(PCode* instr) {
         }
     } else if (isuint16constantoperand(&instr->args[1], PC_LIS, &left)) {
         if (instr->op == PC_XORIS || instr->op == PC_MR) {
-            replace_xor_with_load(instr, PC_LIS, left ^ right);
+            replace_with_constant_load(instr, PC_LIS, left ^ right);
             // RC1 continues with the left immediate and the shortened operand list.
         }
         instr->args[1] = instr->args[2];
@@ -601,6 +696,12 @@ static void propagateconstantstoblock(PCodeBlock* block) {
                 break;
 
 #if VERSION == VERSION_WII_1_0RC1
+            case PC_AND:
+                if (propagate_and_constants(instr)) {
+                    changed = propagatedconstants = TRUE;
+                }
+                break;
+
             case PC_XOR:
                 if (propagate_xor_constants(instr)) {
                     changed = propagatedconstants = TRUE;
