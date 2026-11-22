@@ -2298,6 +2298,29 @@ int from_switch(int x) {
         run(compiler, *FLAGS, *options, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {' '.join(options)}"] = obj.read_bytes()
 
+    source = work / "narrow_arguments.c"
+    source.write_text(
+        """\
+extern int hit(void), miss(void);
+extern int take_int(int x);
+int short_bounds(unsigned short x) {
+    if (x >= 65000 && x <= 65530) return hit();
+    return miss();
+}
+int forward_short(unsigned short x) { return take_int(x); }
+int add_bytes(unsigned char x, unsigned char y) { return x + y; }
+int mask_byte(unsigned char x) { return x & 0x7b; }
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O2", "-O4,p", "-O4,s"):
+        run(
+            compiler, *FLAGS, opt, "-func_align", "4",
+            "-pragma", "opt_optimizecontrolflow off", "-c", source, "-o", obj, cwd=work,
+        )
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     source = work / "local_declaration_weight.c"
     source.write_text(
         "void declaration_weight(int x) {\n"

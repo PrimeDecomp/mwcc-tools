@@ -290,13 +290,20 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   `FILE_POS.c`, the symbol table and text relocations now match stock.
   The remaining difference is register selection in the inlined
   `_ftell` code.
-- For an unsigned narrow argument in a register, stock
-  `move_assigned_argument` calls `extendgpr` at `0x46ca39` and marks
-  the result as an argument initializer. The late forward pass replaces
-  a redundant zero extension with a move at `0x5b8bba`. The source
-  still extends an unsigned byte before comparing it with one in the
-  minimal argument test. It also emits an extra `clrlwi` for an unsigned
-  short compared against 65000 and 65530 with `opt_optimizecontrolflow off`.
+- When optimizing with peephole enabled, `move_assigned_argument` calls
+  `extendgpr` at `0x46ca39` for an unsigned byte or a halfword argument
+  assigned to a register. It marks the new instruction as an argument
+  initializer. The late forward pass can replace that extension with a
+  move from the incoming register, at `0x5b8bba` for zero extensions and
+  `0x5b908f` for signed halfwords. The forward pass can also remove a
+  mask directly at `0x5b805a` if preceding definitions prove it redundant.
+  The optimized Corruption `wstring.c` object and the unsigned-short
+  bounds test with `opt_optimizecontrolflow off` now match stock.
+- When stock `gen_condition_gpr` lowers integer equality to `SUBF`, it
+  uses an integer constant of at most four bytes as the subtrahend at
+  `0x51e127`. Other operands take the reverse-order emission at
+  `0x51e193`. For an unsigned byte compared with one, stock folds the
+  subtraction to `subi` and the source selects `subfic`.
 - RC1's class-specific liveness pass calls `0x63a9e0` at `0x63a491` before
   building the interference graph. It restricts entry live-ins to physical
   registers and walks blocks forward, masking live-outs by live-ins and local

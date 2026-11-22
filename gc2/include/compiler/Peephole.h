@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-extern void peepholeoptimizeforward(Object* func);
+extern void peepholeoptimizeforward(Object* func, Boolean removeArgumentExtensions);
 #if VERSION == VERSION_WII_1_0RC1
 extern void eliminatedeadpcode(Object* func, Boolean fixed_point);
 extern void peepholeoptimizeearly(Object* func);

@@ -2764,9 +2764,14 @@ static void forward_stored_value(PCode* store) {
         }
     }
 }
+
+static Boolean can_remove_argument_extension(PCode* instr, short source) {
+    return (instr->flags & (fIsArgInit | fSideEffects | fRecordBit)) == fIsArgInit &&
+        source < n_real_registers[RegClass_GPR];
+}
 #endif
 
-static void adjustforward(PCodeBlock* block) {
+static void adjustforward(PCodeBlock* block, Boolean removeArgumentExtensions) {
     PCode* instr;
     PCode* tmp;
     PCode* scan;
@@ -2798,6 +2803,15 @@ static void adjustforward(PCodeBlock* block) {
             mb = instr->args[3].data.imm.value;
             me = instr->args[4].data.imm.value;
 
+#if VERSION == VERSION_WII_1_0RC1
+            if (sh == 0 && !(instr->flags & (fIsVolatile | fSideEffects | fRecordBit)) &&
+                !(computepossiblemask(instr->prevPCode, srcReg) & ~rotate_mask(instr))) {
+                change_opcode(instr, PC_MR);
+                change_num_operands(instr, 2);
+                instr = instr->nextPCode;
+                continue;
+            }
+#endif
             for (scan = instr->nextPCode; scan; scan = scan->nextPCode) {
                 a = scan->args;
                 opcode = scan->op;
@@ -3063,6 +3077,15 @@ static void adjustforward(PCodeBlock* block) {
                 }
             }
 
+#if VERSION == VERSION_WII_1_0RC1
+            if (removeArgumentExtensions &&
+                can_remove_argument_extension(instr, srcReg) && sh == 0 && me == 31 &&
+                (mb == 16 || mb == 24)) {
+                change_opcode(instr, PC_MR);
+                instr->flags &= ~fIsArgInit;
+                change_num_operands(instr, 2);
+            }
+#endif
         } else if (instr->op == PC_EXTSB &&
                    instr->args[0].data.reg.reg != instr->args[1].data.reg.reg) {
             short cr0Touched = FALSE;
@@ -3128,6 +3151,10 @@ static void adjustforward(PCodeBlock* block) {
                 }
             }
 #if VERSION == VERSION_WII_1_0RC1
+            if (removeArgumentExtensions && can_remove_argument_extension(instr, srcReg)) {
+                change_opcode(instr, PC_MR);
+                instr->flags &= ~fIsArgInit;
+            }
         } else if (instr->flags & fIsWrite) {
             forward_stored_value(instr);
 #endif
@@ -3341,12 +3368,12 @@ static void installpeepholepatterns(void) {
 #endif
 }
 
-void peepholeoptimizeforward(Object* func) {
+void peepholeoptimizeforward(Object* func, Boolean removeArgumentExtensions) {
     PCodeBlock* block;
 
     for (block = pcbasicblocks; block; block = block->nextBlock) {
         if (block->pcodeCount >= 2) {
-            adjustforward(block);
+            adjustforward(block, removeArgumentExtensions);
         }
     }
 }

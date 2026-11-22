@@ -33,7 +33,7 @@ static void optimizelevel3(Object* func) {
             peepholemergeblocks(func, FALSE);
         }
 
-        peepholeoptimizeforward(func);
+        peepholeoptimizeforward(func, FALSE);
         if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER PEEPHOLE FORWARD");
         }
@@ -99,7 +99,7 @@ static void optimizelevel3(Object* func) {
             peepholemergeblocks(func, FALSE);
         }
 
-        peepholeoptimizeforward(func);
+        peepholeoptimizeforward(func, FALSE);
         if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER PEEPHOLE FORWARD 2");
         }
@@ -120,7 +120,7 @@ static void optimizelevel4(Object* func) {
             peepholemergeblocks(func, FALSE);
         }
 
-        peepholeoptimizeforward(func);
+        peepholeoptimizeforward(func, FALSE);
         if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER PEEPHOLE FORWARD");
         }
@@ -201,7 +201,7 @@ static void optimizelevel4(Object* func) {
             peepholemergeblocks(func, FALSE);
         }
 
-        peepholeoptimizeforward(func);
+        peepholeoptimizeforward(func, FALSE);
         if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER PEEPHOLE FORWARD 2");
         }
@@ -252,7 +252,7 @@ void globallyoptimizepcode(Object* func) {
 #if VERSION == VERSION_WII_1_0RC1
     if (copts.peephole && copts.optimizationlevel >= 2) {
         peepholemergeblocks(func, FALSE);
-        peepholeoptimizeforward(func);
+        peepholeoptimizeforward(func, FALSE);
         propagatecopyinstructions(func, FALSE);
         peepholeoptimizeearly(func);
     }
@@ -265,4 +265,12 @@ void globallyoptimizepcode(Object* func) {
     } else if (copts.optimizationlevel == 4) {
         optimizelevel4(func);
     }
+#if VERSION == VERSION_WII_1_0RC1
+    if (copts.optimizationlevel >= 2) {
+        if (copts.peephole) {
+            peepholeoptimizeforward(func, TRUE);
+        }
+        propagatecopyinstructions(func, TRUE);
+    }
+#endif
 }

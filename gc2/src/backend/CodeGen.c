@@ -814,6 +814,23 @@ void move_assigned_argument(Object* obj, short reg) {
                         );
                     }
                 }
+#if VERSION == VERSION_WII_1_0RC1
+            } else if (copts.peephole && optimizing && type->size < 4 &&
+                       (type->size != 1 || is_unsigned(type))) {
+                Operand opnd;
+                PCode* last = pclastblock->lastPCode;
+                memclrw(&opnd, sizeof(opnd));
+                opnd.optype = OpndType_GPR;
+                opnd.reg = reg;
+                opnd.regHi = -1;
+                extend32(&opnd, type, vi->reg);
+                if (last != pclastblock->lastPCode) {
+                    setpcodeflags(fIsArgInit);
+                }
+                if (opnd.reg != vi->reg) {
+                    emitpcode(PC_MR, vi->reg, reg);
+                }
+#endif
             } else if (vi->reg != reg) {
                 if (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(type) && !TYPE_IS_SOFT_FLOAT(type)) {
                     emitpcode(PC_FMR, vi->reg, reg);
@@ -1889,7 +1906,7 @@ void CodeGen_Generator(
         if (copts.schedule_factor == 0 && copts.optimizationlevel > 1) {
             peepholemergeblocks(func, FALSE);
         }
-        peepholeoptimizeforward(func);
+        peepholeoptimizeforward(func, TRUE);
 #if VERSION == VERSION_WII_1_0RC1
         peepholeoptimizeprecolor(func);
 #endif
