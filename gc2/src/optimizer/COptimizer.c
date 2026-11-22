@@ -309,6 +309,13 @@ static void checkexpression(ENode* expr) {
 
     while (1) {
         switch (expr->type) {
+#if VERSION == VERSION_WII_1_0RC1
+            case ESCOPE:
+                if (expr->data.scope.object) {
+                    SetVarUsage(expr->data.scope.object->data.objref, FALSE);
+                }
+                return;
+#endif
             case EOBJREF:
                 SetVarUsage(expr->data.objref, TRUE);
                 return;
@@ -572,5 +579,18 @@ Statement* COpt_Optimizer(Object* obj, Statement* stmt) {
     }
 
     checklocalusage(stmt->next);
+#if VERSION == VERSION_WII_1_0RC1
+    {
+        Statement** next = &stmt->next;
+        while (*next) {
+            Statement* scan = *next;
+            if (scan->type == ST_EXPRESSION && scan->expr && scan->expr->type == ESCOPE) {
+                *next = scan->next;
+            } else {
+                next = &scan->next;
+            }
+        }
+    }
+#endif
     return stmt;
 }

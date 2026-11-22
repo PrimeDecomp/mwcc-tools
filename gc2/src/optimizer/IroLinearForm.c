@@ -1216,6 +1216,9 @@ static void LinearizeExpr1(ENode* expr, ENode* parent, Boolean discardResult, Bo
         case EOBJREF:
         case ESETCONST:
         case EVECTOR128CONST:
+#if VERSION == VERSION_WII_1_0RC1
+        case ESCOPE:
+#endif
             break;
 
         default:
@@ -1322,6 +1325,9 @@ static IROLinear* LinearizeExpr(ENode* enode) {
         case ESTRINGCONST:
         case EOBJREF:
         case EVECTOR128CONST:
+#if VERSION == VERSION_WII_1_0RC1
+        case ESCOPE:
+#endif
             linear = IRO_NewLinear(IROLinearOperand);
             linear->nodeflags = enode->flags;
             linear->u.node = enode;

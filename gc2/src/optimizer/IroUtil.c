@@ -471,6 +471,9 @@ void IRO_NopOut(IROLinear* linear) {
 static Boolean NotNoppable(IROLinear* linear) {
     return (linear->type == IROLinearFunccall) ||
         IRO_IsAssignment(linear) ||
+#if VERSION == VERSION_WII_1_0RC1
+        IS_LINEAR_ENODE(linear, ESCOPE) ||
+#endif
         ((linear->type == IROLinearOperand) && ENODE_IS(linear->u.node, EINSTRUCTION)) ||
         (linear->rtype &&
          CParser_IsVolatile(linear->rtype, linear->nodeflags & ENODE_FLAG_QUALS)) ||
@@ -1167,6 +1170,12 @@ IROLinear* IRO_HasSideEffect(IROLinear* linear) {
         case IROLinearAsm:
             return linear;
         case IROLinearOperand:
+#if VERSION == VERSION_WII_1_0RC1
+            if (linear->u.node->type == ESCOPE) {
+                const ENode* ref = linear->u.node->data.scope.object;
+                return ref && is_volatile_object(ref->data.objref) ? linear : NULL;
+            }
+#endif
             if (ENODE_IS(linear->u.node, EOBJREF) &&
                 is_volatile_object(linear->u.node->data.objref)) {
                 return linear;
@@ -1248,6 +1257,12 @@ IROLinear* IRO_CheckSideEffect(IROLinear* linear) {
             linear->flags &= ~IROLF_Reffed;
             return linear;
         case IROLinearOperand:
+#if VERSION == VERSION_WII_1_0RC1
+            if (linear->u.node->type == ESCOPE) {
+                linear->flags &= ~IROLF_Reffed;
+                return linear;
+            }
+#endif
             if (ENODE_IS(linear->u.node, EOBJREF) &&
                 is_volatile_object(linear->u.node->data.objref)) {
                 linear->flags &= ~IROLF_Reffed;

@@ -2220,6 +2220,21 @@ unsigned absolute(unsigned x) {
         run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    source = work / "local_declaration_weight.c"
+    source.write_text(
+        "void declaration_weight(int x) {\n"
+        "    int local = x + 7;\n"
+        "}\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for option in ("on", "off"):
+        run(
+            compiler, *FLAGS, "-O0", "-pragma", f"global_optimizer {option}",
+            "-c", source, "-o", obj, cwd=work,
+        )
+        results[f"{source.name} global_optimizer {option}"] = obj.read_bytes()
+
     zero_trip = (
         "int f(volatile int* p) {\n"
         "    int i;\n"

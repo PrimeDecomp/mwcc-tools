@@ -323,6 +323,9 @@ Boolean CIRStream_DecodeExpressionKind(UInt8 tag, ENodeType* type) {
         case 62:
             *type = ELABEL;
             return TRUE;
+        case 0x42:
+            *type = ESCOPE;
+            return TRUE;
         case 67:
             *type = EMFPOINTER;
             return TRUE;
@@ -411,6 +414,10 @@ ENODE_CASE_DIADIC_ALL:
         case EOBJREF:
         case EMEMBERFUNCLITERAL:
             return unpack_object(reader, &expr->data.objref) && expr->data.objref;
+        case ESCOPE:
+            return unpack_expression(reader, expr->rtype, &expr->data.scope.object, depth) &&
+                (!expr->data.scope.object || expr->data.scope.object->type == EOBJREF) &&
+                CIRStream_UnpackByte(&reader->stream, &expr->data.scope.kind);
         case EMFPOINTER:
             return unpack_expression(
                        reader, expr->rtype, &expr->data.mfpointer.accessnode, depth
@@ -1377,6 +1384,9 @@ ENODE_CASE_DIADIC_ALL:
             return expr->data.objref && pack_object(writer, expr->data.objref, directCall);
         case EMEMBERFUNCLITERAL:
             return expr->data.objref && pack_object(writer, expr->data.objref, FALSE);
+        case ESCOPE:
+            return pack_expression(writer, expr->rtype, expr->data.scope.object, depth, FALSE) &&
+                CIRStream_PackByte(&writer->stream, expr->data.scope.kind);
         case EMFPOINTER:
             return pack_expression(
                        writer, expr->rtype, expr->data.mfpointer.accessnode, depth, FALSE

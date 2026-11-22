@@ -1294,6 +1294,14 @@ static void CFunc_LocalDataDeclarator(
                 CScope_AddObject(cscope_current, object->name, OBJ_BASE(object));
 
                 if (!isParameterList) {
+#if VERSION == VERSION_WII_1_0RC1
+                    ENode* scope = CExpr_NewENode(ESCOPE);
+                    scope->rtype = &stvoid;
+                    scope->data.scope.object = CExpr_MakeObjRefNode(object, FALSE);
+                    scope->data.scope.object->rtype = &stvoid;
+                    scope->data.scope.kind = EScope_LocalDeclaration;
+                    CFunc_AppendStatement(ST_EXPRESSION)->expr = scope;
+#endif
                     if (IS_TYPE_SOM_CLASS(di->thetype)) {
                         CSOM_InitAutoClass(object);
                     } else {

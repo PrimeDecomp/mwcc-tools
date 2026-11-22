@@ -154,9 +154,13 @@ typedef enum ENodeType {
 #if VERSION == VERSION_WII_1_0RC1
     // Program IPA defers materializing this pointer-to-member constant.
     EMEMBERFUNCLITERAL,
+    ESCOPE,
 #endif
     MAXEXPR
 } ENodeType;
+#if VERSION == VERSION_WII_1_0RC1
+enum { EScope_LocalDeclaration = 5 };
+#endif
 enum {
     ENODE_FLAG_CONST = Q_CONST,
     ENODE_FLAG_VOLATILE = Q_VOLATILE,
@@ -199,6 +203,12 @@ union ENodeUnion {
     ENode* monadic;
     EMemberInfo* emember;
     Object* objref;
+#if VERSION == VERSION_WII_1_0RC1
+    struct {
+        ENode* object;
+        UInt8 kind;
+    } scope;
+#endif
     struct CLabel* label;
     struct {
         struct NameSpaceObjectList* list;

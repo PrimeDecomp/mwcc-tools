@@ -986,6 +986,13 @@ static ENode* CInline_CopyNodes(ENode* node) {
                 copy->data.nullcheck.condexpr = CInline_CopyNodes(copy->data.nullcheck.condexpr);
                 break;
 
+#if VERSION == VERSION_WII_1_0RC1
+            case ESCOPE:
+                if (copy->data.scope.object) {
+                    copy->data.scope.object = CInline_CopyNodes(copy->data.scope.object);
+                }
+                break;
+#endif
             case EPRECOMP:
                 copy->data.precompid = CInline_TranslateID(copy->data.precompid);
                 break;
@@ -1118,6 +1125,10 @@ static void CInline_CheckUsage(ENode* expr, Boolean isModified) {
 
     while (1) {
         switch (expr->type) {
+#if VERSION == VERSION_WII_1_0RC1
+            case ESCOPE:
+                return;
+#endif
             case EARGOBJ:
                 loc_args[expr->data.longval].used = TRUE;
                 loc_args[expr->data.longval].unmodified = FALSE;
@@ -1591,6 +1602,11 @@ static ENode* CInline_InlineFunctionExpression(ENode* expr) {
                 }
                 break;
             case ST_EXPRESSION:
+#if VERSION == VERSION_WII_1_0RC1
+                if (funcdata->statements[i].u.expr->type == ESCOPE) {
+                    break;
+                }
+#endif
                 if (argsExpr) {
                     argsExpr = makecommaexpression(
                         argsExpr,
@@ -2812,6 +2828,12 @@ static Statement* CInline_ExpandStatements(
                 break;
 
             case ST_EXPRESSION:
+#if VERSION == VERSION_WII_1_0RC1
+                if (packstmt->u.expr->type == ESCOPE) {
+                    stmt->type = ST_NOP;
+                    break;
+                }
+#endif
             case ST_BEGINCATCH:
             case ST_ENDCATCH:
             case ST_ENDCATCHDTOR:
@@ -3034,6 +3056,11 @@ static Statement* CInline_ExpandStatement(Statement* stmt) {
     ENode* expr;
     Boolean changed;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (stmt->type == ST_EXPRESSION && stmt->expr->type == ESCOPE) {
+        return stmt;
+    }
+#endif
     do {
         changed = FALSE;
 
@@ -3225,6 +3252,9 @@ static void CInline_ExportCheck(ENode* expr) {
             case EPRECOMP:
             case EINSTRUCTION:
             case EVECTOR128CONST:
+#if VERSION == VERSION_WII_1_0RC1
+            case ESCOPE:
+#endif
                 return;
 
             case ELABEL:
@@ -4554,7 +4584,8 @@ static Boolean CInline_IsSmallFunction(Object* object, Statement* stmt) {
 #if VERSION == VERSION_WII_1_0RC1
         if (stmt->type != ST_NOP && stmt->type != ST_LABEL &&
             (stmt->type != ST_EXPRESSION ||
-             (stmt->expr->type != EFUNCCALL && stmt->expr->type != EFUNCCALLP))) {
+             (stmt->expr->type != EFUNCCALL && stmt->expr->type != EFUNCCALLP &&
+              stmt->expr->type != ESCOPE))) {
             statementCount++;
         }
         if (statementCount > copts.inlinemaxautosize) {

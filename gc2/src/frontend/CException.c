@@ -1942,6 +1942,9 @@ static ENode* CExcept_TempTransExpr(ENode* expr) {
         case EMEMBER:
         case EINSTRUCTION:
         case EVECTOR128CONST:
+#if VERSION == VERSION_WII_1_0RC1
+        case ESCOPE:
+#endif
             return expr;
         default:
             CError_FATAL(2350);

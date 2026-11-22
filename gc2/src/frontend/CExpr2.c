@@ -131,6 +131,9 @@ restart:
         case EMEMBER:
         case EINSTRUCTION:
         case EVECTOR128CONST:
+#if VERSION == VERSION_WII_1_0RC1
+        case ESCOPE:
+#endif
             return;
         case EFUNCCALL:
         case EFUNCCALLP:

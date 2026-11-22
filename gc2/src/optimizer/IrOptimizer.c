@@ -78,6 +78,15 @@ static void CountDoubleInd(IROLinear* node, int depth) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void CountScopeUsage(IROLinear* node, int depth) {
+    const ENode* ref = node->u.node->data.scope.object;
+    if (ref && ref->data.objref->datatype == DLOCAL && ref->data.objref->u.var.info) {
+        CountRefToObject(ref->data.objref, depth);
+    }
+}
+#endif
+
 static void CountUsage(void) {
     IRONode* fnode = IRO_FirstNode;
     IROLinear* node;
@@ -87,6 +96,10 @@ static void CountUsage(void) {
             for (node = fnode->first; node; node = node->next) {
                 if (IS_LINEAR_ENODE(node, EOBJREF)) {
                     CountARef(node, fnode->loopdepth);
+#if VERSION == VERSION_WII_1_0RC1
+                } else if (IS_LINEAR_ENODE(node, ESCOPE)) {
+                    CountScopeUsage(node, fnode->loopdepth);
+#endif
                 } else if (IS_LINEAR_MONADIC(node, EINDIRECT)) {
                     CountDoubleInd(node->u.monadic, fnode->loopdepth);
                 }
@@ -117,6 +130,10 @@ static void CountUsage(void) {
         for (node = IRO_FirstLinear; node; node = node->next) {
             if (IS_LINEAR_ENODE(node, EOBJREF)) {
                 CountARef(node, 0);
+#if VERSION == VERSION_WII_1_0RC1
+            } else if (IS_LINEAR_ENODE(node, ESCOPE)) {
+                CountScopeUsage(node, 0);
+#endif
             } else if (IS_LINEAR_MONADIC(node, EINDIRECT)) {
                 CountDoubleInd(node->u.monadic, 0);
             }

@@ -357,12 +357,21 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
 - In `combine` at `0x5aebd9` and `0x5aec14`, RC1 uses a fresh register
   when combining a non-stack displacement with a register. This restores
   the use of `r0` for the relocated address in the `TRK_memcpy` arguments
-  in `dolphin_trk.c` at `-O0`. The `e_log10.c` object now matches stock
-  at `-O0`. The inlined destination pointer in `__TRK_copy_vectors` still
-  has a different allocation. Stock receives 43 uses and sets a cutoff of
-  four. The source receives 39 uses and sets a cutoff of three. Both count
-  three uses of the inlined pointer. The counts for
-  `r29`, `i`, `isrOffsetPtr`, and `r3` differ by one each before allocation.
+  in `dolphin_trk.c` at `-O0`. The `e_log10.c` object matches stock at
+  `-O0` with this rule.
+- Local declarations carry an expression with wire tag `0x42` and scope
+  kind 5. The parser emits one before initialization at `0x50dc76`.
+  The stream writer at `0x52cdde` packs its operand and then its scope
+  kind. The optimizer at `0x5d886b` gives the operand flag `0x400000`,
+  allowing it to count toward register allocation without making the
+  local address-taken. In `__TRK_copy_vectors`, the four declaration
+  references bring the GPR total to 43 and the cutoff to four. The
+  inlined destination pointer still has three uses and stays on the
+  stack. Corruption's `dolphin_trk.c`, `dispatch.c`, `file_io.c`,
+  `string.c`, `wstring.c`, and `s_ldexp.c` now match stock at `-O0`.
+  Scope markers currently contribute to allocation and survive the
+  program IPA stream. Their debug information emission remains to be
+  recovered.
 - `CMach_StructLayoutPackedBitfield` at `0x4f2117` closes the previous
   allocation unit at the first unused byte when it encounters a zero-width
   field, then aligns the offset for that field. This affects both the next
