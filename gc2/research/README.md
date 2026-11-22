@@ -385,6 +385,21 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   link supplies its source block's live-out and later links supply the
   destination block's live-out. In `fwide` this removes a false interference
   edge, so the result coalesces into r4 and is moved to r3 at the shared return.
+- RC1 allocates a virtual condition field in each scalar comparison selector.
+  In `e_sqrt.c`, value numbering at `0x5b4c01` copies the field from the
+  first signed comparison with zero, so two branches can read it across an
+  intervening comparison. The interference builder at `0x638da0` starts
+  with the real register count for the current class.
+- The backward peephole at `0x659f80` folds an arithmetic right shift into
+  a masked rotate when the mask excludes all sign-fill bits. It bypasses the
+  shift's GPR result and removes the shift when its value is dead.
+  Stock folds the shift in `e_sqrt.c` before coloring, while the two GPR
+  operands still differ.
+- The RC1 while parser at `0x50a7e0` allocates a separate entry-test label
+  at `0x50aee4` for expression conditions. The label follows the continue
+  target at the end of the body. The three while loops in `e_sqrt.c` account
+  for the shift from `@194` to the stock floating constant name `@197`.
+  The optimized `e_sqrt.c` object now matches stock.
 - RC1's `make_distinct_virtual_alias` at `0x5bfab0` allocates a named
   virtual alias even for ordinary writable pointer parameters. In
   `TRKDispatchMessage` it allocates `@87` before `create_switch_table`

@@ -2174,6 +2174,10 @@ static void statement(DeclThing* thing) {
             CLabel* label1;
             CLabel* label2;
             CLabel* label3;
+#if VERSION == VERSION_WII_1_0RC1
+            CLabel* testLabel = NULL;
+            Boolean conditionDeclaration = FALSE;
+#endif
 
             if ((tk = lex()) != '(') {
                 CError_ErrorSkip(ERR_LPAREN_EXPECTED);
@@ -2182,6 +2186,9 @@ static void statement(DeclThing* thing) {
             }
 
             if (copts.cplusplus && !copts.ARMscoping && isdeclaration(1, 0, 0, '=')) {
+#if VERSION == VERSION_WII_1_0RC1
+                conditionDeclaration = TRUE;
+#endif
                 block = CFunc_NewDeclBlock();
                 expr = CFunc_ParseLocalDeclarationList(FALSE, TRUE, FALSE, FALSE);
                 if (CScope_IsEmptyNameSpace(cscope_current)) {
@@ -2208,17 +2215,33 @@ static void statement(DeclThing* thing) {
                 }
             }
 
+#if VERSION == VERSION_WII_1_0RC1
+            label2 = newlabel();
+            label1 = newlabel();
+            label3 = newlabel();
+            if (!conditionDeclaration) {
+                testLabel = newlabel();
+            }
+            stmt = CFunc_AppendStatement(ST_GOTO);
+            stmt->label = testLabel ? testLabel : label1;
+#else
             stmt = CFunc_AppendStatement(ST_GOTO);
             stmt->label = newlabel();
             label1 = stmt->label;
+#endif
 
             CFunc_LoopIncrement();
 
             stmt = CFunc_AppendStatement(ST_LABEL);
+#if VERSION == VERSION_WII_1_0RC1
+            stmt->label = label2;
+            label2->stmt = stmt;
+#else
             stmt->label = newlabel();
             (label2 = stmt->label)->stmt = stmt;
 
             label3 = newlabel();
+#endif
 
             subthing = *thing;
             subthing.loopContinue = label1;
@@ -2230,6 +2253,13 @@ static void statement(DeclThing* thing) {
             stmt->label = label1;
             label1->stmt = stmt;
 
+#if VERSION == VERSION_WII_1_0RC1
+            if (testLabel) {
+                stmt = CFunc_AppendStatement(ST_LABEL);
+                stmt->label = testLabel;
+                testLabel->stmt = stmt;
+            }
+#endif
             ifstatement(TRUE, expr, label2, TRUE);
 
             CFunc_LoopDecrement();

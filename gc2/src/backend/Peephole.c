@@ -2504,6 +2504,63 @@ static UInt32 rotate_mask(PCode* instr) {
     return begin <= end ? (from_begin & through_end) : (from_begin | through_end);
 }
 
+static Boolean fold_arithmetic_shift(PCode* instr, PCode* def, Boolean result_live) {
+    UInt32 flags;
+    int shift;
+    int rotate;
+    UInt32 mask;
+    int result;
+    int source;
+    Boolean remove;
+
+    if (!def || def->op != PC_SRAWI) {
+        return FALSE;
+    }
+    flags = PCODE_FLAG_SET_F(def);
+    if ((flags & (fIsVolatile | fSideEffects)) ||
+        ((flags & fRecordBit) && usedbetween(instr, def, &def->args[4])) ||
+        isSPRlive(def, 0)) {
+        return FALSE;
+    }
+
+    shift = def->args[2].data.imm.value;
+    if (shift <= 0 || shift > 31) {
+        return FALSE;
+    }
+    rotate = instr->args[2].data.imm.value;
+    mask = rotate_mask(instr);
+    mask = (mask >> rotate) | (mask << ((32 - rotate) & 31));
+    if (mask & ~(0xffffffffu >> shift)) {
+        return FALSE;
+    }
+
+    result = def->args[0].data.reg.reg;
+    source = def->args[1].data.reg.reg;
+    remove = !result_live && !usedbetween(instr, def, &def->args[0]);
+    if ((result == source || definedbetween(instr, def, &def->args[1])) &&
+        (result != instr->args[0].data.reg.reg || !remove)) {
+        return FALSE;
+    }
+
+    instr->args[1].data.reg.reg = source;
+    instr->args[2].data.imm.value = (rotate - shift) & 31;
+    if (remove) {
+        deletepcode(def);
+    }
+    return TRUE;
+}
+
+static int SRAWI_RLWINM(PCode* instr, UInt32* masks) {
+    PCode* def = defininginstruction[instr->defID + 1];
+    short result = instr->args[1].data.reg.reg;
+
+    if (!fold_arithmetic_shift(instr, def, (masks[RegClass_GPR] & (1u << result)) != 0)) {
+        return FALSE;
+    }
+    defininginstruction[instr->defID + 1] = defininginstruction[def->defID + 1];
+    return TRUE;
+}
+
 static Boolean fold_li_insert(PCode* instr, const PCode* definition) {
     PCodeArg* destination = &instr->args[0];
     PCodeArg* source = &instr->args[1];
@@ -3358,6 +3415,9 @@ static void installpeepholepatterns(void) {
     installpattern(PC_BT, LI_CMP_BC);
     installpattern(PC_BF, LI_CMP_BC);
     installpattern(PC_RLWINM, RLWINM_RLWINM);
+#if VERSION == VERSION_WII_1_0RC1
+    installpattern(PC_RLWINM, SRAWI_RLWINM);
+#endif
     installpattern(PC_MULLI, MULLI_MULLI);
     installpattern(PC_ADDI, ADDI_ADDI);
     installpattern(PC_SRAWI, SRAWI_SRAWI);
@@ -3591,6 +3651,10 @@ void peepholeoptimizeprecolor(Object* func) {
                         changed = TRUE;
                         continue;
                     }
+                } else if (instr->op == PC_RLWINM) {
+                    short src = instr->args[1].data.reg.reg;
+                    PCode* def = find_def_backward(instr->prevPCode, RegClass_GPR, src);
+                    changed |= fold_arithmetic_shift(instr, def, bitvectorgetbit(src, gpr_live) != 0);
                 } else if (instr->op == PC_ADDI && instr->args[2].kind == PCOp_MEMORY &&
                            PC_OP_IS_WRITE_ANY_REGISTER(&instr->args[0], RegClass_GPR) &&
                            PC_OP_IS_READ_ANY_REGISTER(&instr->args[1], RegClass_GPR) &&

@@ -44,11 +44,12 @@ static void buildinterferencematrix(void) {
     short reg;
 
     UInt32 regs = used_virtual_registers[coloring_class];
+    UInt32 realRegs = n_real_registers[coloring_class];
     interferencematrix = oalloc(4 * ((((regs * regs) / 2) + 31) >> 5));
     bitvectorinitialize(interferencematrix, (regs * regs) / 2, 0);
 
-    for (i = 0; i < 32; i++) {
-        for (j = 0; j < 32; j++) {
+    for (i = 0; i < realRegs; i++) {
+        for (j = 0; j < realRegs; j++) {
             if (i != j) {
                 makeinterfere(i, j);
             }

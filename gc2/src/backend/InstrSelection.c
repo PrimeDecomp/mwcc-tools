@@ -5594,6 +5594,7 @@ void gen_negated_condition_gpr(ENode* cond, Operand* output, short outputReg) {
 void compare_floating(short nt, ENode* left, ENode* right, Operand* output) {
     Operand opleft;
     Operand opright;
+    int cr = 0;
 
     memclrw(&opleft, sizeof(Operand));
     memclrw(&opright, sizeof(Operand));
@@ -5606,23 +5607,27 @@ void compare_floating(short nt, ENode* left, ENode* right, Operand* output) {
         GEN_NODE_TO_FPR(right, &opright, right->rtype, 0);
     }
 
-    emitpcode((nt == EEQU || nt == ENOTEQU) ? PC_FCMPU : PC_FCMPO, 0, opleft.reg, opright.reg);
+#if VERSION == VERSION_WII_1_0RC1
+    cr = ALLOC_REG(RegClass_CRFIELD);
+#endif
+    emitpcode((nt == EEQU || nt == ENOTEQU) ? PC_FCMPU : PC_FCMPO, cr, opleft.reg, opright.reg);
     if (nt == ELESSEQU) {
-        emitpcode(PC_CROR, 0, 2, 0, 0, 0, 2);
+        emitpcode(PC_CROR, cr, 2, cr, 0, cr, 2);
         nt = EEQU;
     } else if (nt == EGREATEREQU) {
-        emitpcode(PC_CROR, 0, 2, 0, 1, 0, 2);
+        emitpcode(PC_CROR, cr, 2, cr, 1, cr, 2);
         nt = EEQU;
     }
 
     output->optype = OpndType_CRField;
-    output->reg = 0;
+    output->reg = cr;
     output->regOffset = nt;
 }
 
 void compare_integer(short nt, ENode* left, ENode* right, Operand* output) {
     Operand opleft;
     Operand opright;
+    int cr = 0;
 
     memclrw(&opleft, sizeof(Operand));
     memclrw(&opright, sizeof(Operand));
@@ -5653,10 +5658,13 @@ void compare_integer(short nt, ENode* left, ENode* right, Operand* output) {
         ENSURE_GPR(&opright, right->rtype, 0);
     }
 
-    emitpcode(is_unsigned(left->rtype) ? PC_CMPL : PC_CMP, 0, opleft.reg, opright.reg);
+#if VERSION == VERSION_WII_1_0RC1
+    cr = ALLOC_REG(RegClass_CRFIELD);
+#endif
+    emitpcode(is_unsigned(left->rtype) ? PC_CMPL : PC_CMP, cr, opleft.reg, opright.reg);
 
     output->optype = OpndType_CRField;
-    output->reg = 0;
+    output->reg = cr;
     output->regOffset = nt;
 }
 
@@ -5665,6 +5673,7 @@ void compare_immediate(short nt, ENode* left, SInt32 value, Operand* output) {
     short postIncReg;
     Operand op;
     SInt32 postIncValue;
+    int cr = 0;
 
     memclrw(&op, sizeof(Operand));
 
@@ -5727,6 +5736,7 @@ void compare_immediate(short nt, ENode* left, SInt32 value, Operand* output) {
 
 #if VERSION == VERSION_WII_1_0RC1
     Opcode compare = is_unsigned(left->rtype) ? PC_CMPLI : PC_CMPI;
+    cr = ALLOC_REG(RegClass_CRFIELD);
     if (compare == PC_CMPLI && value == 0) {
         if (nt == EGREATER) {
             nt = ENOTEQU;
@@ -5737,7 +5747,7 @@ void compare_immediate(short nt, ENode* left, SInt32 value, Operand* output) {
             compare = PC_CMPI;
         }
     }
-    emitpcode(compare, 0, op.reg, value);
+    emitpcode(compare, cr, op.reg, value);
 #else
     if (copts.peephole &&
         value == 0 &&
@@ -5759,7 +5769,7 @@ void compare_immediate(short nt, ENode* left, SInt32 value, Operand* output) {
     }
 
     output->optype = OpndType_CRField;
-    output->reg = 0;
+    output->reg = cr;
     output->regOffset = nt;
 }
 
@@ -5769,6 +5779,7 @@ void compare_immediate_long(short nt, ENode* left, SInt32 value, Operand* output
     int outputReg;
     Operand op;
     SInt32 postIncValue;
+    int cr = 0;
 
     memclrw(&op, sizeof(Operand));
 
@@ -5786,14 +5797,17 @@ void compare_immediate_long(short nt, ENode* left, SInt32 value, Operand* output
 
     outputReg = ALLOC_GPR();
     emitpcode(PC_ADDIS, outputReg, op.reg, 0, (SInt16)(~(value >> 16) + 1));
-    emitpcode(PC_CMPLI, 0, outputReg, (UInt16)value);
+#if VERSION == VERSION_WII_1_0RC1
+    cr = ALLOC_REG(RegClass_CRFIELD);
+#endif
+    emitpcode(PC_CMPLI, cr, outputReg, (UInt16)value);
 
     if (postIncFlag) {
         add_register_immediate(postIncReg, postIncReg, postIncValue);
     }
 
     output->optype = OpndType_CRField;
-    output->reg = 0;
+    output->reg = cr;
     output->regOffset = nt;
 }
 

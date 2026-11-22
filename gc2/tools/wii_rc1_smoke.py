@@ -2614,6 +2614,76 @@ double nested_call(double x) { return next_value(abs_value(next_value(x))) + 0.7
             run(objcopy, f"--dump-section={section}={output}", obj, cwd=work)
             results[f"{source.name} {opt} {section}"] = output.read_bytes()
 
+    source = work / "compare_and_shift.c"
+    source.write_text(
+        """
+unsigned folded_shift(int x) { return (unsigned)(x >> 1) << 20; }
+int sign_bits(int x) { return (x >> 9) << 4; }
+int retained_shift(int x, int* p) {
+    int r = x >> 2;
+    *p = r;
+    return r << 19;
+}
+int reused_compare(int x, int y) {
+    if (x <= 0) {
+        if (((x & 0x7fffffff) | y) == 0) return 1;
+        if (x < 0) return 2;
+    }
+    return 3;
+}
+int different_compare(int x, int y) {
+    if (x <= 5) {
+        if (y == 0) return 1;
+        if ((unsigned)x <= 5) return 2;
+    }
+    return 3;
+}
+extern int external(void);
+int compare_with_call(int x) {
+    if (x <= 0) {
+        if (external()) return 1;
+        if (x < 0) return 2;
+    }
+    return 3;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    for options in (
+        ("-O0",), ("-O1",), ("-O2",), ("-O3",), ("-O4,p",), ("-O4,s",),
+        ("-O4,p", "-pragma", "peephole off"), ("-O4,p", "-pragma", "scheduling off"),
+    ):
+        run(compiler, *FLAGS, *options, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+        results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
+
+    source = work / "while_labels.c"
+    source.write_text(
+        """
+double braced(volatile int* p) {
+    while (*p) {
+        if (*p == 1) continue;
+        --*p;
+    }
+    return 0.125;
+}
+double unbraced(volatile int* p) {
+    while (*p) --*p;
+    return 0.25;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O0", "-O1", "-O2", "-O3", "-O4,p", "-O4,s"):
+        run(compiler, *FLAGS, opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        for section in (".text", ".strtab"):
+            output = source.with_suffix(section)
+            run(objcopy, f"--dump-section={section}={output}", obj, cwd=work)
+            results[f"{source.name} {opt} {section}"] = output.read_bytes()
+
     source = work / "integer_factoring.c"
     source.write_text(
         """
