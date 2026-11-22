@@ -82,6 +82,10 @@ extern UseDefInfo* usedefinfo;
 
 extern ObjectUseDef* findobjectusedef(Object* object);
 extern void computeusedefchains(int includeMemory);
+#if VERSION == VERSION_WII_1_0RC1
+extern ObjectUseDef* objectusedeflist;
+extern SInt32 last_usedef_register[RegClassMax];
+#endif
 #if VERSION >= VERSION_GC_2_5
 extern int precedes(PCode* a, PCode* b);
 extern int canidate_reaches_use(

@@ -2447,6 +2447,53 @@ int check_byte_order(void) {
         run(compiler, *FLAGS, *options, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {' '.join(options)}"] = obj.read_bytes()
 
+    source = work / "memory_references.c"
+    source.write_text(
+        """\
+void change(double*);
+double inspect_then_square(double x) {
+    unsigned high = ((unsigned*)&x)[0];
+    if (high < 0x3e400000 && (int)x == 0)
+        return x;
+    return x * x;
+}
+double inspect_then_mutate(double x) {
+    unsigned high = ((unsigned*)&x)[0];
+    if (high < 0x3e400000)
+        change(&x);
+    return x * x;
+}
+double inspect_then_replace_high_word(double x, unsigned high) {
+    ((unsigned*)&x)[0] = high;
+    return x * x;
+}
+double inspect_then_store(double x, unsigned high) {
+    if (high)
+        ((unsigned*)&x)[0] = high;
+    return x * x;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    for options in (
+        ("-O0",),
+        ("-O1",),
+        ("-O2",),
+        ("-O3",),
+        ("-O4,p",),
+        ("-O4,s",),
+        ("-O4,p", "-pragma", "peephole off"),
+        ("-O4,p", "-pragma", "opt_propagation off"),
+    ):
+        run(
+            compiler, *FLAGS, *options, "-fp_contract", "off", "-func_align", "4",
+            "-c", source, "-o", obj, cwd=work,
+        )
+        run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+        results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
+
     source = work / "local_declaration_weight.c"
     source.write_text(
         "void declaration_weight(int x) {\n"

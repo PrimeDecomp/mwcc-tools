@@ -154,6 +154,16 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   eligible for inversion around a goto. All previously matching inputs in
   the Corruption corpus still match, and `nubinit.c` now matches at the
   project's `-O4,p` setting.
+- At `-O3` and `-O4`, stock RC1 runs `rewrite_memory_references`
+  (`0x64f030`) before optimizing loops. Its direct forwarding path replaces
+  loads whose reaching stores cover the whole object and agree on how to
+  copy the value. The helper at `0x64f940` can rename a store operand's
+  single-use producer when both instructions are in the same block and
+  no intervening memory access aliases the store. Stock uses this pass to
+  avoid reloading a spilled floating-point parameter even when an integer
+  read still needs the stack slot. The source now emits the same instruction
+  bytes for that case and for controls with calls and partial writes.
+  The optimized Corruption `s_frexp.c` and `s_ldexp.c` objects now match.
 - The native loop alignment pass at `0x59c710` requests instruction alignment
   on the size-optimized path (`0x59c7b8` through `0x59c7d8`). For the Gekko
   backend this is four bytes, so the source skips eight-byte loop padding in

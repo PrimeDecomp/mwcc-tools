@@ -44,9 +44,19 @@ static void optimizelevel3(Object* func) {
         pclistblocks(CMangler_GetLinkName(func)->name, "AFTER VALUE NUMBERING");
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    propagateconstants();
+#endif
     propagatecopyinstructions(func, FALSE);
     propagatedcopies = FALSE;
     propagateaddinstructions(func);
+
+#if VERSION == VERSION_WII_1_0RC1
+    computeusedefchains(TRUE);
+    if (rewrite_memory_references()) {
+        propagatecopyinstructions(func, FALSE);
+    }
+#endif
 
     findloopsinflowgraph();
     if (loopsinflowgraph) {
@@ -131,9 +141,19 @@ static void optimizelevel4(Object* func) {
         pclistblocks(CMangler_GetLinkName(func)->name, "AFTER VALUE NUMBERING");
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    propagateconstants();
+#endif
     propagatecopyinstructions(func, FALSE);
     propagatedcopies = FALSE;
     propagateaddinstructions(func);
+
+#if VERSION == VERSION_WII_1_0RC1
+    computeusedefchains(TRUE);
+    if (rewrite_memory_references()) {
+        propagatecopyinstructions(func, FALSE);
+    }
+#endif
 
     findloopsinflowgraph();
     if (loopsinflowgraph) {

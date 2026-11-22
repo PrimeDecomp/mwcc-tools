@@ -8,6 +8,7 @@
 #include "compiler/LoopDetection.h"
 #include "compiler/objects.h"
 #if VERSION == VERSION_WII_1_0RC1
+#include "compiler/Alias.h"
 #include "compiler/Operands.h"
 #endif
 #include "compiler/PCode.h"
@@ -23,6 +24,138 @@ int optimizedloop_trans_regs;
 static UInt32* liveonexit;
 static UInt32* inductionvariables;
 static SInt32 last_virtual_GPR;
+
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean memory_definition_reaches(PCode* def, int defID, PCode* use) {
+    PCode* scan;
+    PCodeBlock* block = use->block;
+
+    if (!def->block) {
+        return FALSE;
+    }
+    if (def->block == block && precedes(def, use)) {
+        scan = def->nextPCode;
+    } else {
+        if (!bitvectorgetbit(defID, usedefinfo[block->blockIndex].defin)) {
+            return FALSE;
+        }
+        scan = block->firstPCode;
+    }
+    for (; scan != use; scan = scan->nextPCode) {
+        if ((scan->flags & (fIsWrite | fIsCall)) && may_alias(scan, def)) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+static Boolean rename_store_register(PCode* store, short replacement) {
+    PCodeArg* operand = &store->args[0];
+    RegClass regClass = operand->arg;
+    short reg = operand->data.reg.reg;
+    RegUseOrDef* uses;
+    RegUseOrDef* defs;
+    PCode* producer;
+    PCode* scan;
+
+    if (reg < n_real_registers[regClass] || reg >= last_usedef_register[regClass]) {
+        return FALSE;
+    }
+    uses = reg_Uses[regClass][reg];
+    defs = reg_Defs[regClass][reg];
+    if (!uses || uses->next || Uses[uses->id].pcode != store || !defs || defs->next) {
+        return FALSE;
+    }
+    producer = Defs[defs->id].pcode;
+    if (producer->block != store->block || !precedes(producer, store) ||
+        !PC_OP_IS_WRITE_REGISTER(&producer->args[0], regClass, reg)) {
+        return FALSE;
+    }
+    for (scan = producer->nextPCode; scan != store; scan = scan->nextPCode) {
+        if ((scan->flags & (fIsRead | fIsWrite | fOpFromMemory | fOpToMemory)) &&
+            may_alias(scan, store)) {
+            return FALSE;
+        }
+    }
+    producer->args[0].data.reg.reg = replacement;
+    operand->data.reg.reg = replacement;
+    return TRUE;
+}
+
+Boolean rewrite_memory_references(void) {
+    ObjectUseDef* entry;
+    Boolean changed = FALSE;
+    const UInt32* entryUses = usedefinfo[pcbasicblocks->blockIndex].usein;
+
+    for (entry = objectusedeflist; entry; entry = entry->next) {
+        RegUseOrDef* use;
+        PCodeArg saved = {0};
+        Alias* savedAlias = NULL;
+
+        if (!entry->directdefs || !entry->directuses) {
+            continue;
+        }
+        for (use = entry->uses; use; use = use->next) {
+            PCode* load = Uses[use->id].pcode;
+            RegUseOrDef* def;
+            int copyKind = 0;
+
+            // A memory use live on entry can be reached without a full store.
+            if (!load->block || Uses[use->id].v.arg != 0 ||
+                (load->flags & (fIsRead | fIsVolatile | fSideEffects | fUpdatesPtr)) != fIsRead ||
+                load->args[0].kind != PCOp_REGISTER ||
+                bitvectorgetbit(use->id, entryUses)) {
+                continue;
+            }
+            for (def = entry->defs; def; def = def->next) {
+                PCode* store = Defs[def->id].pcode;
+
+                if (!memory_definition_reaches(store, def->id, load)) {
+                    continue;
+                }
+                if ((store->flags & (fIsWrite | fIsVolatile | fSideEffects)) != fIsWrite ||
+                    store->alias != load->alias ||
+                    store->args[0].kind != PCOp_REGISTER ||
+                    store->args[0].arg != load->args[0].arg) {
+                    copyKind = 0;
+                    break;
+                }
+                copyKind = can_reuse_stored_value(store, load);
+                if (!copyKind) {
+                    break;
+                }
+            }
+            if (!copyKind) {
+                continue;
+            }
+
+            if (savedAlias != load->alias || saved.arg != load->args[0].arg) {
+                savedAlias = load->alias;
+                saved = load->args[0];
+                saved.data.reg.reg = ALLOC_REG(saved.arg);
+                for (def = entry->defs; def; def = def->next) {
+                    PCode* store = Defs[def->id].pcode;
+
+                    if (store->block && (store->flags & fIsWrite) && store->alias == savedAlias &&
+                        store->args[0].kind == PCOp_REGISTER && store->args[0].arg == saved.arg &&
+                        !rename_store_register(store, saved.data.reg.reg)) {
+                        insertpcodebefore(store, makecopyinstruction(&store->args[0], &saved));
+                    }
+                }
+            }
+
+            PCode* copy = makecopyforload(copyKind, &saved, &load->args[0]);
+            insertpcodebefore(load, copy);
+            if (load->defID < number_of_Defs && Defs[load->defID].pcode == load) {
+                Defs[load->defID].pcode = copy;
+            }
+            deletepcode(load);
+            changed = TRUE;
+        }
+    }
+    return changed;
+}
+#endif
 
 static int ispowerof2(SInt32 value) {
     int bit = getbit(value);
