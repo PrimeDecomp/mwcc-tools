@@ -298,6 +298,7 @@ struct CompilerLinkerOptions {
     UInt8 removeemptyloops;
     Boolean e500_floatingpoint;
     Boolean e500v2_floatingpoint;
+    Boolean optimize_tail_call;
 #endif
 };
 #pragma pack(pop)

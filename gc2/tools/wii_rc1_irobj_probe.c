@@ -668,6 +668,7 @@ static Boolean check_function_options(const CIRStreamFunctionHeader* function) {
     return options.processor == CPU_PPC750 &&
         options.optimizationlevel == 1 &&
         options.removeemptyloops &&
+        options.optimize_tail_call &&
         options.optimizesize &&
         options.function_align == 64 &&
         options.sdata_threshold == 79 &&

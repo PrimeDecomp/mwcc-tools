@@ -258,6 +258,9 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
             IRO_SimplifyConditionals();
 
 #if VERSION == VERSION_WII_1_0RC1
+            if (IRO_OptimizeSwitches()) {
+                IRO_DumpAfterPhase("IRO_OptimizeSwitches", FALSE);
+            }
             if (copts.removeemptyloops && IRO_RemoveAllEmptyLoops()) {
                 IRO_DumpAfterPhase("IRO_RemoveAllEmptyLoops", FALSE);
             }

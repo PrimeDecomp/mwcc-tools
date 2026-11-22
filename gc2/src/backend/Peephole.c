@@ -12,6 +12,12 @@
 #include "compiler/RegisterInfo.h"
 #include "compiler/Scheduler.h"
 #include "compiler/types.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/BitVectors.h"
+#include "compiler/Coloring.h"
+#include "compiler/LiveVariables.h"
+#include "compiler/Registers.h"
+#endif
 
 typedef int (*PeepholeFunc)(PCode* instr, UInt32* masks);
 
@@ -243,7 +249,7 @@ static void computeinstructionpredecessors(PCodeBlock* block) {
 #endif
 }
 
-static int dead(PCode* instr, UInt32* masks) {
+static int peephole_dead(PCode* instr, UInt32* masks) {
     int i;
     PCodeArg* op;
 
@@ -2238,7 +2244,7 @@ static void peepholeoptimizeblock(PCodeBlock* block) {
     }
 
     for (instr = block->lastPCode; instr; instr = instr->prevPCode) {
-        if (dead(instr, masks)) {
+        if (peephole_dead(instr, masks)) {
             ORACLE_PROBE(OracleProbe_PeepholeDead(instr));
             deletepcode(instr);
         } else {
@@ -2438,10 +2444,12 @@ static UInt32 fillmaskholes(UInt32 mask) {
     }
 }
 
+#if VERSION != VERSION_WII_1_0RC1
 static int canuseinsert(PCode* instr1, PCode* instr2, short reg) {
     return (computepossiblemask(instr2, reg) &
             fillmaskholes(computepossiblemask(instr1, instr1->args[0].data.reg.reg))) == 0;
 }
+#endif
 
 static PCode* find_def_backwords(PCode* instr, short reg) {
     int i;
@@ -2458,6 +2466,77 @@ static PCode* find_def_backwords(PCode* instr, short reg) {
     return NULL;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static UInt32 rotate_mask(PCode* instr) {
+    UInt32 begin = instr->args[3].data.imm.value;
+    UInt32 end = instr->args[4].data.imm.value;
+    UInt32 from_begin = 0xffffffffu >> begin;
+    UInt32 through_end = 0xffffffffu << (31 - end);
+
+    return begin <= end ? (from_begin & through_end) : (from_begin | through_end);
+}
+
+static void copy_binary_operands(PCode* dest, PCode* source, int count) {
+    int i;
+
+    change_opcode(dest, source->op);
+    change_num_operands(dest, count);
+    for (i = 1; i < count; i++) {
+        dest->args[i] = source->args[i];
+    }
+}
+
+static Boolean combine_disjoint_fields(PCode* masked, PCode* combined, PCodeArg* base) {
+    UInt32 insert_mask = fillmaskholes(computepossiblemask(masked, masked->args[0].data.reg.reg));
+    UInt32 base_mask = computepossiblemask(combined, base->data.reg.reg);
+    PCode* definition;
+    PCode* insert;
+    short start;
+    short end;
+
+    if (!insert_mask || !base_mask || (insert_mask & base_mask)) {
+        return FALSE;
+    }
+
+    definition = find_def_backwords(combined->prevPCode, base->data.reg.reg);
+    if (definition && definition->op == PC_RLWINM &&
+        definition->args[1].data.reg.reg == masked->args[1].data.reg.reg &&
+        definition->args[2].data.imm.value == masked->args[2].data.imm.value &&
+        rotate_mask(definition) == ~rotate_mask(masked) &&
+        !definedbetween(combined, masked, &masked->args[1]) &&
+        !definedbetween(combined, definition, &definition->args[1])) {
+        copy_binary_operands(combined, masked, 5);
+        combined->args[3].data.imm.value = 0;
+        combined->args[4].data.imm.value = 31;
+        return TRUE;
+    }
+
+    if (definition && definition->op == PC_RLWINM &&
+        !definedbetween(combined, definition, &definition->args[1])) {
+        copy_binary_operands(combined, definition, 5);
+    } else if (definition && definition->op == PC_OR &&
+               !definedbetween(combined, definition, &definition->args[1]) &&
+               !definedbetween(combined, definition, &definition->args[2])) {
+        copy_binary_operands(combined, definition, 3);
+    } else {
+        change_opcode(combined, PC_MR);
+        combined->args[1] = *base;
+        change_num_operands(combined, 2);
+    }
+
+    insert = copypcode(masked);
+    change_opcode(insert, PC_RLWIMI);
+    insert->args[0] = combined->args[0];
+    insert->args[0].data.reg.effect |= EffectRead;
+    if (ismaskconstant(insert_mask, &start, &end)) {
+        insert->args[3].data.imm.value = start;
+        insert->args[4].data.imm.value = end;
+    }
+    insertpcodeafter(combined, insert);
+    return TRUE;
+}
+#endif
+
 static void adjustforward(PCodeBlock* block) {
     PCode* instr;
     PCode* tmp;
@@ -2468,8 +2547,10 @@ static void adjustforward(PCodeBlock* block) {
     short opcode;
     short destReg;
     int srcReg;
+#if VERSION != VERSION_WII_1_0RC1
     SInt32 valA;
     SInt32 valB;
+#endif
 
     instr = block->firstPCode;
     while (instr) {
@@ -2565,19 +2646,17 @@ static void adjustforward(PCodeBlock* block) {
                            !(PCODE_FLAG_SET_F(scan) & fRecordBit) &&
                            !(PCODE_FLAG_SET_F(instr) & fRecordBit) &&
                            scan->args[0].data.reg.reg != instr->args[1].data.reg.reg) {
+#if VERSION == VERSION_WII_1_0RC1
+                    if ((a[1].data.reg.reg == destReg && combine_disjoint_fields(instr, scan, &a[2])) ||
+                        (a[2].data.reg.reg == destReg && combine_disjoint_fields(instr, scan, &a[1]))) {
+                        break;
+                    }
+#else
                     if (a[1].data.reg.reg == destReg &&
                         canuseinsert(instr, scan, a[2].data.reg.reg)) {
                         op = &scan->args[2];
                         tmp = find_def_backwords(scan->prevPCode, op->data.reg.reg);
-                        if (
-#if VERSION == VERSION_WII_1_0RC1
-                            tmp &&
-#endif
-                            tmp->op == PC_RLWINM && tmp->args[2].data.imm.value == 0
-#if VERSION == VERSION_WII_1_0RC1
-                            && !definedbetween(scan, tmp, &tmp->args[1])
-#endif
-                        ) {
+                        if (tmp->op == PC_RLWINM && tmp->args[2].data.imm.value == 0) {
                             if (instr->args[3].data.imm.value <= instr->args[4].data.imm.value) {
                                 valA = ((instr->args[3].data.imm.value > 31)
                                             ? 0
@@ -2643,15 +2722,7 @@ static void adjustforward(PCodeBlock* block) {
                         canuseinsert(instr, scan, a[1].data.reg.reg)) {
                         op = &scan->args[1];
                         tmp = find_def_backwords(scan->prevPCode, op->data.reg.reg);
-                        if (
-#if VERSION == VERSION_WII_1_0RC1
-                            tmp &&
-#endif
-                            tmp->op == PC_RLWINM && tmp->args[2].data.imm.value == 0
-#if VERSION == VERSION_WII_1_0RC1
-                            && !definedbetween(scan, tmp, &tmp->args[1])
-#endif
-                        ) {
+                        if (tmp->op == PC_RLWINM && tmp->args[2].data.imm.value == 0) {
                             if (instr->args[3].data.imm.value <= instr->args[4].data.imm.value) {
                                 valA = ((instr->args[3].data.imm.value > 31)
                                             ? 0
@@ -2712,6 +2783,7 @@ static void adjustforward(PCodeBlock* block) {
                         insertpcodeafter(scan, tmp);
                         break;
                     }
+#endif
                 } else if (!sourceChanged &&
                            destReg != srcReg &&
                            me == 31 &&
@@ -3043,6 +3115,154 @@ void peepholeoptimizeforward(Object* func) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean dead_in_all_classes(PCode* instr, UInt32* live[RegClassMax]) {
+    PCodeArg* arg;
+    int i;
+
+    if (instr->flags & (fIsBranch | fIsWrite | fIsCall | fIsVolatile | fSideEffects)) {
+        return FALSE;
+    }
+    if (instr->block->flags & (fIsProlog | fIsEpilogue)) {
+        return FALSE;
+    }
+    if (!instr->block->predecessors) {
+        return TRUE;
+    }
+    for (i = 0, arg = instr->args; i < instr->argCount; i++, arg++) {
+        if (arg->kind == PCOp_REGISTER && (arg->data.reg.effect & EffectWrite) &&
+            bitvectorgetbit(arg->data.reg.reg, live[arg->arg])) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+static void update_live_registers(PCode* instr, UInt32* live[RegClassMax]) {
+    PCodeArg* arg;
+    int i;
+
+    for (i = 0, arg = instr->args; i < instr->argCount; i++, arg++) {
+        if (arg->kind == PCOp_REGISTER && (arg->data.reg.effect & EffectWrite)) {
+            bitvectorclearbit(arg->data.reg.reg, live[arg->arg]);
+        }
+    }
+    for (i = 0, arg = instr->args; i < instr->argCount; i++, arg++) {
+        if (arg->kind == PCOp_REGISTER && (arg->data.reg.effect & EffectRead)) {
+            bitvectorsetbit(arg->data.reg.reg, live[arg->arg]);
+        }
+    }
+}
+
+void eliminatedeadpcode(Object* func, Boolean fixed_point) {
+    RegClass saved_class = coloring_class;
+    LiveInfo* saved_info = liveinfo;
+    LiveInfo* info[RegClassMax];
+    UInt32* live[RegClassMax];
+    RegClass rclass;
+    PCodeBlock* block;
+    PCode* instr;
+    Boolean changed;
+
+    do {
+        changed = FALSE;
+        for (rclass = 0; rclass < RegClassMax; rclass++) {
+            coloring_class = rclass;
+            computelivevariables(func);
+            info[rclass] = liveinfo;
+            live[rclass] = oalloc(sizeof(UInt32) * ((used_virtual_registers[rclass] + 31) >> 5));
+        }
+
+        for (block = pcbasicblocks; block; block = block->nextBlock) {
+            for (rclass = 0; rclass < RegClassMax; rclass++) {
+                bitvectorcopy(live[rclass], info[rclass][block->blockIndex].out,
+                              used_virtual_registers[rclass]);
+            }
+            for (instr = block->lastPCode; instr; instr = instr->prevPCode) {
+                if (dead_in_all_classes(instr, live)) {
+                    ORACLE_PROBE(OracleProbe_PeepholeDead(instr));
+                    deletepcode(instr);
+                    changed = TRUE;
+                } else {
+                    update_live_registers(instr, live);
+                }
+            }
+        }
+        freeoheap();
+    } while (fixed_point && changed);
+
+    liveinfo = saved_info;
+    coloring_class = saved_class;
+}
+
+static Boolean LIS_ADDI(PCode* instr, UInt32* live) {
+    PCodeArg* dst = &instr->args[0];
+    PCodeArg* src = &instr->args[1];
+    short old_reg = src->data.reg.reg;
+    short new_reg = dst->data.reg.reg;
+    PCode* def;
+
+    if (new_reg == old_reg || bitvectorgetbit(old_reg, live)) {
+        return FALSE;
+    }
+    def = find_def_backwords(instr->prevPCode, old_reg);
+    if (!def || (def->op != PC_LIS && def->op != PC_ADDIS) ||
+        def->args[1].kind != PCOp_MEMORY ||
+        def->args[1].data.mem.obj != instr->args[2].data.mem.obj ||
+        usedbetween(instr, def, dst) || definedbetween(instr, def, dst) ||
+        usedbetween(instr, def, src)) {
+        return FALSE;
+    }
+
+    def->args[0].data.reg.reg = new_reg;
+    src->data.reg.reg = new_reg;
+    return TRUE;
+}
+
+void peepholeoptimizeprecolor(Object* func) {
+    RegClass saved_class = coloring_class;
+    SInt32 reg_count = used_virtual_registers[RegClass_GPR];
+    UInt32* live;
+    PCodeBlock* block;
+    PCode* instr;
+    PCodeArg* arg;
+    int i;
+    Boolean changed;
+
+    coloring_class = RegClass_GPR;
+    computelivevariables(func);
+    live = oalloc(sizeof(UInt32) * ((reg_count + 31) >> 5));
+
+    for (block = pcbasicblocks; block; block = block->nextBlock) {
+        do {
+            changed = FALSE;
+            bitvectorcopy(live, liveinfo[block->blockIndex].out, reg_count);
+            for (instr = block->lastPCode; instr; instr = instr->prevPCode) {
+                if (instr->op == PC_ADDI && instr->args[2].kind == PCOp_MEMORY &&
+                    PC_OP_IS_WRITE_ANY_REGISTER(&instr->args[0], RegClass_GPR) &&
+                    PC_OP_IS_READ_ANY_REGISTER(&instr->args[1], RegClass_GPR) &&
+                    bitvectorgetbit(instr->args[0].data.reg.reg, live)) {
+                    changed |= LIS_ADDI(instr, live);
+                }
+                for (i = 0, arg = instr->args; i < instr->argCount; i++, arg++) {
+                    if (PC_OP_IS_WRITE_ANY_REGISTER(arg, RegClass_GPR)) {
+                        bitvectorclearbit(arg->data.reg.reg, live);
+                    }
+                }
+                for (i = 0, arg = instr->args; i < instr->argCount; i++, arg++) {
+                    if (PC_OP_IS_READ_ANY_REGISTER(arg, RegClass_GPR)) {
+                        bitvectorsetbit(arg->data.reg.reg, live);
+                    }
+                }
+            }
+        } while (changed);
+    }
+
+    freeoheap();
+    coloring_class = saved_class;
+}
+#endif
+
 void peepholemergeblocks(Object* func, Boolean mergePrologEpilog) {
     PCodeBlock* block;
     PCodeBlock* next;
@@ -3098,10 +3318,16 @@ void peepholemergeblocks(Object* func, Boolean mergePrologEpilog) {
                 if (next->pcodeCount > 0) {
                     for (instr = next->firstPCode; instr; instr = nextinstr) {
                         nextinstr = instr->nextPCode;
-                        if (instr->flags & (fIsCall | fSideEffects)) {
+                        if ((VERSION != VERSION_WII_1_0RC1 || next != epilogue) &&
+                            (instr->flags & (fIsCall | fSideEffects))) {
                             break;
                         }
 
+#if VERSION == VERSION_WII_1_0RC1
+                        if (next == epilogue) {
+                            instr->flags |= fIsVolatile;
+                        }
+#endif
                         deletepcode(instr);
                         if (instr->op != PC_B) {
                             appendpcode(block, instr);

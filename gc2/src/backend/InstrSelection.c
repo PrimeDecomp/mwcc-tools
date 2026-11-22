@@ -1226,6 +1226,38 @@ void gen_SHR(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean split_and_mask(ENode* expr, SInt32 mask, short outputReg, Operand* output) {
+    short low_first, low_last;
+    short high_first, high_last;
+    short dest;
+    Operand input;
+
+    if (!ismaskconstant(mask & 0xffff, &low_first, &low_last) ||
+        !ismaskconstant(mask & 0xffff0000, &high_first, &high_last)) {
+        return FALSE;
+    }
+
+    memclrw(&input, sizeof(input));
+    GEN_NODE(expr, &input);
+    ENSURE_GPR(&input, expr->rtype, 0);
+    dest = outputReg && outputReg != input.reg ? outputReg : ALLOC_GPR();
+    if (copts.peephole) {
+        short low_reg = ALLOC_GPR();
+        short high_reg = ALLOC_GPR();
+        emitpcode(PC_RLWINM, low_reg, input.reg, 0, low_first, low_last);
+        emitpcode(PC_RLWINM, high_reg, input.reg, 0, high_first, high_last);
+        emitpcode(PC_OR, dest, low_reg, high_reg);
+    } else {
+        emitpcode(PC_RLWINM, dest, input.reg, 0, low_first, low_last);
+        emitpcode(PC_RLWIMI, dest, input.reg, 0, high_first, high_last);
+    }
+    output->optype = OpndType_GPR;
+    output->reg = dest;
+    return TRUE;
+}
+#endif
+
 void gen_AND(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     Type* type;
     ENode* left;
@@ -1285,6 +1317,11 @@ void gen_AND(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
         binary_immediate(PC_ANDI, left, right->data.intval.lo, outputReg, output);
     } else if (ENODE_IS(right, EINTCONST) && FITS_IN_HI_SHORT(right->data.intval.lo)) {
         binary_immediate(PC_ANDIS, left, right->data.intval.lo >> 16, outputReg, output);
+#if VERSION == VERSION_WII_1_0RC1
+    } else if (ENODE_IS(right, EINTCONST) &&
+               split_and_mask(left, right->data.intval.lo, outputReg, output)) {
+        return;
+#endif
     } else if (ENODE_IS(left, EINTCONST) && ismaskconstant(left->data.intval.lo, &first, &last)) {
         if (ENODE_IS(right, ESHL) &&
             ENODE_IS(right->data.diadic.right, EINTCONST) &&
@@ -1320,6 +1357,11 @@ void gen_AND(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
         binary_immediate(PC_ANDI, right, left->data.intval.lo, outputReg, output);
     } else if (ENODE_IS(left, EINTCONST) && FITS_IN_HI_SHORT(left->data.intval.lo)) {
         binary_immediate(PC_ANDIS, right, left->data.intval.lo >> 16, outputReg, output);
+#if VERSION == VERSION_WII_1_0RC1
+    } else if (ENODE_IS(left, EINTCONST) &&
+               split_and_mask(right, left->data.intval.lo, outputReg, output)) {
+        return;
+#endif
     } else if (ENODE_IS(right, EBINNOT)) {
         binary_operator(PC_ANDC, left, right->data.monadic, outputReg, output);
     } else if (ENODE_IS(left, EBINNOT)) {
@@ -5560,6 +5602,20 @@ void compare_immediate(short nt, ENode* left, SInt32 value, Operand* output) {
         ENSURE_GPR(&op, left->rtype, 0);
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    Opcode compare = is_unsigned(left->rtype) ? PC_CMPLI : PC_CMPI;
+    if (compare == PC_CMPLI && value == 0) {
+        if (nt == EGREATER) {
+            nt = ENOTEQU;
+        } else if (nt == ELESSEQU) {
+            nt = EEQU;
+        }
+        if (nt == EEQU || nt == ENOTEQU) {
+            compare = PC_CMPI;
+        }
+    }
+    emitpcode(compare, 0, op.reg, value);
+#else
     if (copts.peephole &&
         value == 0 &&
         pclastblock->pcodeCount > 0 &&
@@ -5573,6 +5629,7 @@ void compare_immediate(short nt, ENode* left, SInt32 value, Operand* output) {
     } else {
         emitpcode(is_unsigned(left->rtype) ? PC_CMPLI : PC_CMPI, 0, op.reg, value);
     }
+#endif
 
     if (postIncFlag) {
         add_register_immediate(postIncReg, postIncReg, postIncValue);

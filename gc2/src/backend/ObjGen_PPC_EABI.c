@@ -90,7 +90,9 @@ static void create_main_file_object(void);
 static ObjGenSection* select_object_section(
     Object* obj, SInt32 size, Boolean initialized, Boolean noCommon, Boolean isConst
 );
+#if VERSION != VERSION_WII_1_0RC1
 static InterruptGenerationRecord* resolve_object_pseudo_section(Object* obj, BE_SymNode* sym);
+#endif
 static void emit_object_data_and_relocations(
     Object* object, const char* data, OLinkList* list, SInt32 size, Boolean isConst
 );
@@ -379,8 +381,8 @@ static void write_section_sets(GList* output) {
             record + 32,
             sectionSet->sdataSection ? sectionSet->sdataSection : copts.sdataSection->header->index
         );
-        CIRStream_WriteWord(record + 36, copts.sdata_threshold);
-        CIRStream_WriteWord(record + 40, copts.sdata2_threshold);
+        CIRStream_WriteWord(record + 36, sectionSet->sdata_threshold);
+        CIRStream_WriteWord(record + 40, sectionSet->sdata2_threshold);
         AppendGListData(output, record, sizeof(record));
     }
 }
@@ -643,6 +645,8 @@ static Boolean read_precompiled_selectors(
             entry->constSection = roles[CIRStreamConstSection];
             entry->sconstSection = roles[CIRStreamSmallConstSection];
             entry->sdataSection = roles[CIRStreamSmallDataSection];
+            entry->sdata_threshold = (SInt32)CIRStream_ReadWord(record + 36);
+            entry->sdata2_threshold = (SInt32)CIRStream_ReadWord(record + 40);
         } else {
             entry->kind = InterruptRecord_DeclSpec;
             entry->sectionIndex =
@@ -1392,6 +1396,8 @@ void PPC_EABI_SetSection(Object* object, SInt32 size, Boolean isConst, Boolean a
 #endif
     InterruptGenerationRecord* rec;
     SInt16 section;
+    SInt32 sdata_threshold = copts.sdata_threshold;
+    SInt32 sdata2_threshold = copts.sdata2_threshold;
 
     rec = NULL;
     section = object->section;
@@ -1402,6 +1408,18 @@ void PPC_EABI_SetSection(Object* object, SInt32 size, Boolean isConst, Boolean a
         return;
     }
     if (section < 0) {
+#if VERSION == VERSION_WII_1_0RC1
+        rec = CodeGen_FindInterruptGenerationRecord(section);
+        CError_ASSERT(1187, rec != NULL);
+        if (rec->kind == InterruptRecord_DeclSpec) {
+            CError_ASSERT(1187, rec->sectionIndex != 0);
+            object->section = rec->sectionIndex;
+            return;
+        }
+        CError_ASSERT(1187, rec->kind == InterruptRecord_SectionSet);
+        sdata_threshold = rec->sdata_threshold;
+        sdata2_threshold = rec->sdata2_threshold;
+#else
         rec = resolve_object_pseudo_section(object, MakeSymbolTableEntry(object));
         switch (rec->kind) {
             case InterruptRecord_Interrupt:
@@ -1416,6 +1434,7 @@ void PPC_EABI_SetSection(Object* object, SInt32 size, Boolean isConst, Boolean a
             case InterruptRecord_SectionSet:
                 break;
         }
+#endif
         section = 0;
     }
     if (object->datatype == DDATA) {
@@ -1429,7 +1448,7 @@ void PPC_EABI_SetSection(Object* object, SInt32 size, Boolean isConst, Boolean a
         }
 #if VERSION >= VERSION_GC_2_0
         if (!allowSmall) {
-            if ((size <= copts.sdata2_threshold && size <= copts.sdata_threshold) ||
+            if ((size <= sdata2_threshold && size <= sdata_threshold) ||
                 (!isConst && !is_const_object(object)) ||
                 isConst) {
                 allowSmall = TRUE;
@@ -1443,7 +1462,7 @@ void PPC_EABI_SetSection(Object* object, SInt32 size, Boolean isConst, Boolean a
 #if VERSION >= VERSION_GC_2_0
                 allowSmall &&
 #endif
-                copts.sdata2_threshold && size <= copts.sdata2_threshold) {
+                sdata2_threshold && size <= sdata2_threshold) {
                 section = rec == NULL ? copts.sconstSection->header->index : rec->sconstSection;
             } else {
                 section = rec == NULL ? copts.constSection->header->index : rec->constSection;
@@ -1455,7 +1474,7 @@ void PPC_EABI_SetSection(Object* object, SInt32 size, Boolean isConst, Boolean a
 #if VERSION >= VERSION_GC_2_0
                 allowSmall &&
 #endif
-                copts.sdata_threshold && size <= copts.sdata_threshold) {
+                sdata_threshold && size <= sdata_threshold) {
                 section = rec == NULL ? copts.sdataSection->header->index : rec->sdataSection;
             } else {
                 section = rec == NULL ? copts.dataSection->header->index : rec->dataSection;
@@ -2287,6 +2306,20 @@ short pseudo_section_index(short key) {
 InterruptGenerationRecord* get_current_pseudo_section_info(void) {
     InterruptGenerationRecord* rec;
 
+#if VERSION == VERSION_WII_1_0RC1
+    for (rec = interrupt_generation_records; rec; rec = rec->next) {
+        if (rec->kind == InterruptRecord_SectionSet &&
+            rec->textSection == copts.textSection->header->index &&
+            rec->dataSection == copts.dataSection->header->index &&
+            rec->constSection == copts.constSection->header->index &&
+            rec->sconstSection == copts.sconstSection->header->index &&
+            rec->sdataSection == copts.sdataSection->header->index &&
+            rec->sdata_threshold == copts.sdata_threshold &&
+            rec->sdata2_threshold == copts.sdata2_threshold) {
+            return rec;
+        }
+    }
+#else
     rec = CodeGen_FindInterruptGenerationRecord(previous_ps_ID);
     if (rec &&
         rec->textSection == copts.textSection->header->index &&
@@ -2296,6 +2329,7 @@ InterruptGenerationRecord* get_current_pseudo_section_info(void) {
         rec->sdataSection == copts.sdataSection->header->index) {
         return rec;
     }
+#endif
     rec = galloc(sizeof(InterruptGenerationRecord));
     memclrw(rec, sizeof(InterruptGenerationRecord));
     rec->next = interrupt_generation_records;
@@ -2308,6 +2342,10 @@ InterruptGenerationRecord* get_current_pseudo_section_info(void) {
     rec->constSection = copts.constSection->header->index;
     rec->sconstSection = copts.sconstSection->header->index;
     rec->sdataSection = copts.sdataSection->header->index;
+#if VERSION == VERSION_WII_1_0RC1
+    rec->sdata_threshold = copts.sdata_threshold;
+    rec->sdata2_threshold = copts.sdata2_threshold;
+#endif
     return rec;
 }
 
@@ -2315,6 +2353,7 @@ InterruptGenerationRecord* get_current_pseudo_section_info(void) {
 #undef CError_LINE_DELTA
 #define CError_LINE_DELTA -18
 #endif
+#if VERSION != VERSION_WII_1_0RC1
 static InterruptGenerationRecord* resolve_object_pseudo_section(Object* obj, BE_SymNode* sym) {
     InterruptGenerationRecord* rec;
     SInt32 id;
@@ -2362,6 +2401,7 @@ static InterruptGenerationRecord* resolve_object_pseudo_section(Object* obj, BE_
     }
     return rec;
 }
+#endif
 #if VERSION == VERSION_GC_1_3_2
 #undef CError_LINE_DELTA
 #define CError_LINE_DELTA 0

@@ -393,6 +393,14 @@ static FuncArg* parameter_list(DeclInfo* declinfo) {
         arg->is_array = isArray;
         CFunc_AppendArg(&args, arg);
 
+#if VERSION == VERSION_WII_1_0RC1
+        if (arg->name != no_name_node) {
+            Object* param = CParser_NewLocalDataObject(&my_di, FALSE);
+            CFunc_SetupLocalVarInfo(param);
+            CScope_AddObject(cscope_current, param->name, OBJ_BASE(param));
+        }
+#endif
+
         if (copts.cplusplus && tk == '=') {
             tk = lex();
             arg->dexpr = CFunc_DefaultArg(arg->type, arg->qual, args);
@@ -458,19 +466,19 @@ FuncArg* parameter_type_list(DeclInfo* declinfo) {
     declinfo->parameterScope = NULL;
 
     if (tk == TK_ELLIPSIS || isdeclaration(0, 0, 0, 0)) {
-        if (!copts.cplusplus) {
+        if (VERSION == VERSION_WII_1_0RC1 || !copts.cplusplus) {
             nspace = CScope_NewListNameSpace(NULL, FALSE);
             nspace->parent = cscope_current;
             cscope_current = nspace;
 
             save_in_func_arglist = in_func_arglist;
-            in_func_arglist = TRUE;
+            in_func_arglist = !copts.cplusplus;
             args = parameter_list(declinfo);
             in_func_arglist = save_in_func_arglist;
 
             cscope_current = nspace->parent;
 
-            if (!CScope_IsEmptyNameSpace(nspace)) {
+            if (VERSION == VERSION_WII_1_0RC1 || !CScope_IsEmptyNameSpace(nspace)) {
                 declinfo->parameterScope = nspace;
             }
         } else {
@@ -1273,6 +1281,9 @@ static void CFunc_LocalDataDeclarator(
                     di->qual & ~(Q_CONST | Q_VOLATILE | Q_PASCAL | Q_ALIGNED_MASK)
                 );
                 object->datatype = DLOCAL;
+#if VERSION == VERSION_WII_1_0RC1
+                object->u.var.uid = CParser_GetUniqueID();
+#endif
                 CFunc_SetupLocalVarInfo(object);
 
                 object->u.var.info->deftoken = *deftoken;
@@ -2499,7 +2510,11 @@ static void CFunc_AdjustOldStyleArgs(void) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void setup_new_func_args(Object* func, FuncArg* args, NameSpace* scope) {
+#else
 void CFunc_SetupNewFuncArgs(Object* func, FuncArg* args) {
+#endif
     Object* obj;
     ObjectList* newlist;
 
@@ -2511,7 +2526,20 @@ void CFunc_SetupNewFuncArgs(Object* func, FuncArg* args) {
         while (args && args != &elipsis) {
             IsCompleteType(args->type);
 
+#if VERSION == VERSION_WII_1_0RC1
+            NameSpaceObjectList* binding = scope && args->name && args->name != no_name_node
+                ? CScope_FindName(scope, args->name) : NULL;
+            obj = NULL;
+            if (binding && binding->object && binding->object->otype == OT_OBJECT &&
+                OBJECT(binding->object)->datatype == DLOCAL) {
+                obj = OBJECT(binding->object);
+            }
+            if (!obj) {
+                obj = CParser_NewLocalDataObject(NULL, FALSE);
+            }
+#else
             obj = CParser_NewLocalDataObject(NULL, FALSE);
+#endif
             if (!args->name) {
                 obj->name = no_name_node;
             } else {
@@ -2551,6 +2579,12 @@ void CFunc_SetupNewFuncArgs(Object* func, FuncArg* args) {
         }
     }
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+void CFunc_SetupNewFuncArgs(Object* func, FuncArg* args) {
+    setup_new_func_args(func, args, NULL);
+}
+#endif
 
 static ObjectList* CFunc_CopyObjectList(const FuncArg* args) {
     ObjectList* list;
@@ -2649,7 +2683,11 @@ static void SetupFunctionArguments(Object* func, DeclInfo* di, Statement* firstS
                 }
             }
         } else {
+#if VERSION == VERSION_WII_1_0RC1
+            setup_new_func_args(func, TYPE_FUNC(func->type)->args, di->parameterScope);
+#else
             CFunc_SetupNewFuncArgs(func, TYPE_FUNC(func->type)->args);
+#endif
         }
     }
 
@@ -2672,6 +2710,13 @@ static void SetupFunctionArguments(Object* func, DeclInfo* di, Statement* firstS
     }
 
     for (list = arguments; list; list = list->next) {
+#if VERSION == VERSION_WII_1_0RC1
+        NameSpaceObjectList* declared = di->parameterScope
+            ? CScope_FindName(di->parameterScope, list->object->name) : NULL;
+        if (declared && declared->object == OBJ_BASE(list->object)) {
+            continue;
+        }
+#endif
         NameSpaceObjectList* nsol = CScope_InsertName(cscope_current, list->object->name);
         nsol->object = OBJ_BASE(list->object);
     }

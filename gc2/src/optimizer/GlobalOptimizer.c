@@ -249,6 +249,16 @@ void globallyoptimizepcode(Object* func) {
         pclistblocks(CMangler_GetLinkName(func)->name, "BEFORE GLOBAL OPTIMIZATION");
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (copts.peephole && copts.optimizationlevel >= 2) {
+        peepholemergeblocks(func, FALSE);
+        peepholeoptimizeforward(func);
+        propagatecopyinstructions(func, FALSE);
+        // The early backward peephole eliminates dead definitions before value numbering.
+        eliminatedeadpcode(func, FALSE);
+    }
+#endif
+
     if (copts.optimizationlevel == 2 || (has_catch_blocks && copts.optimizationlevel > 2)) {
         optimizelevel2(func);
     } else if (copts.optimizationlevel == 3) {

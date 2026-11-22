@@ -1420,7 +1420,12 @@ static Boolean IsPossibleCondAssStart(IRONode* fnode) {
         (last->type == IROLinearIf || last->type == IROLinearIfNot);
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+#define logicalType IRO_LogicalType
+Type* IRO_LogicalType(void) {
+#else
 static Type* logicalType(void) {
+#endif
     if (copts.cplusplus && copts.booltruefalse) {
         return TYPE(&stbool);
     } else {

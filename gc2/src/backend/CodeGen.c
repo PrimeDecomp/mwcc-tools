@@ -1504,6 +1504,85 @@ Boolean set_vr_reg_flags(void) {
 #undef CError_LINE_DELTA
 #define CError_LINE_DELTA -4
 #endif
+#if VERSION == VERSION_WII_1_0RC1
+static UInt32 count_tail_calls(PCodeBlock* block) {
+    PCode* last = block->lastPCode;
+    PCLink* pred;
+    UInt32 count = 0;
+
+    if (last) {
+        switch (last->op) {
+            case PC_BL:
+            case PC_BCTRL:
+            case PC_BLRL:
+                return block->predecessors || block == pcbasicblocks;
+            case PC_B:
+                if (!last->prevPCode) {
+                    break;
+                }
+                return 0;
+            default:
+                return 0;
+        }
+    }
+
+    for (pred = block->predecessors; pred; pred = pred->nextLink) {
+        count += count_tail_calls(pred->block);
+    }
+    return count;
+}
+
+static Boolean replace_tail_calls(PCodeBlock* block) {
+    PCode* last = block->lastPCode;
+    PCLink* pred;
+    Boolean needs_return = FALSE;
+
+    if (last) {
+        switch (last->op) {
+            case PC_BL:
+                change_opcode(last, PC_B);
+                return FALSE;
+            case PC_BCTRL:
+                change_opcode(last, PC_BCTR);
+                return FALSE;
+            case PC_B:
+                if (!last->prevPCode) {
+                    break;
+                }
+                return TRUE;
+            default:
+                return TRUE;
+        }
+    }
+
+    for (pred = block->predecessors; pred; pred = pred->nextLink) {
+        needs_return |= replace_tail_calls(pred->block);
+    }
+    if (last && !needs_return) {
+        deletepcode(last);
+    }
+    return needs_return;
+}
+
+static Boolean can_optimize_tail_calls(void) {
+    PCodeBlock* block;
+    PCode* last;
+
+    if (!copts.optimize_tail_call || !function_calls || frame_no_call ||
+        count_tail_calls(epilogue) != function_calls) {
+        return FALSE;
+    }
+
+    for (block = pcbasicblocks; block; block = block->nextBlock) {
+        last = block->lastPCode;
+        if (last && (PCODE_FLAG_SET_T(last) & fLink) && !(last->flags & fIsCall)) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+#endif
+
 void CodeGen_Generator(
     Statement* statements, Object* func, UInt8 oldStyleParameters, Boolean callOnModuleBind
 ) {
@@ -1512,6 +1591,10 @@ void CodeGen_Generator(
     PCodeBlock* entryBlock;
     SInt32 size;
     InlineAsm* ia;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean tail_calls;
+    Boolean add_blr = TRUE;
+#endif
 
     CodeGen_InitialSanityCheck();
     if (!saveheaperror) {
@@ -1584,9 +1667,11 @@ void CodeGen_Generator(
     allocate_locals();
     process_arguments(move_assigned_argument, has_varargs);
 
+#if VERSION != VERSION_WII_1_0RC1
     if (copts.schedule_factor || copts.altivec_model) {
         branch_label(makepclabel());
     }
+#endif
 
     load_TOC_pointers();
 
@@ -1711,10 +1796,17 @@ void CodeGen_Generator(
         pclistblocks(CMangler_GetLinkName(func)->name, "INITIAL CODE");
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (copts.peephole && copts.schedule_factor && copts.optimizationlevel >= 2) {
+        peepholemergeblocks(func, FALSE);
+    }
+#endif
     if (copts.schedule_factor == 2) {
+#if VERSION != VERSION_WII_1_0RC1
         if (copts.peephole) {
             peepholemergeblocks(func, FALSE);
         }
+#endif
         if (copts.debuglisting) {
             pclistblocks_start_scheduler(CMangler_GetLinkName(func)->name, "BEFORE SCHEDULING");
         }
@@ -1733,12 +1825,25 @@ void CodeGen_Generator(
             peepholemergeblocks(func, FALSE);
         }
         peepholeoptimizeforward(func);
+#if VERSION == VERSION_WII_1_0RC1
+        peepholeoptimizeprecolor(func);
+#endif
         if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER PEEPHOLE FORWARD");
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (copts.optimizationlevel > 0) {
+        eliminatedeadpcode(func, TRUE);
+    }
+#endif
     colorinstructions(func);
+#if VERSION == VERSION_WII_1_0RC1
+    if (copts.optimizationlevel > 0) {
+        eliminatedeadpcode(func, TRUE);
+    }
+#endif
     if (ORACLE_LISTING(copts.debuglisting)) {
         pclistblocks(CMangler_GetLinkName(func)->name, "AFTER REGISTER COLORING");
     }
@@ -1750,12 +1855,28 @@ void CodeGen_Generator(
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    tail_calls = can_optimize_tail_calls();
+    if (tail_calls) {
+        requires_frame = FALSE;
+    }
+#endif
     compute_frame_sizes();
+#if VERSION == VERSION_WII_1_0RC1
+    if (tail_calls && !frame_no_call) {
+        add_blr = replace_tail_calls(epilogue);
+        makes_call = FALSE;
+    }
+#endif
     generate_prologue(prologue, has_varargs);
     if (copts.profile) {
         exitprofiler();
     }
+#if VERSION == VERSION_WII_1_0RC1
+    generate_epilogue(epilogue, add_blr);
+#else
     generate_epilogue(epilogue, TRUE);
+#endif
 
     if (ORACLE_LISTING(copts.debuglisting)) {
         pclistblocks(CMangler_GetLinkName(func)->name, "AFTER GENERATING EPILOGUE, PROLOGUE");

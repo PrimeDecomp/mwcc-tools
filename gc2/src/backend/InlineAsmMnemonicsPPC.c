@@ -2,6 +2,10 @@
 #include "compiler/InlineAsmPPC.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/PCodeInfo.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/InlineAsmRegistersPPC.h"
+#include <stdio.h>
+#endif
 #include <string.h>
 
 #pragma pool_strings on
@@ -1113,5 +1117,25 @@ IAMnemonic* InlineAsm_LookupMnemonicPPC(char* name) {
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (name[0] == 'm' && (name[1] == 't' || name[1] == 'f')) {
+        IARegister* reg = InlineAsm_LookupRegisterPPC(name + 2);
+        if (reg && reg->rclass == RegClass_SPR) {
+            static IAMnemonic mnemonic;
+            static char format[16];
+            Boolean toSPR = name[1] == 't';
+            UInt32 spr = reg->num;
+
+            mnemonic.name = toSPR ? "mtspr_simplified" : "mfspr_simplified";
+            mnemonic.opcode = toSPR ? PC_MTSPR : PC_MFSPR;
+            sprintf(format, toSPR ? "=S%dr" : "=r;S%d", (int)reg->num);
+            mnemonic.format = format;
+            mnemonic.cpu = 0x04FFFFFF;
+            mnemonic.instruction = (toSPR ? 0x7C0003A6 : 0x7C0002A6) |
+                ((spr & 0x1F) << 16) | ((spr & 0x3E0) << 6);
+            return &mnemonic;
+        }
+    }
+#endif
     return NULL;
 }

@@ -9,6 +9,10 @@ extern "C" {
 
 extern Boolean requires_frame;
 extern Boolean makes_call;
+#if VERSION == VERSION_WII_1_0RC1
+extern UInt32 function_calls;
+extern Boolean frame_no_call;
+#endif
 extern Boolean uses_globals;
 extern Boolean dynamic_stack;
 extern Boolean StackFrame_has_vectors;

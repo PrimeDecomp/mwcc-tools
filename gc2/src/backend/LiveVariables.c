@@ -171,6 +171,45 @@ void computelivevariables(Object* proc) {
     computeglobalinout();
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+void filter_undefined_live_registers(void) {
+    SInt32 regs = used_virtual_registers[coloring_class];
+    SInt32 words = (regs + 31) >> 5;
+    UInt32* incoming = oalloc(sizeof(*incoming) * words);
+    PCodeBlock* block = pcbasicblocks;
+    LiveInfo* info = &liveinfo[block->blockIndex];
+    SInt32 i;
+
+    bitvectorinitialize(incoming, regs, 0);
+    for (i = 0; i < n_real_registers[coloring_class]; i++) {
+        if (bitvectorgetbit(i, info->in)) {
+            bitvectorsetbit(i, incoming);
+        }
+    }
+    bitvectorcopy(info->in, incoming, regs);
+    for (i = 0; i < words; i++) {
+        info->out[i] &= info->in[i] | info->def[i];
+    }
+
+    for (block = block->nextBlock; block; block = block->nextBlock) {
+        PCLink* pred = block->predecessors;
+        if (!pred) {
+            continue;
+        }
+        info = &liveinfo[block->blockIndex];
+        bitvectorcopy(incoming, liveinfo[pred->block->blockIndex].out, regs);
+        if (pred->nextLink) {
+            /* Stock RC1 follows the destination endpoint for the remaining links. */
+            bitvectorunion(incoming, info->out, regs);
+        }
+        bitvectorintersect(info->in, incoming, regs);
+        for (i = 0; i < words; i++) {
+            info->out[i] &= info->in[i] | info->def[i];
+        }
+    }
+}
+#endif
+
 int dead(PCode* instr, RegClass rclass, UInt32* vec) {
     PCodeArg* op;
     int i;

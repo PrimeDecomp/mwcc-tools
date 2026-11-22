@@ -90,6 +90,8 @@ Boolean dynamic_stack;
 Boolean large_stack;
 Boolean StackFrame_has_vectors;
 #if VERSION == VERSION_WII_1_0RC1
+UInt32 function_calls;
+Boolean frame_no_call;
 #define SAVE_PAIRED_FPRS (StackFrame_has_vectors && !CPU_IS_SPE(copts.processor))
 #else
 #define SAVE_PAIRED_FPRS StackFrame_has_vectors
@@ -183,6 +185,10 @@ void init_stack_globals(Object* funcobj) {
 
     requires_frame = FALSE;
     makes_call = FALSE;
+#if VERSION == VERSION_WII_1_0RC1
+    function_calls = 0;
+    frame_no_call = FALSE;
+#endif
     uses_globals = FALSE;
     dynamic_stack = FALSE;
     large_stack = FALSE;
@@ -292,6 +298,9 @@ void init_frame_sizes(Boolean has_varargs) {
 
     if (interrupt_routine_flags) {
         requires_frame = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+        frame_no_call = TRUE;
+#endif
         frame_size_estimate += 512;
     }
 
@@ -305,6 +314,9 @@ void init_frame_sizes(Boolean has_varargs) {
 
     if (dynamic_stack) {
         requires_frame = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+        frame_no_call = TRUE;
+#endif
         dummylocal = galloc(sizeof(Object));
         memclrw(dummylocal, sizeof(Object));
         dummylocal->type = (Type*)&stvoid;
@@ -467,6 +479,9 @@ void compute_frame_sizes(void) {
 
     if (parameter_area_size) {
         requires_frame = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+        frame_no_call = TRUE;
+#endif
     }
 
     compress_data_area();
@@ -484,6 +499,9 @@ void compute_frame_sizes(void) {
         genuine_frame_size = local_data_size + nonvolatile_save_size;
     } else {
         requires_frame = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+        frame_no_call = TRUE;
+#endif
         if (parameter_area_size < 0) {
             parameter_area_size = 0;
         }
@@ -1252,6 +1270,9 @@ void check_dynamic_aligned_frame(void) {
     if (used_nonvolatile_registers[RegClass_VR]) {
         update_frame_align(16);
         requires_frame = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+        frame_no_call = TRUE;
+#endif
     } else if (need_link_register() &&
                interrupt_routine_flags &&
                (CURRENT_INTERRUPT_FLAGS & Interrupt_VRs)) {
@@ -1262,6 +1283,9 @@ void check_dynamic_aligned_frame(void) {
     if (frame_alignment > in_param_alignment) {
         dynamic_align_stack = TRUE;
         requires_frame = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+        frame_no_call = TRUE;
+#endif
         CError_ASSERT(2215, _CALLER_SP_ != _FP_);
     } else {
         dynamic_align_stack = FALSE;

@@ -42,6 +42,8 @@ struct InterruptGenerationRecord {
     UInt16 sdataSection;
 #if VERSION == VERSION_WII_1_0RC1
     UInt16 flags;
+    SInt32 sdata_threshold;
+    SInt32 sdata2_threshold;
 #else
     UInt8 flags;
 #endif

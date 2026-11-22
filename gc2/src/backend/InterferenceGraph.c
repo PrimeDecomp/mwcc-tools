@@ -390,6 +390,9 @@ void buildinterferencegraph(Object* proc) {
 
     computelivevariables(proc);
     eliminatedeadcode();
+#if VERSION == VERSION_WII_1_0RC1
+    filter_undefined_live_registers();
+#endif
     buildinterferencematrix();
     if (copts.debuglisting) {
         pclistinterferences(register_class_format[coloring_class], regs);

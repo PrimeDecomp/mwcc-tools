@@ -392,6 +392,9 @@ void CodeGen_InitBackEndOptions(void) {
     copts.gen_isel = FALSE;
     copts.gen_fsel = FALSE;
     copts.peephole = pb.peephole;
+#if VERSION == VERSION_WII_1_0RC1
+    copts.profile = pb.profiler;
+#endif
     copts.structalignment = pb.structalignment;
     copts.function_align = 4 << pb.funcalign;
     copts.pool_data = pb.pooldata;

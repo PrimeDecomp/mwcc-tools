@@ -32,6 +32,9 @@ struct CInlineBackendOptions {
     UInt8 function_align;
     UInt8 cats;
     UInt8 force_cats;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean optimize_tail_call;
+#endif
     SInt32 sdata_threshold;
     SInt32 sdata2_threshold;
     UInt8 pool_data;

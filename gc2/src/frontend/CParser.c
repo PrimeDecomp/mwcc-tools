@@ -803,6 +803,9 @@ Object* CParser_NewLocalDataObject(DeclInfo* declinfo, Boolean add_to_locals) {
     object->otype = OT_OBJECT;
     object->access = ACCESSPUBLIC;
     object->datatype = DLOCAL;
+#if VERSION == VERSION_WII_1_0RC1
+    object->u.var.uid = CParser_GetUniqueID();
+#endif
 
     if (declinfo) {
         object->type = declinfo->thetype;

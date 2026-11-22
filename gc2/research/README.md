@@ -235,8 +235,73 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   interrupt save slot width. Large local offsets round the linkage area to the
   frame alignment at `0x5a273c`. The RC1 move peephole at `0x65b140` leaves
   side-effecting loads and moves intact, including the aligned-leaf stack restore.
-  The forward peephole at `0x5b7d88` and `0x5b857d` checks for a reaching
-  definition and checks that its input register stays live before using it.
+- The forward peephole at `0x5b7d88` and `0x5b857d` finds a reaching
+  definition for the other operand and checks that its inputs survive until the
+  OR. It can copy the definition into the OR before inserting the second field
+  at `0x5b7e3b` and `0x5b8630`. A full-mask rotation requires complementary
+  masks from the same input with the same shift.
+  The stock global optimizer at `0x5b342d` runs the backward peephole before
+  value numbering. Its dead-instruction sweep uses all register classes, so
+  both original masks disappear while the copied mask and insert survive.
+  `CodeGen_Generator` keeps the argument moves and body in the same block
+  after `0x46a7df`, including when scheduling is enabled. The original also
+  recalculates liveness after deletions at `0x46b180` and `0x46b19d` until both
+  passes around register coloring stabilize. The source reproduces these
+  sweeps. The remaining early backward patterns are installed at `0x654d37`.
+- The `gen_AND` paths at `0x526920` and `0x527060` recognize a contiguous
+  mask in each 16-bit half. They emit two masked rotates and an OR with
+  peephole optimization enabled, or a masked rotate and an insert otherwise.
+- `CClass_AccessMember` at `0x551c11` passes the declared bit-field type
+  through to the access expression. This preserves the allocation-unit width
+  for loads and read-modify-write stores and lets repeated reads of different
+  fields in the same word reuse a load. GC 2.7 narrows these accesses.
+- `IRO_OptimizeSwitches` at `0x61cbf0` groups adjacent switch values with
+  the same destination and lowers switches that need fewer than eight
+  comparisons. The emitter at `0x61e6b0` tests wider ranges first and uses
+  source order for equally wide ranges. It evaluates selectors with side
+  effects once. Stock runs `IRO_SimplifyBoundedIntervalConditionals` at
+  `0x62b860` after switch lowering and can combine the two comparisons for an
+  interior range.
+- RC1's class-specific liveness pass calls `0x63a9e0` at `0x63a491` before
+  building the interference graph. It restricts entry live-ins to physical
+  registers and walks blocks forward, masking live-outs by live-ins and local
+  definitions. A debugger trace confirms that at a join, the first predecessor
+  link supplies its source block's live-out and later links supply the
+  destination block's live-out. In `fwide` this removes a false interference
+  edge, so the result coalesces into r4 and is moved to r3 at the shared return.
+- `CMach_StructLayoutPackedBitfield` at `0x4f2117` closes the previous
+  allocation unit at the first unused byte when it encounters a zero-width
+  field, then aligns the offset for that field. This affects both the next
+  member's offset and the enclosing type's size.
+- The RC1 `compare_immediate` path at `0x51b321` uses `cmpwi` for unsigned
+  equality tests against zero and rewrites unsigned `> 0` and `<= 0` as
+  inequality and equality. It emits a comparison before later peephole passes.
+  GC 2.7 retains the earlier unsigned comparison and record-bit selection.
+- The inline assembler's mnemonic lookup synthesizes `mf<spr>` and `mt<spr>`
+  at `0x584467` after searching the fixed mnemonic table. The aliases use the
+  named special register's operand format and encoding, including Gekko's GQRs.
+- RC1 counts calls during TOC expansion and checks the epilogue's predecessors
+  at `0x46b5f0`. If all calls are in tail position and frame sizing confirms no
+  frame is needed, the pass at `0x46b520` converts direct and indirect calls to
+  branches and drops the epilogue return when every path ends in a tail call.
+  Command-line optimization levels 2 through 4 enable the pass. Function IPA
+  options store the per-function setting at byte `0x67`.
+- `PPC_EABI_SetSection` at `0x4c5880` resolves declaration section IDs
+  directly from the section records. It leaves ELF symbol creation to the
+  definition or relocation that needs it. `get_current_pseudo_section_info`
+  at `0x4c3810` looks for the five matching sections and both small-data
+  thresholds. The IPA writer and reader preserve the thresholds per record.
+- RC1 builds objects for named parameters during declaration parsing at
+  `0x5105bb`, including in prototypes. Local allocations at `0x45689e`
+  and `0x50dacf` consume IDs from the same counter as compiler-generated
+  names. Function definitions reuse the objects from the parameter scope.
+- The pre-coloring peephole at `0x65c860` checks for two relocations to
+  the same object. It uses the low-half destination for both instructions
+  when the high-half register is dead after the addition and there are no
+  intervening reads of either register or writes to the destination.
+- When `mergeblocks` moves instructions out of the epilogue, RC1's
+  `0x59aea0` marks each moved instruction volatile. The scheduler preserves
+  their order, including the GPR and link-register restores.
 - `CParser_ParseDeclSpec` handles `__declspec(align(...))` at `0x4529c3`.
   `CTTool_Alignment2Quals` at `0x558590` encodes powers of two from 1 through
   8192 in qualifier bits 24–27. RC1 stores tentative definitions in object flags

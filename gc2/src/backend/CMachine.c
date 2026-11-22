@@ -1574,7 +1574,11 @@ static SInt32 CMach_StructLayoutPackedBitfield(
     padding = 0;
     unitsize = basesize;
     unitbits = unitsize * 8;
+#if VERSION == VERSION_WII_1_0RC1
+    unnamedzero = tbitfield->bitlength == 0;
+#else
     unnamedzero = tbitfield->bitlength == 0 && tbitfield->suppressAlignment != 0;
+#endif
     if (unitbits < tbitfield->bitlength) {
         CError_FATAL(1624);
     }
@@ -1583,6 +1587,16 @@ static SInt32 CMach_StructLayoutPackedBitfield(
     }
     if (!cmach_structoffset || unnamedzero || qual_align) {
         if (unnamedzero) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (cmach_curbfsize) {
+                int bitfield_padding;
+                cmach_structoffset = cmach_curbfoffset + (cmach_curbfsize + 7) / 8;
+                bitfield_padding = CMach_BitfieldPadding(cmach_structoffset, unit_align);
+                if (bitfield_padding) {
+                    padding = bitfield_padding;
+                }
+            }
+#endif
             cmach_curbfsize = 0;
             if (unit_align < (u = unitsize) && basesize) {
                 if ((unitsize = (unitsize - 1) & cmach_structoffset)) {
@@ -2680,6 +2694,7 @@ void CMach_GetBackEndOptions(struct CInlineBackendOptions* options) {
     options->deadcode = copts.deadcode;
 #if VERSION == VERSION_WII_1_0RC1
     options->removeemptyloops = copts.removeemptyloops;
+    options->optimize_tail_call = copts.optimize_tail_call;
 #endif
     options->lifetimes = copts.lifetimes;
     options->unrolling = copts.unrolling;
@@ -2758,6 +2773,7 @@ void CMach_SetBackEndOptions(struct CInlineBackendOptions* options) {
     copts.deadcode = options->deadcode;
 #if VERSION == VERSION_WII_1_0RC1
     copts.removeemptyloops = options->removeemptyloops;
+    copts.optimize_tail_call = options->optimize_tail_call;
 #endif
     copts.lifetimes = options->lifetimes;
     copts.unrolling = options->unrolling;

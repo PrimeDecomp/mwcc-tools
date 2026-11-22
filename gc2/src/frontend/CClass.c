@@ -2399,6 +2399,7 @@ Type* CClass_CombineClassAccessQualifiers(
     return type;
 }
 
+#if VERSION != VERSION_WII_1_0RC1
 static void CClass_OptimizeBitFieldAccess(Type** ptype, SInt32* poffset) {
     TypeBitfield* bitfield;
     Type* innertype;
@@ -2558,6 +2559,7 @@ static void CClass_OptimizeBitFieldAccess(Type** ptype, SInt32* poffset) {
         return;
     }
 }
+#endif
 
 ENode* CClass_AccessMember(ENode* classexpr, Type* type, UInt32 qual, SInt32 offset) {
     Type* innertype;
@@ -2573,7 +2575,9 @@ ENode* CClass_AccessMember(ENode* classexpr, Type* type, UInt32 qual, SInt32 off
 
     if (IS_TYPE_BITFIELD(type)) {
         innertype = TYPE_BITFIELD(type)->bitfieldtype;
+#if VERSION != VERSION_WII_1_0RC1
         CClass_OptimizeBitFieldAccess(&type, &offset);
+#endif
     }
 
     if (offset && !canadd(classexpr->data.monadic, offset)) {

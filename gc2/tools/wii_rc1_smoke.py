@@ -1541,7 +1541,7 @@ def check_aligned_pch(compiler, reference, objcopy, work):
         raise ValueError(f"{compiler}: accepted a source PCH with the previous qualifier layout")
 
 
-def check(compiler, objcopy, nm, work):
+def check(compiler, objcopy, nm, objdump, work):
     if "Version 4.2 build 140" not in run(compiler, "-version", cwd=work):
         raise ValueError(f"{compiler}: incorrect version banner")
 
@@ -1698,6 +1698,189 @@ def check(compiler, objcopy, nm, work):
         run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
         results[f"{source.name} {opt}"] = section.read_bytes()
 
+    source = work / "compare_zero.c"
+    source.write_text(
+        "extern void a(void); extern void b(void);\n"
+        "void equal(unsigned x) { if (x == 0) a(); else b(); }\n"
+        "void greater(unsigned x) { if (x++ > 0) a(); else b(); }\n"
+        "void at_most(unsigned x) { if (x <= 0) a(); else b(); }\n"
+        "void nonzero(unsigned x) { if (x == 32768) a(); else b(); }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    run(compiler, *FLAGS, "-O0", "-c", source, "-o", obj, cwd=work)
+    run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+    results[source.name] = section.read_bytes()
+
+    source = work / "spr_aliases.c"
+    source.write_text(
+        "asm void transfer(void) {\n"
+        "    nofralloc\n"
+        "    mtgqr2 r3\n"
+        "    mtgqr5 r4\n"
+        "    mfgqr2 r5\n"
+        "    mfgqr5 r6\n"
+        "    blr\n"
+        "}\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    run(compiler, *FLAGS, "-O0", "-c", source, "-o", obj, cwd=work)
+    run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+    results[source.name] = section.read_bytes()
+
+    source = work / "tail_calls.c"
+    source.write_text(
+        "extern int step(int); extern int other(int);\n"
+        "int direct(int x) { return step(x); }\n"
+        "int indirect(int (*f)(int), int x) { return f(x); }\n"
+        "int multiple(int x) { if (x) return step(x); return other(x); }\n"
+        "int conditional(int x) { if (x) return step(x); return 0; }\n"
+        "int nested(int x) { return step(other(x)); }\n"
+        "int framed(int x) { volatile int y = x; return step(y); }\n"
+        "int asm_call(int x) { asm { bl other } return step(x); }\n"
+        "#pragma optimization_level 1\n"
+        "int level_one(int x) { return step(x); }\n"
+        "#pragma optimize_tail_call off\n"
+        "#pragma optimization_level 2\n"
+        "int disabled(int x) { return step(x); }\n"
+        "#pragma optimize_tail_call on\n"
+        "int enabled(int x) { return step(x); }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    for opt in ("-O0", "-O2", "-O4,p"):
+        run(compiler, *FLAGS, opt, "-c", source, "-o", obj, cwd=work)
+        run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+        relocations = run(objdump, "-r", obj, cwd=work).split("RELOCATION RECORDS FOR [")
+        text_relocations = next((record for record in relocations if record.startswith(".text]:")), "")
+        results[f"{source.name} {opt}"] = (section.read_bytes(), text_relocations.strip())
+
+    source = work / "symbol_order.c"
+    source.write_text(
+        "extern int step(int value);\n"
+        "extern int unnamed(int);\n"
+        "int first(int x) { return step(x); }\n"
+        "int second(int x) { return step(x); }\n"
+        "int leaf(int x) { return x + 1; }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt, exceptions in (("-O0", "on"), ("-O2", "off")):
+        run(compiler, *FLAGS, "-Cpp_exceptions", exceptions, opt, "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
+    source = work / "address_register.c"
+    source.write_text(
+        "extern void cleanup(void);\n"
+        "extern void (*exit_hook)(void);\n"
+        "void install(void) { exit_hook = cleanup; }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O1", "-O2", "-O4,p"):
+        run(compiler, *FLAGS, "-Cpp_exceptions", "off", "-sdata", "8", opt, "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
+    source = work / "restore_order.c"
+    source.write_text(
+        "extern unsigned int lock(void);\n"
+        "void save(unsigned int *p) { *p = lock(); }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    run(compiler, *FLAGS, "-Cpp_exceptions", "off", "-O4,p", "-c", source, "-o", obj, cwd=work)
+    results[source.name] = obj.read_bytes()
+
+    source = work / "rotate_masks.c"
+    source.write_text(
+        "typedef union { double value; unsigned int words[2]; } Bits;\n"
+        "double with_sign(double x, double y) {\n"
+        "    Bits a, b;\n"
+        "    a.value = x; b.value = y;\n"
+        "    a.words[0] = (a.words[0] & 0x7fffffffu) | (b.words[0] & 0x80000000u);\n"
+        "    return a.value;\n"
+        "}\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O2", "-O4,p"):
+        run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
+    for side, expression in (("right", "x & 0xff00ff00u"), ("left", "0xff00ff00u & x")):
+        source = work / f"split_mask_{side}.c"
+        source.write_text(f"unsigned int split(unsigned int x) {{ return {expression}; }}\n", encoding="ascii")
+        obj = source.with_suffix(".o")
+        for opt in ("-O0", "-O2", "-O4,p"):
+            run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
+            results[f"{source.name} {opt}"] = obj.read_bytes()
+
+    source = work / "bitfield_access.c"
+    source.write_text(
+        "struct Fields {\n"
+        "    unsigned open : 2;\n"
+        "    unsigned io : 3;\n"
+        "    unsigned buffer : 2;\n"
+        "    unsigned kind : 3;\n"
+        "    unsigned orientation : 2;\n"
+        "    unsigned binary : 1;\n"
+        "};\n"
+        "unsigned kind(struct Fields *p) { return p->kind; }\n"
+        "unsigned orientation(struct Fields *p) { return p->orientation; }\n"
+        "void put(struct Fields *p, unsigned v) { p->orientation = v; }\n"
+        "unsigned both(struct Fields *p) { return p->kind + p->orientation; }\n"
+        "unsigned volatile_read(volatile struct Fields *p) { return p->orientation; }\n"
+        "void volatile_write(volatile struct Fields *p, unsigned v) { p->orientation = v; }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O0", "-O2", "-O4,p"):
+        run(compiler, *FLAGS, "-Cpp_exceptions", "off", "-align", "powerpc", opt, "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
+    source = work / "zero_width_bitfields.c"
+    obj = source.with_suffix(".o")
+    for alignment in ("powerpc", "packed", "mac68k", "mac68k4byte"):
+        source.write_text(
+            f"#pragma options align={alignment}\n"
+            "struct Narrow { unsigned int bits : 1; unsigned char : 0; char tail; };\n"
+            "struct Wide { unsigned short bits : 3; unsigned long : 0; char tail; };\n"
+            "unsigned int layout[] = {\n"
+            "    sizeof(struct Narrow), (unsigned long)&((struct Narrow *)0)->tail,\n"
+            "    sizeof(struct Wide), (unsigned long)&((struct Wide *)0)->tail\n"
+            "};\n",
+            encoding="ascii",
+        )
+        run(compiler, *FLAGS, "-O0", "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {alignment}"] = obj.read_bytes()
+
+    source = work / "small_switch.c"
+    source.write_text(
+        "extern int a(void), b(void), c(void), d(void), next(void);\n"
+        "int ordered(int v) {\n"
+        "    switch (v) { case 9: return a(); case -3: return b();"
+        " case 7: return c(); default: return d(); }\n"
+        "}\n"
+        "int side(void) {\n"
+        "    switch (next()) { case 9: return a(); case -3: return b();"
+        " case 7: return c(); default: return d(); }\n"
+        "}\n"
+        "int unsigned_case(unsigned v) {\n"
+        "    switch (v) { case 0: case 1: return a();"
+        " case 0xfffffffeu: case 0xffffffffu: return b(); default: return c(); }\n"
+        "}\n"
+        "int one(int v) { switch (v) { case 9: return a(); default: return d(); } }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O0", "-O2", "-O4,p"):
+        run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     zero_trip = (
         "int f(volatile int* p) {\n"
         "    int i;\n"
@@ -1761,10 +1944,10 @@ def main():
         with tempfile.TemporaryDirectory(prefix="wii-rc1-") as directory:
             work = Path(directory)
             compiler = args.compiler.resolve(strict=True)
-            results = check(compiler, args.objcopy, args.nm, work)
+            results = check(compiler, args.objcopy, args.nm, args.objdump, work)
             if args.reference:
                 stock = args.reference.resolve(strict=True)
-                reference = check(stock, args.objcopy, args.nm, work)
+                reference = check(stock, args.objcopy, args.nm, args.objdump, work)
                 for name in results:
                     if results[name] != reference[name]:
                         raise ValueError(f"{name}: code or relocations differ from stock RC1")

@@ -477,6 +477,7 @@ Boolean CIRStream_UnpackFunctionHeader(CIRStreamReader* stream, CIRStreamFunctio
     X(0x2a, opt_pointer_analysis_mode) \
     X(0x2b, unrollfactor) \
     X(0x35, removeemptyloops) \
+    X(0x67, optimize_tail_call) \
     X(0x6a, scheduling) \
     X(0x6b, schedule_factor) \
     X(0x6c, profile) \

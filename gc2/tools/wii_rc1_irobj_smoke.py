@@ -502,6 +502,7 @@ def main():
         (work / "options.c").write_text(
             "#pragma optimization_level 1\n"
             "#pragma opt_removeemptyloops on\n"
+            "#pragma optimize_tail_call on\n"
             "#pragma optimize_for_size on\n"
             "#pragma function_align 64\n"
             "#pragma fp_contract on\n"

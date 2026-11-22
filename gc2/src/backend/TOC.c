@@ -50,6 +50,16 @@ AnchorEntry* anchorlist;
 
 static inline void estimate_func_param_size(ENode* node);
 
+static inline void note_function_call(void) {
+    requires_frame = TRUE;
+    makes_call = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+    if (copts.optimize_tail_call) {
+        function_calls++;
+    }
+#endif
+}
+
 static inline int disables_optimizer(ENode* node) {
     ENode* funcref = node->data.funccall.funcref;
     if (ENODE_IS(funcref, EOBJREF)) {
@@ -1787,21 +1797,18 @@ static void expandTOCexpression(ENode* expr, Type* type, int ignored) {
                     if (expr->data.funccall.args->next->node->type == ESTRINGCONST) {
                         rewritestrcpy(expr);
                     } else {
-                        requires_frame = TRUE;
-                        makes_call = TRUE;
+                        note_function_call();
                         expr->hascall = TRUE;
                     }
                 } else if ((Intrinsics)expr->data.funccall.funcref->data.objref->u.func.u
                                .intrinsicid == Intrinsic_memcpy) {
                     if (expr->data.funccall.args->next->next->node->type != EINTCONST) {
-                        requires_frame = TRUE;
-                        makes_call = TRUE;
+                        note_function_call();
                         expr->hascall = TRUE;
                     }
                 }
             } else {
-                requires_frame = TRUE;
-                makes_call = TRUE;
+                note_function_call();
                 expr->hascall = TRUE;
             }
 
@@ -2038,8 +2045,7 @@ opassign_common:
             if (TYPE_IS_8BYTES(expr->rtype)) {
                 if (ENODE_IS2(expr, ESHL, ESHR) && !ENODE_IS(expr->data.diadic.right, EINTCONST)) {
                     expr->hascall = TRUE;
-                    requires_frame = TRUE;
-                    makes_call = TRUE;
+                    note_function_call();
                 }
                 if (ENODE_IS2(expr, EDIV, EMODULO)) {
                     if (ENODE_IS(expr->data.diadic.right, EINTCONST)) {
@@ -2048,20 +2054,17 @@ opassign_common:
                                 expr->data.diadic.right->data.intval.lo
                             ) <= 0) {
                             expr->hascall = TRUE;
-                            requires_frame = TRUE;
-                            makes_call = TRUE;
+                            note_function_call();
                         }
                     } else {
                         expr->hascall = TRUE;
-                        requires_frame = TRUE;
-                        makes_call = TRUE;
+                        note_function_call();
                     }
                 }
             }
             if (TYPE_REQUIRES_SFPE(expr->rtype) && ENODE_IS2(expr, EDIV, EMUL)) {
                 expr->hascall = TRUE;
-                requires_frame = TRUE;
-                makes_call = TRUE;
+                note_function_call();
             }
             if (TYPE_REQUIRES_SFPE(expr->data.diadic.right->rtype) ||
                 TYPE_REQUIRES_SFPE(expr->data.diadic.left->rtype)) {
@@ -2072,8 +2075,7 @@ opassign_common:
                     ENODE_IS(expr, EEQU) ||
                     ENODE_IS(expr, ENOTEQU)) {
                     expr->hascall = TRUE;
-                    requires_frame = TRUE;
-                    makes_call = TRUE;
+                    note_function_call();
                 }
             }
             break;
@@ -2117,8 +2119,7 @@ opassign_common:
             }
             if (TYPE_REQUIRES_SFPE(expr->rtype) && ENODE_IS3(expr, EMUL, EADD, ESUB)) {
                 expr->hascall = TRUE;
-                requires_frame = TRUE;
-                makes_call = TRUE;
+                note_function_call();
             }
             break;
 
@@ -2187,15 +2188,13 @@ opassign_common:
                 (TYPE_IS_8BYTES(expr->rtype) && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(tmpexpr->rtype))) {
                 uses_globals = TRUE;
                 expr->hascall = TRUE;
-                requires_frame = TRUE;
-                makes_call = TRUE;
+                note_function_call();
             }
 
             if (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(tmpexpr->rtype)) {
                 if (is_unsigned(expr->rtype) && expr->rtype->size == 4) {
                     expr->hascall = TRUE;
-                    requires_frame = TRUE;
-                    makes_call = TRUE;
+                    note_function_call();
                 } else {
                     uses_globals = TRUE;
                 }
@@ -2204,8 +2203,7 @@ opassign_common:
             if ((copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(tmpexpr->rtype)) ||
                 (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype))) {
                 expr->hascall = TRUE;
-                requires_frame = TRUE;
-                makes_call = TRUE;
+                note_function_call();
             }
 
             if (IS_TYPE_VECTOR(expr->rtype) && !IS_TYPE_VECTOR(tmpexpr->rtype)) {
@@ -2223,8 +2221,7 @@ opassign_common:
                 expr->hascall = expr->data.monadic->hascall;
                 if (TYPE_REQUIRES_SFPE(expr->rtype)) {
                     expr->hascall = TRUE;
-                    requires_frame = TRUE;
-                    makes_call = TRUE;
+                    note_function_call();
                 }
                 break;
             }
@@ -2232,8 +2229,7 @@ opassign_common:
         case EPREINC:
             if (TYPE_REQUIRES_SFPE(expr->rtype)) {
                 expr->hascall = TRUE;
-                requires_frame = TRUE;
-                makes_call = TRUE;
+                note_function_call();
             }
             rewrite_preincdec(expr);
             rewrite_opassign(expr, EADD);
@@ -2249,8 +2245,7 @@ opassign_common:
                 expr->hascall = expr->data.monadic->hascall;
                 if (TYPE_REQUIRES_SFPE(expr->rtype)) {
                     expr->hascall = TRUE;
-                    requires_frame = TRUE;
-                    makes_call = TRUE;
+                    note_function_call();
                 }
                 break;
             }
@@ -2258,8 +2253,7 @@ opassign_common:
         case EPREDEC:
             if (TYPE_REQUIRES_SFPE(expr->rtype)) {
                 expr->hascall = TRUE;
-                requires_frame = TRUE;
-                makes_call = TRUE;
+                note_function_call();
             }
             rewrite_preincdec(expr);
             rewrite_opassign(expr, ESUB);
@@ -2454,14 +2448,16 @@ void expandTOCreferences(Statement** stmts) {
                 expandTOCexpression(stmt->expr, NULL, FALSE);
                 break;
             case ST_ENDCATCHDTOR:
-                requires_frame = TRUE;
-                makes_call = TRUE;
+                note_function_call();
                 break;
             case ST_ASM:
                 if ((ia = (InlineAsm*)stmt->expr)) {
                     if (ia->flags & IAFlag_Directive) {
                         if (ia->opcode == IADirective_FrFree) {
                             requires_frame = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+                            frame_no_call = TRUE;
+#endif
                         }
                     } else {
                         for (i = 0, op = ia->args; i < ia->argcount; i++, op++) {
@@ -2501,9 +2497,19 @@ void expandTOCreferences(Statement** stmts) {
 #endif
                         }
 
+#if VERSION == VERSION_WII_1_0RC1
+                        if (ia->opcode == PC_SC || ia->opcode == PC_TW ||
+                            ia->opcode == PC_TWI || ia->opcode == PC_TRAP) {
+                            makes_call = TRUE;
+                        } else if ((ia->flags & IAFlag_Call) || ia->opcode == PC_BL ||
+                                   ia->opcode == PC_BCTRL || ia->opcode == PC_BLRL) {
+                            note_function_call();
+                        }
+#else
                         if (ia->flags & IAFlag_Call) {
                             makes_call = TRUE;
                         }
+#endif
                     }
                 }
                 break;

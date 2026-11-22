@@ -236,6 +236,7 @@ static void initialize_compiler_options(CompilerLinkerParamBlk* params) {
     copts.optimizationlevel = pGlobalOptimizer.optimizationlevel;
 #if VERSION == VERSION_WII_1_0RC1
     copts.ipa_mode = pGlobalOptimizer.ipa_mode;
+    copts.optimize_tail_call = copts.optimizationlevel >= 2;
 #endif
     copts.optimizesize = (Boolean)(pGlobalOptimizer.optfor == 1);
 
