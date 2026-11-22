@@ -319,9 +319,22 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   reuse the value at the join. A write on one path prevents reuse there.
   The pass still uses the source's per-expression kill rules to build
   group kills. Local materialization uses an enclosing comma expression
-  where needed to keep definitions ahead of their uses. In `e_pow.c`,
-  selecting additional direct loads of local floating-point variables
-  such as `t` at line 228 still separates the source from stock.
+  where needed to keep definitions ahead of their uses.
+- The RC1 compiler's translation-unit defaults at `0x4426a6` disable
+  `stdc_fp_contract` and enable `stdc_fenv_access`. The CSE eligibility
+  check uses those options at `0x5cbf70`. Both propagation passes call
+  the recursive floating-point effects check at `0x5cbe30` before
+  accepting assignments, from `0x60ba35` for expression propagation and
+  `0x60bae8` for copy and constant propagation. These rules prevent CSE
+  from pulling the local `t` loads out of the floating-point computation
+  in `e_pow.c` at line 228 and preserve the stock order of constants in
+  `.sdata2`. The function's generated instructions still differ.
+- Compound assignment propagation at `0x6084d0` checks the equivalent
+  binary operation's CSE eligibility through `0x608bf0`. For an eligible
+  operation, the original requires a single use at the same or a shallower
+  loop depth. This keeps the two tests of the masked integer in `s_cos.c`,
+  `s_sin.c`, and `s_tan.c` on one definition and preserves stock numbering
+  of the floating-point constant symbols. All three objects match stock.
 - `CMach_StructLayoutPackedBitfield` at `0x4f2117` closes the previous
   allocation unit at the first unused byte when it encounters a zero-width
   field, then aligns the offset for that field. This affects both the next

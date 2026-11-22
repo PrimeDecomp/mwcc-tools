@@ -1698,6 +1698,62 @@ def check(compiler, objcopy, nm, objdump, work):
         run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
         results[f"{source.name} {opt}"] = section.read_bytes()
 
+    source = work / "float_propagation.c"
+    source.write_text(
+        """\
+double staged(double x, double y) {
+    double a = x * 5.0;
+    double b = y * 7.0;
+    double c = a * b;
+    return c + b;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    run(compiler, *FLAGS, "-fp_contract", "off", "-Cpp_exceptions", "off", "-O4,p", "-c", source, "-o", obj, cwd=work)
+    for name in (".text", ".sdata2"):
+        section = source.with_suffix(name)
+        run(objcopy, f"--dump-section={name}={section}", obj, cwd=work)
+        results[f"{source.name} {name}"] = section.read_bytes()
+
+    source = work / "float_environment.c"
+    source.write_text(
+        "int defaults(void) { return 2 * __option(stdc_fenv_access) + __option(stdc_fp_contract); }\n"
+        "#pragma stdc_fp_contract on\n"
+        "int contract(void) { return 2 * __option(stdc_fenv_access) + __option(stdc_fp_contract); }\n"
+        "#pragma stdc_fenv_access off\n"
+        "int relaxed(void) { return 2 * __option(stdc_fenv_access) + __option(stdc_fp_contract); }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    run(compiler, *FLAGS, "-fp_contract", "off", "-O2", "-c", source, "-o", obj, cwd=work)
+    run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+    results[source.name] = section.read_bytes()
+
+    source = work / "self_assignment.c"
+    source.write_text(
+        """\
+extern double low(double), high(double);
+
+double classify(int x) {
+    x &= 0x7fffffff;
+    if (x <= 0x3fe921fb)
+        return low(0.0);
+    if (x >= 0x7ff00000)
+        return high(1.0);
+    return 2.0;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".strtab")
+    run(compiler, *FLAGS, "-fp_contract", "off", "-Cpp_exceptions", "off", "-O4,p", "-c", source, "-o", obj, cwd=work)
+    run(objcopy, f"--dump-section=.strtab={section}", obj, cwd=work)
+    results[f"{source.name} .strtab"] = section.read_bytes()
+
     source = work / "compare_zero.c"
     source.write_text(
         "extern void a(void); extern void b(void);\n"

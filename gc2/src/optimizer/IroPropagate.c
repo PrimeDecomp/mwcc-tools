@@ -191,6 +191,11 @@ static Boolean IsPropagatable(IROLinear* linear) {
         (obj = IRO_IsVariable(linear->u.diadic.left)) &&
         obj->type == linear->rtype &&
         !is_volatile_object(obj)) {
+#if VERSION == VERSION_WII_1_0RC1
+        if (IRO_ExprHasFloatingPointEffects(linear)) {
+            return FALSE;
+        }
+#endif
         if (linear->u.diadic.left->flags & IROLF_BitfieldIndirect) {
             if (!IRO_IsConstant(linear->u.diadic.right)) {
                 return FALSE;
@@ -246,6 +251,11 @@ static Boolean IsPropagatableExpr(IROLinear* linear, IROList* list) {
         if ((obj = IRO_IsVariable(linear->u.diadic.left)) &&
             !is_volatile_object(obj) &&
             !(linear->u.diadic.left->flags & IROLF_BitfieldIndirect)) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (IRO_ExprHasFloatingPointEffects(linear)) {
+                return FALSE;
+            }
+#endif
             if (!IRO_IsRegable(obj)) {
                 return FALSE;
             }

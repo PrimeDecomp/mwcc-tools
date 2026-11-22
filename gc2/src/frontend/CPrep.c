@@ -1786,6 +1786,8 @@ UInt8 C_Compiler(CompilerLinkerParamBlk* param) {
     copts.inline_bottom_up = TRUE;
 #else
     copts.new_mangler = TRUE;
+    copts.stdc_fp_contract = FALSE;
+    copts.stdc_fenv_access = TRUE;
 #endif
 
     if (initheaps(&CError_NoMem)) {

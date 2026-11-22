@@ -4,6 +4,7 @@
 #include "compiler/IroLinearForm.h"
 #include "compiler/IroMalloc.h"
 #include "compiler/IroPointerAnalysis.h"
+#include "compiler/IroSubable.h"
 #include "compiler/IroTransform.h"
 #include "compiler/IroUtil.h"
 #include "compiler/IroVars.h"
@@ -224,6 +225,11 @@ static Boolean IsOtherSelfAssignment(IROLinear* linear) {
                 case EANDASS:
                 case EXORASS:
                 case EORASS:
+#if VERSION == VERSION_WII_1_0RC1
+                    if (linear->u.diadic.left->flags & IROLF_BitfieldIndirect) {
+                        return FALSE;
+                    }
+#endif
                     if (IRO_IsIntConstant(linear->u.diadic.right)) {
                         return TRUE;
                     }
@@ -920,9 +926,22 @@ static Boolean PropagateOtherSelfAssignments(void) {
             IROUse* use2;
             IROLinear* father;
             SInt32 i;
+#if VERSION == VERSION_WII_1_0RC1
+            IROLinear expr = *def->linear;
+            Boolean canDuplicate;
+
+            // Check the operation that propagation would insert at each use.
+            expr.nodetype = IRO_NonAssignmentOp[expr.nodetype];
+            canDuplicate = !IRO_IsSubableExpression(&expr);
+#endif
 
             for (use = def->var->uses, i = 0; use; use = use->varnext) {
                 if (Bv_IsBitSet(def->index, use->reachingDefs)) {
+#if VERSION == VERSION_WII_1_0RC1
+                    if (!canDuplicate && use->node->loopdepth > def->node->loopdepth) {
+                        goto nextDef;
+                    }
+#endif
                     if (use->reachingDefCount == 1 &&
                         use->linear->type == IROLinearOperand &&
                         (father = IRO_LocateFather(use->linear)) &&
@@ -943,6 +962,11 @@ static Boolean PropagateOtherSelfAssignments(void) {
                 }
             }
 
+#if VERSION == VERSION_WII_1_0RC1
+            if (!canDuplicate && i != 1) {
+                goto nextDef;
+            }
+#endif
             if (i == def->useCount) {
                 for (use = def->var->uses; use; use = use->varnext) {
                     if (Bv_IsBitSet(def->index, use->reachingDefs)) {
