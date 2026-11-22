@@ -111,6 +111,11 @@ Alias* make_distinct_virtual_alias(Object* obj) {
             }
             is_readonly = TRUE;
         } else {
+#if VERSION == VERSION_WII_1_0RC1
+            /* RC1 creates a named alias in this path. Preserve the ID used
+               by following symbols while retaining the conservative alias. */
+            CParser_GetUniqueName();
+#endif
             return NULL;
         }
     }

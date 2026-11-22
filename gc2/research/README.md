@@ -269,6 +269,13 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   link supplies its source block's live-out and later links supply the
   destination block's live-out. In `fwide` this removes a false interference
   edge, so the result coalesces into r4 and is moved to r3 at the shared return.
+- RC1's `make_distinct_virtual_alias` at `0x5bfab0` allocates a named
+  virtual alias even for ordinary writable pointer parameters. In
+  `TRKDispatchMessage` it allocates `@87` before `create_switch_table`
+  allocates the emitted `@88`. The source preserves that name allocation.
+  Reproducing the alias itself also requires porting its membership and
+  propagation rules. Attaching it to the older alias graph changed code
+  that already matched in `mem_funcs.c` and `__init_cpp_exceptions.cpp`.
 - `CMach_StructLayoutPackedBitfield` at `0x4f2117` closes the previous
   allocation unit at the first unused byte when it encounters a zero-width
   field, then aligns the offset for that field. This affects both the next
