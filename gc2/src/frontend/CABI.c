@@ -1768,6 +1768,79 @@ void CABI_MakeDefaultAssignmentOperator(TypeClass* tclass, Object* func) {
     copts.filesyminfo = saveDebugInfo;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+// RC1 registers entries after the supplied boundary in declaration order.
+static ExceptionAction* CABI_DestructorActions(
+    TypeClass* tclass,
+    VClassList* throughVBase,
+    ClassList* throughBase,
+    ObjMemberVar* throughMember,
+    ExceptionAction* outer,
+    Boolean includeVBases
+) {
+    Statement stmt = {0};
+    VClassList* vbase;
+    ClassList* base;
+    ObjMemberVar* member;
+    Type* type;
+    Object* dtor;
+
+    stmt.dobjstack = outer;
+    if (includeVBases && !throughMember && !throughBase) {
+        for (vbase = tclass->vbases; vbase; vbase = vbase->next) {
+            if ((dtor = CClass_Destructor(vbase->base))) {
+                if (!throughVBase) {
+                    CExcept_RegisterMember(&stmt, CABI_ThisArg(), vbase->offset, dtor, NULL, FALSE);
+                } else if (vbase == throughVBase) {
+                    throughVBase = NULL;
+                }
+            }
+        }
+    }
+
+    if (!throughMember) {
+        for (base = tclass->bases; base; base = base->next) {
+            if ((dtor = CClass_Destructor(base->base))) {
+                if (!throughBase) {
+                    CExcept_RegisterMember(&stmt, CABI_ThisArg(), base->offset, dtor, NULL, FALSE);
+                } else if (base == throughBase) {
+                    throughBase = NULL;
+                }
+            }
+        }
+    }
+
+    for (member = tclass->ivars; member; member = member->next) {
+        if (throughMember) {
+            if (member == throughMember) {
+                throughMember = NULL;
+            }
+            continue;
+        }
+
+        type = member->type;
+        if (IS_TYPE_ARRAY(type)) {
+            if (!type->size) {
+                continue;
+            }
+            do {
+                type = TPTR_TARGET(type);
+            } while (IS_TYPE_ARRAY(type));
+            if (IS_TYPE_CLASS(type) && (dtor = CClass_Destructor(TYPE_CLASS(type)))) {
+                CExcept_RegisterMemberArray(
+                    &stmt, CABI_ThisArg(), member->offset, dtor, member->type->size / type->size,
+                    type->size
+                );
+            }
+        } else if (IS_TYPE_CLASS(type) && (dtor = CClass_Destructor(TYPE_CLASS(type)))) {
+            CExcept_RegisterMember(&stmt, CABI_ThisArg(), member->offset, dtor, NULL, TRUE);
+        }
+    }
+
+    return stmt.dobjstack;
+}
+#endif
+
 static Statement* CABI_DestroyMembers(Statement* stmt, ObjMemberVar* ivars, TypeClass* tclass) {
     Type* type;
     Object* dtor;
@@ -1788,6 +1861,9 @@ static Statement* CABI_DestroyMembers(Statement* stmt, ObjMemberVar* ivars, Type
                 expr->flags |= ENODE_FLAG_NONVIRTUAL;
 
                 stmt = CFunc_InsertStatement(ST_EXPRESSION, stmt);
+#if VERSION == VERSION_WII_1_0RC1
+                stmt->dobjstack = CABI_DestructorActions(tclass, NULL, NULL, ivars, NULL, FALSE);
+#endif
                 stmt->expr = funccallexpr(
                     darr_func,
                     CABI_MakeThisExpr(tclass, ivars->offset),
@@ -1802,6 +1878,9 @@ static Statement* CABI_DestroyMembers(Statement* stmt, ObjMemberVar* ivars, Type
                 stmt = CABI_DestroyMembers(stmt, ivars->next, tclass);
 
                 stmt = CFunc_InsertStatement(ST_EXPRESSION, stmt);
+#if VERSION == VERSION_WII_1_0RC1
+                stmt->dobjstack = CABI_DestructorActions(tclass, NULL, NULL, ivars, NULL, FALSE);
+#endif
                 stmt->expr = CABI_DestroyObject(
                     dtor, CABI_MakeThisExpr(tclass, ivars->offset), CABIDestroyComplete, TRUE, FALSE
                 );
@@ -1813,7 +1892,11 @@ static Statement* CABI_DestroyMembers(Statement* stmt, ObjMemberVar* ivars, Type
     return stmt;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Statement* CABI_DestroyBases(Statement* stmt, ClassList* bases, TypeClass* tclass) {
+#else
 static Statement* CABI_DestroyBases(Statement* stmt, ClassList* bases) {
+#endif
     ClassList* base;
     Object* dtor;
     SInt32 count;
@@ -1836,6 +1919,9 @@ static Statement* CABI_DestroyBases(Statement* stmt, ClassList* bases) {
 
         if (!base->is_virtual && (dtor = CClass_Destructor(base->base))) {
             stmt = CFunc_InsertStatement(ST_EXPRESSION, stmt);
+#if VERSION == VERSION_WII_1_0RC1
+            stmt->dobjstack = CABI_DestructorActions(tclass, NULL, base, NULL, NULL, FALSE);
+#endif
             stmt->expr = CABI_DestroyObject(
                 dtor, CABI_MakeThisExpr(NULL, base->offset), CABIDestroyBase, TRUE, FALSE
             );
@@ -1847,13 +1933,24 @@ static Statement* CABI_DestroyBases(Statement* stmt, ClassList* bases) {
     return stmt;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Statement* CABI_DestroyVBases(Statement* stmt, VClassList* vbases, TypeClass* tclass) {
+#else
 static Statement* CABI_DestroyVBases(Statement* stmt, VClassList* vbases) {
+#endif
     Object* dtor;
 
     for (; vbases; vbases = vbases->next) {
         if ((dtor = CClass_Destructor(vbases->base))) {
+#if VERSION == VERSION_WII_1_0RC1
+            stmt = CABI_DestroyVBases(stmt, vbases->next, tclass);
+#else
             stmt = CABI_DestroyVBases(stmt, vbases->next);
+#endif
             stmt = CFunc_InsertStatement(ST_EXPRESSION, stmt);
+#if VERSION == VERSION_WII_1_0RC1
+            stmt->dobjstack = CABI_DestructorActions(tclass, vbases, NULL, NULL, NULL, TRUE);
+#endif
             stmt->expr = CABI_DestroyObject(
                 dtor, CABI_MakeThisExpr(NULL, vbases->offset), CABIDestroyBase, TRUE, FALSE
             );
@@ -1933,6 +2030,22 @@ void CABI_TransDestructor(
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (!tclass->sominfo) {
+        ExceptionAction* actions = CABI_DestructorActions(tclass, NULL, NULL, NULL, NULL, TRUE);
+        ExceptionAction* previous = NULL;
+        if (actions) {
+            for (scan = stmt; scan; scan = scan->next) {
+                if (scan->dobjstack != previous) {
+                    previous = scan->dobjstack;
+                    actions = CABI_DestructorActions(tclass, NULL, NULL, NULL, previous, TRUE);
+                }
+                scan->dobjstack = actions;
+            }
+        }
+    }
+#endif
+
     scan = stmt;
 
     if (doDelete) {
@@ -1965,7 +2078,13 @@ void CABI_TransDestructor(
 
     scan = CFunc_InsertStatement(ST_LABEL, scan);
     scan->label = label;
+#if VERSION == VERSION_WII_1_0RC1
+    scan->dobjstack = tclass->sominfo
+        ? NULL
+        : CABI_DestructorActions(tclass, NULL, NULL, NULL, NULL, TRUE);
+#else
     scan->dobjstack = NULL;
+#endif
     label->stmt = scan;
 
     if (doMembers && !(tclass->flags & CLASS_HANDLEOBJECT)) {
@@ -1973,7 +2092,11 @@ void CABI_TransDestructor(
     }
 
     if (doBases && tclass->bases) {
+#if VERSION == VERSION_WII_1_0RC1
+        scan = CABI_DestroyBases(scan, tclass->bases, tclass);
+#else
         scan = CABI_DestroyBases(scan, tclass->bases);
+#endif
     }
 
     if (doVBases && (tclass->flags & CLASS_HAS_VBASES)) {
@@ -1982,7 +2105,11 @@ void CABI_TransDestructor(
         scan->expr = CABI_MakeVArgExpr();
         scan->label = label3;
 
+#if VERSION == VERSION_WII_1_0RC1
+        scan = CABI_DestroyVBases(scan, tclass->vbases, tclass);
+#else
         scan = CABI_DestroyVBases(scan, tclass->vbases);
+#endif
 
         scan = CFunc_InsertStatement(ST_LABEL, scan);
         scan->label = label3;

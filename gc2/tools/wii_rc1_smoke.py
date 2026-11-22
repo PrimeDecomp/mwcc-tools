@@ -3059,6 +3059,48 @@ void construct() {
                 result = (text[start:end], fixups)
             results[f"{source.name} {opt} {name}"] = result
 
+    for suffix, bases in (("direct", "Base, Middle"), ("virtual", "virtual Base, Middle, virtual Extra")):
+        source = work / f"destructor_unwind_{suffix}.cpp"
+        source.write_text(
+            """
+extern void might_throw();
+struct Base { int field; ~Base(); };
+struct Middle { int field; ~Middle(); };
+struct Extra { int field; ~Extra(); };
+struct First { int field; ~First(); };
+struct Second { int field; ~Second(); };
+struct Third { int field; ~Third(); };
+struct Fourth { int field; ~Fourth(); };
+struct Outer : BASES {
+    First first;
+    Second array[2];
+    Third third;
+    Fourth last;
+    ~Outer() { might_throw(); }
+};
+void destroy(Outer* object) { object->~Outer(); }
+""".replace("BASES", bases),
+            encoding="ascii",
+        )
+        obj = source.with_suffix(".o")
+        flags = (*FLAGS, "-func_align", "4", "-O4,p")
+        run(compiler, *flags, "-Cpp_exceptions", "on", "-c", source, "-o", obj, cwd=work)
+        sections = (".text", "extab", "extabindex")
+        dumps = [source.with_suffix(f".{name.lstrip('.')}") for name in sections]
+        run(objcopy, *(f"--dump-section={name}={path}" for name, path in zip(sections, dumps)),
+            obj, cwd=work)
+        fixups = tuple(
+            line.split() for line in run(objdump, "--reloc", "--section=.relaextab", obj, cwd=work).splitlines()
+            if "R_PPC_ADDR32" in line
+        )
+        if not fixups:
+            raise ValueError(f"{compiler}: {source.name} has no destructor unwind relocations")
+        results[source.name] = (tuple(path.read_bytes() for path in dumps), fixups)
+        run(compiler, *flags, "-Cpp_exceptions", "off", "-c", source, "-o", obj, cwd=work)
+        headers = run(objdump, "--section-headers", obj, cwd=work)
+        if any(name in headers.split() for name in sections[1:]):
+            raise ValueError(f"{compiler}: {source.name} emitted disabled unwind tables")
+
     source = work / "immediate_reuse.c"
     source.write_text(
         """

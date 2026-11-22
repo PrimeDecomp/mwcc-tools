@@ -399,6 +399,17 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   generated member and base destruction alone do not need those writes.
   The smoke test compares vtable relocations at `-O0` and destructor code
   and relocations at `-O4,p`, covering calls with and without `this`.
+- RC1 builds destructor unwind actions at `0x563b70`. The destructor
+  body starts with actions for the full subobject list. A generated
+  destructor call supplies its current base or member as the boundary
+  for the scan. Stock skips through that entry in declaration order, so
+  the emitted actions can reference a member destroyed by an earlier
+  call. The source preserves this order, including for arrays and
+  virtual bases. The smoke test compares `extab` and its relocations
+  for both ordinary and virtual inheritance.
+  Stock also registers a temporary local-object action before an automatic
+  constructor call at `0x4a2b70`. The source still lacks that transition,
+  which changes the number of unwind actions in a destructor with nested locals.
 - The `AND` case of constant propagation (`0x6462f1`) follows `LI` and
   `LIS` definitions. Contiguous masks become `RLWINM` with a zero shift.
   Disjoint masks use `ANDI` or `ANDIS` and define CR0. The stock formatter
