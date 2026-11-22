@@ -449,8 +449,13 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   operands in the two branches and a field load in both branches each
   reuse the value at the join. A write on one path prevents reuse there.
   The pass still uses the source's per-expression kill rules to build
-  group kills. Local materialization uses an enclosing comma expression
-  where needed to keep definitions ahead of their uses.
+  group kills. The rewrite walks each block in statement order. It
+  copies a nested temporary assignment ahead of its containing
+  statement and replaces the nested assignment with a read of the
+  temporary. In `ftell`, this keeps the buffer-pointer definition live
+  when the pass replaces the enclosing pointer subtraction with a
+  different temporary. The generated `ftell` instructions match stock
+  at the Corruption project's default optimization level.
 - The RC1 compiler's translation-unit defaults at `0x4426a6` disable
   `stdc_fp_contract` and enable `stdc_fenv_access`. The CSE eligibility
   check uses those options at `0x5cbf70`. Both propagation passes call

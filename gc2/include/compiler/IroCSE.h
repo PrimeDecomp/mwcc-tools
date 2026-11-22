@@ -26,7 +26,7 @@ struct IROExpr {
     UInt32 cseGroup;
     struct IROCSEDefinition* cseDefinitions;
     Boolean cseFromPredecessors;
-    Boolean cseUsedOutsideBlock;
+    IROLinear* cseStatementStart;
 #endif
 };
 #pragma pack(pop)

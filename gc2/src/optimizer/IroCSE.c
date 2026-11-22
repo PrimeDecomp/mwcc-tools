@@ -778,7 +778,6 @@ static UInt32 GroupCommonSubexpressions(void) {
         expr->cseGroup = 0;
         expr->cseDefinitions = NULL;
         expr->cseFromPredecessors = FALSE;
-        expr->cseUsedOutsideBlock = FALSE;
         if (expr->notSubable || IRO_HasSideEffect(expr->linear) ||
             IRO_ExprHasFloatingPointEffects(expr->linear)) {
             continue;
@@ -903,7 +902,11 @@ void IRO_ComputeAvail(void) {
     } while (changed);
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static IROLinear* IRO_MakeReplacementEmbedded(IROExpr* expr) {
+#else
 static void IRO_MakeReplacementEmbedded(IROExpr* expr) {
+#endif
     IROLinear* opnd;
     IROLinear* ind;
     IROLinear* ass;
@@ -936,6 +939,9 @@ static void IRO_MakeReplacementEmbedded(IROExpr* expr) {
     ind->next = ass;
     IRO_ReplaceReferenceWithNode(expr->linear, ass);
     IRO_PasteAfter(opnd, ass, expr->linear);
+#if VERSION == VERSION_WII_1_0RC1
+    return ass;
+#endif
 }
 
 #if VERSION != VERSION_WII_1_0RC1
@@ -964,98 +970,27 @@ static void CheckCommonSub(IROLinear* linear) {
 #endif
 
 #if VERSION == VERSION_WII_1_0RC1
-static Boolean place_common_sub_before_statement(IROExpr* expr) {
-    IROLinear* root = expr->linear;
-    IROLinear* parent;
-    IROLinear* start;
-    IROLinear* expr_start;
-    IROLinear* scan;
-
-    while ((parent = IRO_LocateFather(root))) {
-        if ((IS_LINEAR_DIADIC_2(parent, ELAND, ELOR) && root == parent->u.diadic.right) ||
-            (parent->type == IROLinearOp3Arg && parent->nodetype == ECOND &&
-             root != parent->u.args3.a)) {
-            return FALSE;
-        }
-        if (parent->type == IROLinearIf || parent->type == IROLinearIfNot ||
-            parent->type == IROLinearReturn || parent->type == IROLinearSwitch) {
-            break;
-        }
-        root = parent;
-    }
-
-    if ((root == expr->linear && !parent) || IRO_HasSideEffect(expr->linear) ||
-        IRO_ExprHasFloatingPointEffects(expr->linear)) {
-        return FALSE;
-    }
-    start = IRO_FindStart(root);
-    expr_start = IRO_FindStart(expr->linear);
-    for (scan = start; scan != expr_start; scan = scan->next) {
-        if (!scan || (scan->type != IROLinearNop &&
-                      (IRO_HasSideEffect(scan) || IRO_ExprHasFloatingPointEffects(scan)))) {
-            return FALSE;
-        }
-    }
-
-    /* RC1 materializes a shared value before evaluating the defining statement. */
-    IRO_Dump("Moving common sub from node %d before statement starting at %d\n",
-             expr->linear->index, start->index);
-    IRO_ReplaceReference(expr->linear, expr->temp, expr->linear);
-    IRO_MoveExpression(expr, start);
-    IRO_AssignToTemp(expr)->stmt = root == expr->linear ? parent->stmt : root->stmt;
-    return TRUE;
-}
-
-static IROLinear* FindLocalCommonSubParent(IROExpr* expr) {
-    IROExpr* use;
-    IROLinear* common = NULL;
-
-    for (use = IRO_FirstExpr; use; use = use->next) {
-        IROLinear* parent;
-        if (use->use != expr) {
-            continue;
-        }
-        parent = common ? common : IRO_LocateFather(expr->linear);
-        for (; parent; parent = IRO_LocateFather(parent)) {
-            IROLinear* ancestor = IRO_LocateFather(use->linear);
-            while (ancestor && ancestor != parent) {
-                ancestor = IRO_LocateFather(ancestor);
-            }
-            if (ancestor) {
-                common = parent;
-                break;
-            }
-        }
-    }
-    return common;
-}
-
 static void MoveCommonSub(IROExpr* expr) {
-    IROLinear* parent;
-    IROLinear* start;
-    IROLinear* comma;
+    IROLinear* assignment = IRO_MakeReplacementEmbedded(expr);
+    IROList copy;
+    IROList reference;
 
-    if (expr->cseUsedOutsideBlock && place_common_sub_before_statement(expr)) {
-        return;
-    }
-    parent = FindLocalCommonSubParent(expr);
-    if (!parent) {
-        IRO_MakeReplacementEmbedded(expr);
+    if (!(assignment->flags & IROLF_Reffed)) {
         return;
     }
 
-    IRO_Dump("Moving common sub from node %d to %d\n", expr->linear->index, parent->index);
-    start = IRO_FindStart(parent);
-    IRO_ReplaceReference(expr->linear, expr->temp, expr->linear);
-    IRO_MoveExpression(expr, start);
-    comma = IRO_NewLinear(IROLinearOp2Arg);
-    comma->nodetype = ECOMMA;
-    comma->rtype = parent->rtype;
-    comma->u.diadic.left = IRO_AssignToTemp(expr);
-    comma->u.diadic.right = parent;
-    comma->stmt = parent->stmt;
-    IRO_ReplaceReferenceWithNode(parent, comma);
-    IRO_PasteAfter(comma, comma, parent);
+    IRO_Dump("Moving common sub from node %d before statement starting at %d\n",
+             expr->linear->index, expr->cseStatementStart->index);
+    /* Preserve the definition if the enclosing expression is replaced. */
+    IRO_InitList(&copy);
+    IRO_DuplicateExpr(assignment, &copy);
+    copy.tail->flags &= ~IROLF_Reffed;
+    IRO_Paste(copy.head, copy.tail, expr->cseStatementStart);
+
+    IRO_InitList(&reference);
+    IRO_DuplicateExpr(assignment->u.diadic.left, &reference);
+    IRO_PasteAfter(reference.head, reference.tail, assignment);
+    IRO_LocateFather_Cut_And_Paste(assignment, reference.tail);
 }
 #else
 static void MoveCommonSub(IROExpr* expr) {
@@ -1237,7 +1172,6 @@ static void LinkLocalCommonSubs(UInt32 count, BitVector* kills) {
             if (expr && (group = expr->cseGroup)) {
                 if (Bv_IsBitSet(group, local)) {
                     expr->cseDefinitions = NewCommonSubDefinition(definitions[group]);
-                    expr->use = definitions[group];
                 } else {
                     if (!Bv_IsBitSet(group, seen) && Bv_IsBitSet(group, incoming)) {
                         expr->cseFromPredecessors = TRUE;
@@ -1334,9 +1268,6 @@ static void AllocateCommonSubTemps(void) {
                     changed = TRUE;
                 }
                 def->expr->temp = temp;
-                if (def->expr->node != expr->node) {
-                    def->expr->cseUsedOutsideBlock = TRUE;
-                }
             }
         }
         IRO_CheckForUserBreak();
@@ -1344,18 +1275,31 @@ static void AllocateCommonSubTemps(void) {
 }
 
 static void RewriteCommonSubs(void) {
-    IROExpr* expr;
+    IRONode* node;
 
-    for (expr = IRO_FirstExpr; expr; expr = expr->next) {
-        IROLinear* linear = expr->linear;
-        if (expr->temp) {
-            MoveCommonSub(expr);
-        } else if (expr->cseDefinitions) {
-            IROExpr* def = expr->cseDefinitions->expr;
-            IRO_Dump("Replacing common sub at %d with %d\n", linear->index, def->linear->index);
-            IRO_ReplaceReference(linear, def->temp, linear);
-            IRO_RemoveExpr(expr);
-            IRO_NopOut(linear);
+    for (node = IRO_FirstNode; node; node = node->nextnode) {
+        IROLinear* start = node->first;
+        IROLinear* linear;
+        for (linear = start; linear; linear = linear->next) {
+            IROExpr* expr = linear->expr;
+            if (expr && expr->temp) {
+                /* MoveCommonSub keeps the oracle hook's one-argument signature. */
+                expr->cseStatementStart = start;
+                MoveCommonSub(expr);
+            } else if (expr && expr->cseDefinitions) {
+                IROExpr* def = expr->cseDefinitions->expr;
+                IRO_Dump("Replacing common sub at %d with %d\n", linear->index, def->linear->index);
+                IRO_ReplaceReference(linear, def->temp, linear);
+                IRO_RemoveExpr(expr);
+                IRO_NopOut(linear);
+            }
+            if (!(linear->flags & IROLF_Reffed) &&
+                (linear->type != IROLinearNop || linear == start)) {
+                start = linear->next;
+            }
+            if (linear == node->last) {
+                break;
+            }
         }
         IRO_CheckForUserBreak();
     }
@@ -1373,6 +1317,7 @@ void IRO_CommonSubs(void) {
     LinkIncomingCommonSubs();
     AllocateCommonSubTemps();
     RewriteCommonSubs();
+    IRO_UpdateFlagsOnInts();
 }
 #endif
 

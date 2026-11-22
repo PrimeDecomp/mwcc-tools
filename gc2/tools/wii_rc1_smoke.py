@@ -2228,6 +2228,43 @@ unsigned ordered(volatile struct Buffer *p) {
         run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    source = work / "cse_nested_pointer.c"
+    source.write_text(
+        """\
+struct Window {
+    const unsigned char *begin;
+    const unsigned char *end;
+    int position;
+};
+
+int count_newlines(const struct Window *window, int undo, int binary) {
+    int position = window->position + (window->end - window->begin);
+
+    if (undo >= 3) {
+        undo -= 2;
+        position -= undo;
+    } else {
+        undo = 0;
+    }
+
+    if (!binary) {
+        int count = window->end - window->begin - undo;
+        const unsigned char *cursor = window->begin;
+        while (count--) {
+            if (*cursor++ == '\\n')
+                position++;
+        }
+    }
+    return position;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O2", "-O3"):
+        run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     source = work / "store_forwarding.c"
     source.write_text(
         """\
