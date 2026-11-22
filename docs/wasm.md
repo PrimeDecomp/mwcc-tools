@@ -71,6 +71,9 @@ ninja
 
 This produces `build/Wii_1_0RC1/wasm/mwcceppc.wasm` and `persist.wasm` with their
 version resources. Explicit module consumers such as mwdec can load these paths.
+When `mwcc-tools run ninja` encounters a project's stock Wii 1.0RC1 compiler,
+it runs the stock executable. Use `mwcc-tools corpus --version Wii_1_0RC1 --wasm`
+with the source module path to compare it with stock on project inputs.
 The regular module can emit program IPA sidecars from source and compile an individual
 `.irobj` sidecar to a PowerPC object using `-ipa program -c`.
 Run `mwcc-tools configure --version Wii_1_0RC1 --oracle` and `ninja` to build

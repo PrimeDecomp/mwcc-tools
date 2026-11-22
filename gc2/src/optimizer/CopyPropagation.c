@@ -24,6 +24,12 @@ PropInfo* propinfo;
 int* ncandidatesinblock;
 int* firstcandidateinblock;
 static int moreaggressiveoptimization;
+#if VERSION == VERSION_WII_1_0RC1
+/* Stock starts with both fields zero. The first candidate numbered zero can
+   propagate its uses before the first finish callback enables copy removal. */
+static int partial_copy_candidate;
+static Boolean remove_partial_copy;
+#endif
 static UInt32 cp_mask;
 static PropagateAndFinishFunc propagateandfinish;
 static PropagatesToUseFunc propagatestouse;
@@ -506,7 +512,9 @@ static int copypropagatestouse(int candidateID, int useID) {
     RegClass rclass;
     PCode* pcode;
     int i;
+#if VERSION != VERSION_WII_1_0RC1
     PCode* scan;
+#endif
     PCodeArg* op;
 
     pcode = Candidates[candidateID].pcode;
@@ -526,13 +534,27 @@ static int copypropagatestouse(int candidateID, int useID) {
         if (op->kind == PCOp_REGISTER &&
             op->arg == rclass &&
             op->data.reg.reg == destReg &&
+#if VERSION == VERSION_WII_1_0RC1
+            ((op->data.reg.effect & EffectPinned) ||
+             (op->data.reg.effect & (EffectRead | EffectWrite)) == (EffectRead | EffectWrite))) {
+#else
             (op->data.reg.effect & (EffectRead | EffectWrite)) == (EffectRead | EffectWrite)) {
+#endif
             ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 1, FALSE));
             return FALSE;
         }
         op++;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (!canidate_reaches_use(
+            pcode, candidateID, srcReg, use->pcode,
+            propinfo[use->pcode->block->blockIndex].in, rclass
+        )) {
+        ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 3, FALSE));
+        return FALSE;
+    }
+#else
     if (pcode->block == use->pcode->block && precedes(pcode, use->pcode)) {
         for (scan = pcode->nextPCode; scan && scan != use->pcode; scan = scan->nextPCode) {
             op = scan->args;
@@ -572,10 +594,52 @@ static int copypropagatestouse(int candidateID, int useID) {
             }
         }
     }
+#endif
 
     ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 5, TRUE));
     return TRUE;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static int propagate_partial_copy(int candidateID, int useID) {
+    PCode* copy = Candidates[candidateID].pcode;
+    PCode* use = Uses[useID].pcode;
+    PCodeArg* dest = &copy->args[0];
+    PCodeArg* op;
+    int i;
+
+    if (!copypropagatestouse(candidateID, useID)) {
+        partial_copy_candidate = candidateID;
+        remove_partial_copy = FALSE;
+        return TRUE;
+    }
+
+    for (op = use->args, i = use->argCount; i--; op++) {
+        if (PC_OP_IS_READ_REGISTER(op, dest->arg, dest->data.reg.reg)) {
+            if (partial_copy_candidate != candidateID) {
+                partial_copy_candidate = candidateID;
+                remove_partial_copy = TRUE;
+            }
+            op->data.reg.reg = copy->args[1].data.reg.reg;
+            propagated_instructions = TRUE;
+        }
+    }
+    return TRUE;
+}
+
+static void finish_partial_copy(int candidateID) {
+    PCode* copy = Candidates[candidateID].pcode;
+
+    if (partial_copy_candidate == candidateID && remove_partial_copy) {
+        ORACLE_PROBE(OracleProbe_CopyRemove(copy, TRUE));
+        deletepcode(copy);
+        propagated_instructions = TRUE;
+    } else {
+        ORACLE_PROBE(OracleProbe_CopyRemove(copy, FALSE));
+    }
+    partial_copy_candidate = -1;
+}
+#endif
 
 static void propagateandremovecopy(int id) {
     Candidate* candidate;
@@ -591,12 +655,14 @@ static void propagateandremovecopy(int id) {
     destReg = candidate->pcode->args[0].data.reg.reg;
     srcReg = candidate->pcode->args[1].data.reg.reg;
 
+#if VERSION != VERSION_WII_1_0RC1
     if (rclass == RegClass_GPR &&
         destReg >= 32 &&
         destReg <= last_exception_register[RegClass_GPR]) {
         ORACLE_PROBE(OracleProbe_CopyRemove(candidate->pcode, FALSE));
         return;
     }
+#endif
 
     if (!moreaggressiveoptimization && srcReg < n_real_registers[rclass]) {
         ORACLE_PROBE(OracleProbe_CopyRemove(candidate->pcode, FALSE));
@@ -630,13 +696,33 @@ static Propagation copy_prop = {
     "COPY",
     "COPIES",
     "c%ld",
+#if VERSION == VERSION_WII_1_0RC1
+    fIsVolatile | fSideEffects,
+#else
     fSideEffects | fRecordBit,
+#endif
     FALSE
 };
+#if VERSION == VERSION_WII_1_0RC1
+static Propagation partial_copy_prop = {
+    &is_copy,
+    &propagate_partial_copy,
+    &finish_partial_copy,
+    "COPY",
+    "COPIES",
+    "c%ld",
+    fIsVolatile | fSideEffects,
+    FALSE
+};
+#endif
 // clang-format on
 
 void propagatecopyinstructions(Object* proc, int moreAggressive) {
     moreaggressiveoptimization = moreAggressive;
+#if VERSION == VERSION_WII_1_0RC1
+    propagateinstructions(proc, moreAggressive ? &partial_copy_prop : &copy_prop, 1, FALSE);
+#else
     propagateinstructions(proc, &copy_prop, 1, FALSE);
+#endif
     propagatedcopies = propagated_instructions;
 }

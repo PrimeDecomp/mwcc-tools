@@ -1244,15 +1244,42 @@ static int VSPLTIS_VMR(PCode* instr, UInt32* masks) {
     return FALSE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean move_into_definition(PCode* instr, PCode* def, Boolean source_live) {
+    PCodeArg* dst = &instr->args[0];
+    PCodeArg* src = &instr->args[1];
+    PCodeArg* defined;
+
+    if (!def || def->block != instr->block || def->argCount == 0 ||
+        ((instr->flags | def->flags) & (fIsVolatile | fSideEffects)) ||
+        (PCODE_FLAG_SET_F(instr) & fRecordBit)) {
+        return FALSE;
+    }
+
+    defined = &def->args[0];
+    if (!PC_OP_IS_WRITE_REGISTER(defined, RegClass_GPR, src->data.reg.reg) ||
+        (defined->data.reg.effect & EffectRead) ||
+        (source_live && dst->data.reg.reg != src->data.reg.reg) ||
+        usedbetween(instr, def, defined) ||
+        usedbetween(instr, def, dst) ||
+        definedbetween(instr, def, dst)) {
+        return FALSE;
+    }
+
+    *defined = *dst;
+    deletepcode(instr);
+    return TRUE;
+}
+#endif
+
 static int L_MR(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
 #if VERSION == VERSION_WII_1_0RC1
-    if ((instr->flags | defInstr->flags) & (fIsVolatile | fSideEffects)) {
-        return FALSE;
-    }
-#endif
-
+    return move_into_definition(
+        instr, defInstr, (masks[RegClass_GPR] & (1u << instr->args[1].data.reg.reg)) != 0
+    );
+#else
     if ((defInstr->flags & fIsRead) &&
         !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg)) &&
         !(PCODE_FLAG_SET_F(instr) & fRecordBit) &&
@@ -1265,6 +1292,7 @@ static int L_MR(PCode* instr, UInt32* masks) {
     }
 
     return FALSE;
+#endif
 }
 
 static int L_FMR(PCode* instr, UInt32* masks) {
@@ -2535,6 +2563,138 @@ static Boolean combine_disjoint_fields(PCode* masked, PCode* combined, PCodeArg*
     insertpcodeafter(combined, insert);
     return TRUE;
 }
+
+static void forward_stored_value(PCode* store) {
+    PCodeArg* address;
+    PCodeArg* value = &store->args[0];
+    PCode* scan;
+    short base;
+    short index = 0;
+    Object* object = NULL;
+    SInt32 offset = 0;
+    int size;
+    Boolean source_changed = FALSE;
+    Boolean observed_read = FALSE;
+    Boolean indexed;
+
+    if (store->argCount < 3 ||
+        (store->flags & (fIsVolatile | fSideEffects | fUpdatesPtr)) ||
+        !PC_OP_IS_ANY_REGISTER(&store->args[1], RegClass_GPR) ||
+        value->kind != PCOp_REGISTER) {
+        return;
+    }
+
+    address = &store->args[2];
+    base = store->args[1].data.reg.reg;
+    indexed = PC_OP_IS_ANY_REGISTER(address, RegClass_GPR);
+    if (indexed) {
+        index = address->data.reg.reg;
+    } else if (address->kind == PCOp_MEMORY) {
+        object = address->data.mem.obj;
+        offset = address->data.mem.offset;
+    } else if (address->kind == PCOp_IMMEDIATE) {
+        offset = address->data.imm.value;
+    } else {
+        return;
+    }
+    size = nbytes_loaded_or_stored_by(store);
+    if (size <= 0) {
+        return;
+    }
+
+    for (scan = store->nextPCode; scan; scan = scan->nextPCode) {
+        PCodeArg* op;
+        int i;
+        Boolean memory = (scan->flags & (fIsRead | fIsWrite)) != 0;
+
+        /* RC1 tests the scanned instruction's volatile flags on the indexed path. */
+        if ((scan->flags & (fIsBranch | fIsCall)) ||
+            ((indexed || !memory) && (scan->flags & (fIsVolatile | fSideEffects)))) {
+            return;
+        }
+
+        if (memory) {
+            PCodeArg* next_address = &scan->args[2];
+            Boolean same_base;
+            Boolean same_range = FALSE;
+            Boolean disjoint = FALSE;
+
+            if (scan->argCount < 3 || (scan->flags & fUpdatesPtr)) {
+                return;
+            }
+            same_base = PC_OP_IS_REGISTER(&scan->args[1], RegClass_GPR, base);
+            if (indexed) {
+                same_range = same_base && PC_OP_IS_REGISTER(next_address, RegClass_GPR, index);
+                if ((scan->flags & fIsWrite) && !same_range) {
+                    return;
+                }
+            } else {
+                Object* next_object = NULL;
+                SInt32 next_offset;
+
+                if (next_address->kind == PCOp_MEMORY) {
+                    next_object = next_address->data.mem.obj;
+                    next_offset = next_address->data.mem.offset;
+                } else if (next_address->kind == PCOp_IMMEDIATE) {
+                    next_offset = next_address->data.imm.value;
+                } else {
+                    return;
+                }
+
+                if (!same_base || address->kind != next_address->kind) {
+                    if (scan->flags & fIsWrite) {
+                        return;
+                    }
+                    disjoint = address->kind == PCOp_MEMORY && next_address->kind == PCOp_MEMORY;
+                } else if (object != next_object) {
+                    disjoint = TRUE;
+                } else {
+                    int next_size = nbytes_loaded_or_stored_by(scan);
+                    if (next_size <= 0) {
+                        return;
+                    }
+                    same_range = offset == next_offset && size == next_size;
+                    disjoint = next_offset + next_size <= offset || offset + size <= next_offset;
+                }
+            }
+
+            if (scan->flags & fIsRead) {
+                if (!disjoint) {
+                    int kind = same_range && !source_changed
+                        ? can_reuse_stored_value(store, scan)
+                        : 0;
+                    if (kind && scan->args[0].kind == PCOp_REGISTER &&
+                        scan->args[0].arg == value->arg) {
+                        PCode* copy = makecopyforload(kind, value, &scan->args[0]);
+                        insertpcodebefore(scan, copy);
+                        deletepcode(scan);
+                        scan = copy;
+                    } else {
+                        observed_read = TRUE;
+                    }
+                }
+            } else if (!disjoint) {
+                if (!observed_read && same_range && scan->op == store->op) {
+                    deletepcode(store);
+                }
+                return;
+            }
+        }
+
+        for (i = 0, op = scan->args; i < scan->argCount; i++, op++) {
+            if (PC_OP_IS_WRITE_REGISTER(op, RegClass_GPR, base) ||
+                (indexed && PC_OP_IS_WRITE_REGISTER(op, RegClass_GPR, index))) {
+                return;
+            }
+            if (PC_OP_IS_WRITE_REGISTER(op, value->arg, value->data.reg.reg)) {
+                source_changed = TRUE;
+            }
+        }
+        if (source_changed && observed_read) {
+            return;
+        }
+    }
+}
 #endif
 
 static void adjustforward(PCodeBlock* block) {
@@ -2898,6 +3058,10 @@ static void adjustforward(PCodeBlock* block) {
                     }
                 }
             }
+#if VERSION == VERSION_WII_1_0RC1
+        } else if (instr->flags & fIsWrite) {
+            forward_stored_value(instr);
+#endif
         } else if (instr->op == PC_ADDI &&
                    (destReg = instr->args[0].data.reg.reg) == instr->args[1].data.reg.reg &&
                    instr->args[2].kind == PCOp_IMMEDIATE) {
@@ -3154,7 +3318,7 @@ static void update_live_registers(PCode* instr, UInt32* live[RegClassMax]) {
     }
 }
 
-void eliminatedeadpcode(Object* func, Boolean fixed_point) {
+static void backward_peephole(Object* func, Boolean fixed_point, Boolean fold_moves) {
     RegClass saved_class = coloring_class;
     LiveInfo* saved_info = liveinfo;
     LiveInfo* info[RegClassMax];
@@ -3184,6 +3348,14 @@ void eliminatedeadpcode(Object* func, Boolean fixed_point) {
                     deletepcode(instr);
                     changed = TRUE;
                 } else {
+                    if (fold_moves && instr->op == PC_MR) {
+                        short src = instr->args[1].data.reg.reg;
+                        PCode* def = find_def_backwords(instr->prevPCode, src);
+                        if (move_into_definition(
+                                instr, def, bitvectorgetbit(src, live[RegClass_GPR]) != 0)) {
+                            continue;
+                        }
+                    }
                     update_live_registers(instr, live);
                 }
             }
@@ -3193,6 +3365,14 @@ void eliminatedeadpcode(Object* func, Boolean fixed_point) {
 
     liveinfo = saved_info;
     coloring_class = saved_class;
+}
+
+void eliminatedeadpcode(Object* func, Boolean fixed_point) {
+    backward_peephole(func, fixed_point, FALSE);
+}
+
+void peepholeoptimizeearly(Object* func) {
+    backward_peephole(func, FALSE, TRUE);
 }
 
 static Boolean LIS_ADDI(PCode* instr, UInt32* live) {

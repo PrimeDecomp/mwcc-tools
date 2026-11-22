@@ -1911,6 +1911,44 @@ unsigned read_only(const struct Words *src, unsigned *dst) {
         run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    source = work / "store_forwarding.c"
+    source.write_text(
+        """\
+struct Fields { unsigned position, initial, remaining, mask; };
+
+void overwrite(struct Fields *p) {
+    p->remaining = p->initial;
+    p->remaining -= p->position & p->mask;
+}
+
+void protected_stores(volatile struct Fields *p) {
+    p->remaining = p->initial;
+    p->remaining = p->mask;
+}
+
+unsigned indexed(unsigned *p, unsigned i, unsigned x, unsigned y) {
+    p[i] = x;
+    p[i] += y;
+    return p[i];
+}
+
+unsigned mixed_symbols;
+unsigned other_symbol;
+unsigned absolute(unsigned x) {
+    unsigned a;
+    mixed_symbols = x;
+    a = other_symbol;
+    mixed_symbols = a;
+    return a;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O2", "-O4,p"):
+        run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     zero_trip = (
         "int f(volatile int* p) {\n"
         "    int i;\n"

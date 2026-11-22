@@ -281,10 +281,26 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   `s_modf.c` and retains the `mem_funcs.c` and `__init_cpp_exceptions.cpp`
   matches. RC1's pointer propagation at `0x6655a0` still has target-specific
   paths to recover.
-- In `__prep_buffer`, both stores to offset 40 reach stock's global
-  optimizer at `0x5b33f0`. The forward peephole deletes the earlier store
-  at `0x5ba1a4` before local value numbering. The source still emits both
-  stores, which accounts for its extra instruction in this function.
+- The forward store peephole at `0x5b9bd0` looks for later accesses to the
+  same address. It replaces eligible loads with copies of the stored value
+  and removes an earlier store if the value is overwritten without an
+  intervening observation. In `__prep_buffer`, both stores to offset 40
+  reach the global optimizer at `0x5b33f0`. Stock deletes the earlier store
+  at `0x5ba1a4` before local value numbering. The source `buffer_io.c`
+  object now matches stock.
+- RC1's aggressive copy propagation checks each use at `0x644630`,
+  substitutes the source register when it still reaches that use, and
+  tracks rejected uses for the removal callback at `0x6445f0`. Static zero
+  initialization lets the first candidate numbered zero propagate without
+  immediately removing its move. The backward move rule at `0x65b140`
+  can also retarget an earlier definition before value numbering. In
+  `strcpy` it folds two moves into one, which lets copy propagation and
+  register allocation eliminate the remaining move. The source `string.c`
+  object now matches stock.
+- The Corruption corpus has 29 of 76 identical results across the native,
+  source oracle, and WebAssembly builds. In `mbstring.c` the only object
+  difference is the zero test in `__mbtowc_noconv`. Stock emits `extsb.`
+  after the byte load at offset `0x48`; the source emits `cmpwi`.
 - `CMach_StructLayoutPackedBitfield` at `0x4f2117` closes the previous
   allocation unit at the first unused byte when it encounters a zero-width
   field, then aligns the offset for that field. This affects both the next

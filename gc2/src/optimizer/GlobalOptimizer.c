@@ -254,8 +254,7 @@ void globallyoptimizepcode(Object* func) {
         peepholemergeblocks(func, FALSE);
         peepholeoptimizeforward(func);
         propagatecopyinstructions(func, FALSE);
-        // The early backward peephole eliminates dead definitions before value numbering.
-        eliminatedeadpcode(func, FALSE);
+        peepholeoptimizeearly(func);
     }
 #endif
 

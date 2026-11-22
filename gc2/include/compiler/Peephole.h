@@ -10,6 +10,7 @@ extern "C" {
 extern void peepholeoptimizeforward(Object* func);
 #if VERSION == VERSION_WII_1_0RC1
 extern void eliminatedeadpcode(Object* func, Boolean fixed_point);
+extern void peepholeoptimizeearly(Object* func);
 extern void peepholeoptimizeprecolor(Object* func);
 #endif
 extern void peepholemergeblocks(Object* func, Boolean mergePrologEpilog);
