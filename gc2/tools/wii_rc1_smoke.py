@@ -2408,6 +2408,45 @@ unsigned from_two_high(void) {
     )
     results[f"{source.name} -O4,p"] = obj.read_bytes()
 
+    source = work / "conditional_assignments.c"
+    source.write_text(
+        """\
+int big_endian;
+int check_byte_order(void) {
+    unsigned char bytes[4];
+    int result = 0;
+    big_endian = 1;
+    bytes[0] = 0x12;
+    bytes[1] = 0x34;
+    bytes[2] = 0x56;
+    bytes[3] = 0x78;
+    if (*(unsigned*)bytes == 0x12345678) {
+        big_endian = 1;
+    } else if (*(unsigned*)bytes == 0x78563412) {
+        big_endian = 0;
+    } else {
+        result = 1;
+    }
+    return result;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for options in (
+        ("-O0",),
+        ("-O1",),
+        ("-O2",),
+        ("-O3",),
+        ("-O4,p",),
+        ("-O4,s",),
+        ("-O4,p", "-pragma", "opt_optimizecontrolflow off"),
+        ("-O4,p", "-pragma", "opt_propagation off"),
+        ("-O4,p", "-pragma", "peephole off"),
+    ):
+        run(compiler, *FLAGS, *options, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {' '.join(options)}"] = obj.read_bytes()
+
     source = work / "local_declaration_weight.c"
     source.write_text(
         "void declaration_weight(int x) {\n"

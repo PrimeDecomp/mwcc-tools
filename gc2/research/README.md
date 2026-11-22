@@ -137,6 +137,23 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   at `0xffff8000u` with `i <= 0xffffffffu` unconditional even through wraparound.
   The loop now matches the stock instruction bytes at all six tested
   optimization settings from `-O0` through `-O4,s` and `-O4,p`.
+- Stock RC1 chains jumps at call site `0x58d72c`, then rebuilds the flow graph
+  when `IRO_RemoveLabels` (`0x61f810`) deletes a label. This exposes the two
+  assignments in Corruption's `TRKInitializeEndian` to
+  `GeneratePossibleCondAss` (`0x620a20`). That helper accepts a join with
+  incoming edges from outside the two arms. It checks whether the first
+  assignment kills a value the condition reads, and requires a temporary
+  for an overlap or for observable effects in the condition. Without
+  common-subexpression elimination the branch stays in place when a
+  temporary would be necessary. The fixture matches complete stock objects
+  at all six optimization settings and with the three tested overrides.
+- When the loop has no adjacent fallthrough predecessor, stock RC1
+  `CreatePreHeader` (`0x5e6010`) places the new block immediately before the
+  first loop block in code order. It branches to the header if the first
+  block is elsewhere. This keeps the entry branch in Corruption's `strcmp`
+  eligible for inversion around a goto. All previously matching inputs in
+  the Corruption corpus still match, and `nubinit.c` now matches at the
+  project's `-O4,p` setting.
 - The native loop alignment pass at `0x59c710` requests instruction alignment
   on the size-optimized path (`0x59c7b8` through `0x59c7d8`). For the Gekko
   backend this is four bytes, so the source skips eight-byte loop padding in

@@ -232,7 +232,11 @@ static Boolean CheckChain(CLabel** labelptr) {
                 }
             }
 
-            if (linear->type == IROLinearGoto && *labelptr != linear->u.label.label) {
+            if (linear->type == IROLinearGoto &&
+#if VERSION == VERSION_WII_1_0RC1
+                !(linear->flags & IROLF_EndLoop) &&
+#endif
+                *labelptr != linear->u.label.label) {
                 *labelptr = linear->u.label.label;
                 IRO_Dump("Chaining goto at %d\n", linear->index);
                 return TRUE;
@@ -294,6 +298,12 @@ Boolean IRO_DoJumpChaining(void) {
         IRO_CheckForUserBreak();
     } while (changed);
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (result) {
+        IRO_ComputeSuccPred();
+        IRO_ComputeDom();
+    }
+#endif
     return result;
 }
 
@@ -517,6 +527,11 @@ Boolean IRO_RemoveLabels(void) {
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (result) {
+        IRO_BuildFlowgraph(IRO_FirstLinear);
+    }
+#endif
     IRO_CheckForUserBreak();
     return result;
 }

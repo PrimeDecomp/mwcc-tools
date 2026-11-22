@@ -1450,7 +1450,9 @@ static Boolean GeneratePossibleCondAss(IRONode* fnode) {
     IROLinear* left2;
     IROLinear* cond;
     Boolean hasElse;
+#if VERSION != VERSION_WII_1_0RC1
     BitVector* saveVarKills;
+#endif
     IROList list;
     Boolean isIf;
     IROLinear* test;
@@ -1494,13 +1496,19 @@ static Boolean GeneratePossibleCondAss(IRONode* fnode) {
     }
 
     succ0 = node2->succ[0];
-    if ((succnode = IRO_NodeTable[succ0]) == node1 && Bv_IsBitSet(fnode->index, node1->dom)) {
+    if ((succnode = IRO_NodeTable[succ0]) == node1
+#if VERSION != VERSION_WII_1_0RC1
+        && Bv_IsBitSet(fnode->index, node1->dom)
+#endif
+    ) {
         hasElse = FALSE;
     } else if (node1->numpred == 1 &&
                node1->numsucc == 1 &&
                succ0 == node1->succ[0] &&
                (joinnode = IRO_NodeTable[succ0]) &&
+#if VERSION != VERSION_WII_1_0RC1
                Bv_IsBitSet(fnode->index, joinnode->dom) &&
+#endif
                node1->last->next == joinnode->first) {
         hasElse = TRUE;
     } else {
@@ -1579,9 +1587,22 @@ static Boolean GeneratePossibleCondAss(IRONode* fnode) {
     if (hasElse) {
         if (sameDest) {
             useTemp = FALSE;
-        } else if (IRO_HasSideEffect(condnd)) {
+        } else if (IRO_HasSideEffect(condnd)
+#if VERSION == VERSION_WII_1_0RC1
+                   || IRO_ExprHasFloatingPointEffects(condnd)
+#endif
+        ) {
             useTemp = TRUE;
         } else {
+#if VERSION == VERSION_WII_1_0RC1
+            Bv_AllocVector(&IRO_Depends, IRO_NumVars + 1);
+            IRO_FindDepends_NoAlloc(condnd);
+            Bv_AllocVector(&IRO_VarKills, IRO_NumVars + 1);
+            IRO_WalkTree(ass1, Regen_GetExprKills);
+            if (Bv_BitsInCommon(IRO_VarKills, IRO_Depends)) {
+                useTemp = TRUE;
+            }
+#else
             Bv_AllocVector(&IRO_VarKills, IRO_NumVars + 1);
             IRO_WalkTree(condnd, Regen_GetExprUses);
             saveVarKills = IRO_VarKills;
@@ -1590,6 +1611,7 @@ static Boolean GeneratePossibleCondAss(IRONode* fnode) {
             if (Bv_BitsInCommon(IRO_VarKills, saveVarKills)) {
                 useTemp = TRUE;
             }
+#endif
         }
 
         if (useTemp && !copts.commonsubs) {

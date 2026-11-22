@@ -219,6 +219,12 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
         changed |= IRO_RemoveRedundantJumps();
         IRO_DumpAfterPhase("IRO_RemoveRedundantJumps", FALSE);
 
+#if VERSION == VERSION_WII_1_0RC1
+        if (copts.opt_optimizecontrolflow) {
+            changed |= IRO_DoJumpChaining();
+            IRO_DumpAfterPhase("IRO_DoJumpChaining", FALSE);
+        }
+#endif
         if (!DisableDueToAsm) {
             changed |= IRO_RemoveLabels();
             IRO_DumpAfterPhase("IRO_RemoveLabels()", FALSE);

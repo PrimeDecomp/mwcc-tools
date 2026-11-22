@@ -773,6 +773,31 @@ static IRONode* CreatePreHeader(IRONode* fnode1, IRONode* fnode2) {
         fnode2->nextnode = newfnode;
         newfnode->nextnode = fnode1;
     } else {
+#if VERSION == VERSION_WII_1_0RC1
+        IRONode* firstInLoop = IRO_FirstNode;
+        IRONode* previous = NULL;
+
+        while (firstInLoop && !Bv_IsBitSet(firstInLoop->index, InLoop)) {
+            previous = firstInLoop;
+            firstInLoop = firstInLoop->nextnode;
+        }
+        CError_ASSERT(1313, firstInLoop && fnode1->first->type == IROLinearLabel);
+        if (firstInLoop == fnode1) {
+            labelnode->next = IRO_NewLinear(IROLinearNop);
+        } else {
+            labelnode->next = IRO_NewLinear(IROLinearGoto);
+            labelnode->next->u.label.label = fnode1->first->u.label.label;
+        }
+        labelnode->next->next = firstInLoop->first;
+        newfnode->nextnode = firstInLoop;
+        if (previous) {
+            previous->last->next = labelnode;
+            previous->nextnode = newfnode;
+        } else {
+            IRO_FirstLinear = labelnode;
+            IRO_FirstNode = newfnode;
+        }
+#else
         CError_ASSERT(1313, fnode1->first->type == IROLinearLabel);
         labelnode->next = IRO_NewLinear(IROLinearGoto);
         labelnode->next->u.label.label = fnode1->first->u.label.label;
@@ -780,6 +805,7 @@ static IRONode* CreatePreHeader(IRONode* fnode1, IRONode* fnode2) {
         IRO_LastNode->nextnode = newfnode;
         IRO_LastNode = newfnode;
         IRO_LastLinear = labelnode->next;
+#endif
     }
 
     newfnode->last = labelnode->next;
