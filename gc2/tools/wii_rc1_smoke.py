@@ -2922,6 +2922,36 @@ int times_signed_minimum(int x) { return x * (-2147483647 - 1); }
             run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
             results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
 
+    source = work / "conditional_assignment.cpp"
+    source.write_text(
+        """
+extern int next_value();
+extern int first, second;
+
+void choose_global() {
+    if (next_value() & 0x4000)
+        first = 0;
+    else
+        second = 0;
+}
+
+int choose_local(int a, int b) {
+    if (next_value() & 0x4000)
+        a = 0;
+    else
+        b = 0;
+    return a + 2 * b;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    for options in (("-O0",), ("-O2",), ("-O4,p",), ("-O4,s",)):
+        run(compiler, *FLAGS, *options, "-c", source, "-o", obj, cwd=work)
+        run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+        results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
+
     source = work / "immediate_reuse.c"
     source.write_text(
         """

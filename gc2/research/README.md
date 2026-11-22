@@ -173,6 +173,12 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   `pcode_expand_pseudo_ops` (`0x5a6ed0`) expands it to `mfcr` and `rlwinm`
   after register coloring. Corruption's `fclose` now matches the stock
   return sequence.
+- RC1 refreshes expression references at the end of `IRO_RegenerateExpressions`
+  (`0x61fd6e`). Conditional assignments to different destinations can insert
+  a temporary for a condition with side effects. The refresh marks both reads
+  and the defining assignment before the final transformation removes unused
+  expressions. The six Echoes inputs that failed in `BuildExpr` now compile
+  with common-subexpression elimination enabled.
 - Stock RC1 `FactorExpression` (`0x60e380`) replaces repeated integer
   addends such as `x+x+x` with `x*(1+1+1)`. Constant folding and another
   transformation pass then lower powers of two to shifts. `IRO_IsPow2`

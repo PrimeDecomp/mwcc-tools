@@ -1802,5 +1802,8 @@ void IRO_RegenerateExpressions(void) {
         IRO_Dump("Generating ECONDASSes\n");
         GenerateCondAssignments();
         IRO_DumpAfterPhase("GenerateCondAssignments", FALSE);
+#if VERSION == VERSION_WII_1_0RC1
+        IRO_UpdateFlagsOnInts();
+#endif
     }
 }
