@@ -2984,6 +2984,81 @@ unsigned signed_immediate(int x) { return x ? -2u : 0u; }
         run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
         results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
 
+    source = work / "destructor_vtables.cpp"
+    source.write_text(
+        """
+#pragma force_active on
+extern void free_mem(void*);
+inline void operator delete(void* p) throw() { free_mem(p); }
+extern int counter;
+extern void marker();
+struct Base { virtual ~Base() {} virtual void foo(); };
+struct Derived : Base { ~Derived() {} virtual void foo(); };
+struct MoreDerived : Derived { ~MoreDerived() {} virtual void foo(); };
+struct Implicit : Derived { virtual void foo(); };
+struct Marker : Base { ~Marker() { marker(); } };
+struct Counter : Base { ~Counter() { ++counter; } };
+struct Fields : Base { int field; ~Fields() { field = 42; } };
+extern void observe(Base*);
+struct Escape : Base { ~Escape() { observe(this); } };
+struct Dispatch : Base { ~Dispatch() { foo(); } virtual void foo(); };
+struct Qualified : Base { ~Qualified() { Base::foo(); } };
+struct Member { ~Member() { marker(); } };
+struct WithMember : Base { Member member; ~WithMember() {} };
+struct WithVirtual : virtual Base { ~WithVirtual() {} virtual void foo(); };
+struct Other { virtual ~Other() {} virtual void bar(); };
+struct Multiple : Base, Other { ~Multiple() {} virtual void foo(); };
+void Base::foo() {}
+void Derived::foo() {}
+void MoreDerived::foo() {}
+void Implicit::foo() {}
+void Dispatch::foo() {}
+void WithVirtual::foo() {}
+void Other::bar() {}
+void Multiple::foo() {}
+void construct() {
+    observe(new MoreDerived);
+    observe(new Implicit);
+    observe(new Marker);
+    observe(new Counter);
+    observe(new Fields);
+    observe(new Escape);
+    observe(new Dispatch);
+    observe(new Qualified);
+    observe(new WithMember);
+    observe(new WithVirtual);
+    observe(new Multiple);
+}
+""",
+        encoding="ascii",
+    )
+    obj, section = source.with_suffix(".o"), source.with_suffix(".text")
+    for opt in ("-O0", "-O4,p"):
+        run(compiler, *FLAGS, "-bool", "on", "-func_align", "4", opt, "-c", source, "-o", obj, cwd=work)
+        run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+        text = section.read_bytes()
+        symbols = run(nm, "--defined-only", "--format=posix", "--print-size", obj, cwd=work)
+        relocations = []
+        for line in run(objdump, "--reloc", "--section=.rela.text", obj, cwd=work).splitlines():
+            fields = line.split(maxsplit=2)
+            if len(fields) == 3 and fields[1].startswith("R_PPC_"):
+                relocations.append((int(fields[0], 16), fields[1], fields[2]))
+        destructors = [line.split() for line in symbols.splitlines() if line.startswith("__dt__")]
+        if len(destructors) != 15:
+            raise ValueError(f"{compiler}: expected 15 destructors with {opt}, found {len(destructors)}")
+        for name, _, address, size in destructors:
+            start = int(address, 16)
+            end = start + int(size, 16)
+            fixups = tuple(
+                (offset - start, kind, target)
+                for offset, kind, target in relocations if start <= offset < end
+            )
+            if opt == "-O0":
+                result = tuple(target for _, _, target in fixups if target.startswith("__vt__"))
+            else:
+                result = (text[start:end], fixups)
+            results[f"{source.name} {opt} {name}"] = result
+
     source = work / "immediate_reuse.c"
     source.write_text(
         """

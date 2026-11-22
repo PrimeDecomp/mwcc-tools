@@ -392,6 +392,13 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   operands for 64-bit integer types before choosing the single-register
   negated-compare path. A wide comparison uses `I8_gen_condition` and
   negates the resulting boolean, so the high words participate.
+- `CABI_TransDestructor` at `0x562ed0` scans the destructor body with
+  `0x566880` before adding the destructor calls for members and bases. The
+  scan uses `CExpr_HasFuncCall` for expressions and keeps the vtable writes
+  for call, assembly, and catch statements. Empty bodies, assignments, and
+  generated member and base destruction alone do not need those writes.
+  The smoke test compares vtable relocations at `-O0` and destructor code
+  and relocations at `-O4,p`, covering calls with and without `this`.
 - The `AND` case of constant propagation (`0x6462f1`) follows `LI` and
   `LIS` definitions. Contiguous masks become `RLWINM` with a zero shift.
   Disjoint masks use `ANDI` or `ANDIS` and define CR0. The stock formatter

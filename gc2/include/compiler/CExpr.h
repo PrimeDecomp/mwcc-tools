@@ -195,6 +195,7 @@ extern ENode* forceintegral(ENode* expr);
 extern Boolean CExpr_AllBitsSet(ENode* expr);
 extern void CExpr_SearchExprTree(ENode* expr, CExprSearchCB callback, SInt32 count, ...);
 #if VERSION == VERSION_WII_1_0RC1
+extern Boolean CExpr_HasFuncCall(ENode* expr);
 extern void CExpr_SearchIPAReferences(
     ENode* expr, CExprSearchCB opaque, void (*visit)(Object*, Boolean)
 );

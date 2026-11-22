@@ -1864,6 +1864,34 @@ static Statement* CABI_DestroyVBases(Statement* stmt, VClassList* vbases) {
     return stmt;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean CABI_CanSkipVTableInit(Statement* stmt) {
+    for (; stmt; stmt = stmt->next) {
+        switch (stmt->type) {
+            case ST_EXPRESSION:
+            case ST_SWITCH:
+            case ST_IFGOTO:
+            case ST_IFNGOTO:
+            case ST_RETURN:
+            case ST_GOTOEXPR:
+                if (stmt->expr && CExpr_HasFuncCall(stmt->expr)) {
+                    return FALSE;
+                }
+                break;
+            case ST_NOP:
+            case ST_LABEL:
+            case ST_GOTO:
+            case ST_EXIT:
+            case ST_ENTRY:
+                break;
+            default:
+                return FALSE;
+        }
+    }
+    return TRUE;
+}
+#endif
+
 void CABI_TransDestructor(
     Object* dtor, Object* func, Statement* stmt, TypeClass* tclass, CABIDestroyMode mode
 ) {
@@ -1878,6 +1906,9 @@ void CABI_TransDestructor(
     CLabel* label3;
     Object* dealloc;
     Boolean includeSize;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean skipVTableInit = CABI_CanSkipVTableInit(stmt);
+#endif
 
     if (tclass->sominfo) {
         doDelete = doBases = doVBases = FALSE;
@@ -1911,7 +1942,11 @@ void CABI_TransDestructor(
         scan->label = label2;
     }
 
-    if (doBases && tclass->vtable && tclass->vtable->object && tclass->vtable->owner == tclass) {
+    if (doBases && tclass->vtable && tclass->vtable->object && tclass->vtable->owner == tclass
+#if VERSION == VERSION_WII_1_0RC1
+        && !skipVTableInit
+#endif
+    ) {
         cabi_pathroot.next = NULL;
         cabi_pathroot.type = TYPE(tclass);
         cabi_pathcur = &cabi_pathroot;
