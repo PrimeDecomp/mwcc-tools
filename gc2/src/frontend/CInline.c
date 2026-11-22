@@ -1348,6 +1348,31 @@ static Object* CInline_NewLocalObject(Type* type, short qual, UInt8 sflags, int 
     return object;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static const SInt32* CInline_SavedVariableUIDs(const CI_FuncData* body) {
+    return body->flags & CI_HasSavedVariableUIDs ? body->saved_variable_uids : NULL;
+}
+
+static Object* CInline_RestoreVariable(Object* object, const CI_Var* saved, SInt32 uid) {
+    memclrw(object, sizeof(*object));
+    object->otype = OT_OBJECT;
+    object->access = ACCESSPUBLIC;
+    object->datatype = DLOCAL;
+    object->name = saved->name;
+    object->type = saved->type;
+    object->qual = saved->qual;
+    object->u.var.uid = uid;
+    CInline_SetObjectSFlags(object, saved->sflags);
+    CFunc_SetupLocalVarInfo(object);
+    return object;
+}
+
+static void CInline_AttachVariable(Object* object) {
+    object->name = CParser_GetUniqueName();
+    CFunc_AppendLocal(object);
+}
+#endif
+
 static ENode* CInline_FuncArgConvert(ENode* expr) {
     ENode* copy;
 
@@ -1422,6 +1447,9 @@ static ENode* CInline_SetupArgsExpression(Object* object, CI_FuncData* data, ENo
     Object* obj;
     SInt32 i;
     Boolean is_oldstyle;
+#if VERSION == VERSION_WII_1_0RC1
+    const SInt32* savedUIDs = CInline_SavedVariableUIDs(data);
+#endif
 
     is_oldstyle = FALSE;
     if (TYPE_FUNC(object->type)->args == &oldstyle) {
@@ -1433,7 +1461,15 @@ static ENode* CInline_SetupArgsExpression(Object* object, CI_FuncData* data, ENo
 
     for (i = 0, var = data->locals; i < data->numlocals; i++, var++) {
         if (var->used) {
-            local_dobjects[i] = obj = CInline_NewLocalObject(var->type, var->qual, var->sflags, 0);
+#if VERSION == VERSION_WII_1_0RC1
+            if (savedUIDs) {
+                obj = CInline_RestoreVariable(lalloc(sizeof(Object)), var, savedUIDs[data->numarguments + i]);
+            } else
+#endif
+            {
+                obj = CInline_NewLocalObject(var->type, var->qual, var->sflags, 0);
+            }
+            local_dobjects[i] = obj;
             if (!var->unmodified) {
                 obj->flags |= OBJECT_REFERENCED;
             }
@@ -1462,7 +1498,15 @@ static ENode* CInline_SetupArgsExpression(Object* object, CI_FuncData* data, ENo
             local_aobjects[i].useExpr = expr;
             local_aobjects[i].evalExpr = scan->node;
         } else {
-            local_aobjects[i].object = CInline_NewLocalObject(var->type, var->qual, var->sflags, 0);
+#if VERSION == VERSION_WII_1_0RC1
+            if (savedUIDs) {
+                obj = CInline_RestoreVariable(lalloc(sizeof(Object)), var, savedUIDs[i]);
+            } else
+#endif
+            {
+                obj = CInline_NewLocalObject(var->type, var->qual, var->sflags, 0);
+            }
+            local_aobjects[i].object = obj;
             local_aobjects[i].useExpr = NULL;
         }
 
@@ -1496,6 +1540,11 @@ static ENode* CInline_SetupArgsExpression(Object* object, CI_FuncData* data, ENo
                 CError_ASSERT(1470, !ENODE_IS(scan->node, EPRECOMP));
             }
         } else {
+#if VERSION == VERSION_WII_1_0RC1
+            if (savedUIDs) {
+                CInline_AttachVariable(local_aobjects[i].object);
+            }
+#endif
             if (is_oldstyle && scan->node->rtype->size != local_aobjects[i].object->type->size) {
                 scan->node = makemonadicnode(scan->node, ETYPCON);
                 scan->node->rtype = local_aobjects[i].object->type;
@@ -1510,6 +1559,20 @@ static ENode* CInline_SetupArgsExpression(Object* object, CI_FuncData* data, ENo
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (savedUIDs) {
+        for (; i < data->numarguments; i++) {
+            if (local_aobjects[i].object) {
+                CInline_AttachVariable(local_aobjects[i].object);
+            }
+        }
+        for (i = 0; i < data->numlocals; i++) {
+            if (local_dobjects[i]) {
+                CInline_AttachVariable(local_dobjects[i]);
+            }
+        }
+    }
+#endif
     return commaNodes;
 }
 
@@ -1580,6 +1643,10 @@ static ENode* CInline_InlineFunctionExpression(ENode* expr) {
 
     for (i = 0; i < funcdata->numstatements; i++) {
         switch (funcdata->statements[i].type) {
+#if VERSION == VERSION_WII_1_0RC1
+            case ST_NOP:
+                break;
+#endif
             case ST_RETURN:
                 if (funcdata->statements[i].u.expr) {
                     ENode* copy =
@@ -3725,6 +3792,22 @@ void CInline_PackIFunctionData(CI_FuncData* funcdata, Statement* stmt, Object* o
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (funcdata->numarguments || funcdata->numlocals) {
+        SInt32* uid = galloc(sizeof(*uid) * (funcdata->numarguments + funcdata->numlocals));
+        funcdata->flags |= CI_HasSavedVariableUIDs;
+        funcdata->saved_variable_uids = uid;
+        for (list = arguments; list; list = list->next) {
+            *uid++ = list->object->u.var.uid;
+        }
+        for (list = locals; list; list = list->next) {
+            if (list->object->datatype == DLOCAL) {
+                *uid++ = list->object->u.var.uid;
+            }
+        }
+    }
+#endif
+
     scan = stmt->next;
     i = 0;
     while (scan) {
@@ -3793,6 +3876,9 @@ void CInline_UnpackIFunctionData(Object* object, CI_FuncData* funcdata, Statemen
     CI_Statement* packstmt;
     CI_Var* var;
     int i;
+#if VERSION == VERSION_WII_1_0RC1
+    const SInt32* savedUIDs = CInline_SavedVariableUIDs(funcdata);
+#endif
 
     cparser_fileoffset = funcdata->fileoffset;
     symdecloffset = funcdata->symdecloffset;
@@ -3810,10 +3896,13 @@ void CInline_UnpackIFunctionData(Object* object, CI_FuncData* funcdata, Statemen
         }
 
         obj = galloc(sizeof(Object));
-        memclrw(obj, sizeof(Object));
         last->object = obj;
         last->next = NULL;
 
+#if VERSION == VERSION_WII_1_0RC1
+        CInline_RestoreVariable(obj, var, savedUIDs ? savedUIDs[i] : 0);
+#else
+        memclrw(obj, sizeof(Object));
         obj->otype = OT_OBJECT;
         obj->access = ACCESSPUBLIC;
         obj->datatype = DLOCAL;
@@ -3822,6 +3911,7 @@ void CInline_UnpackIFunctionData(Object* object, CI_FuncData* funcdata, Statemen
         obj->qual = var->qual;
         CInline_SetObjectSFlags(obj, var->sflags);
         CFunc_SetupLocalVarInfo(obj);
+#endif
 
         if (funcdata->fileoffset.file) {
             obj->u.var.info->deftoken.tokenfile = funcdata->fileoffset.file;
@@ -3839,10 +3929,13 @@ void CInline_UnpackIFunctionData(Object* object, CI_FuncData* funcdata, Statemen
         }
 
         obj = galloc(sizeof(Object));
-        memclrw(obj, sizeof(Object));
         last->object = obj;
         last->next = NULL;
 
+#if VERSION == VERSION_WII_1_0RC1
+        CInline_RestoreVariable(obj, var, savedUIDs ? savedUIDs[funcdata->numarguments + i] : 0);
+#else
+        memclrw(obj, sizeof(Object));
         obj->otype = OT_OBJECT;
         obj->access = ACCESSPUBLIC;
         obj->datatype = DLOCAL;
@@ -3851,6 +3944,7 @@ void CInline_UnpackIFunctionData(Object* object, CI_FuncData* funcdata, Statemen
         obj->qual = var->qual;
         CInline_SetObjectSFlags(obj, var->sflags);
         CFunc_SetupLocalVarInfo(obj);
+#endif
 
         if (funcdata->fileoffset.file) {
             obj->u.var.info->deftoken.tokenfile = funcdata->fileoffset.file;
@@ -4001,7 +4095,7 @@ static void CInline_GenIFunctionCode(Object* object, CI_FuncData* func, UInt8 ol
 
 #if VERSION == VERSION_WII_1_0RC1
 static void set_packed_function_options(CI_FuncData* body) {
-    if (body->use_caller_inline_options) {
+    if (body->flags & CI_UseCallerInlineOptions) {
         struct CInlineBackendOptions options = body->options;
 
         options.dontinline = copts.dontinline;

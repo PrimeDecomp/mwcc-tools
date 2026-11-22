@@ -817,7 +817,7 @@ Boolean CMid_LoadPrecompiledFunction(
     CInline_PackIFunctionData(body, &head, object);
     body->options = options;
     body->can_inline = header->options.bytes[0xce];
-    body->use_caller_inline_options = TRUE;
+    body->flags |= CI_UseCallerInlineOptions;
     object->u.func.u.ifuncdata = body;
     arguments = savedArguments;
     locals = savedLocals;

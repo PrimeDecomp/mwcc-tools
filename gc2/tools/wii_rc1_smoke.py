@@ -777,6 +777,34 @@ def check_stock_pch_functions(compiler, reference, objcopy, nm, work):
                 raise ValueError(f"{compiler}: {prefix.name} changed code with inlining {mode}")
 
 
+def check_stock_pch_inline_locals(compiler, reference, objcopy, work):
+    header = work / "inline_locals.h"
+    header.write_text(
+        "inline double abs_value(double x) { return __fabs(x); }\n"
+        "inline double with_local(double x) { double y = x * x; return abs_value(y) + y; }\n",
+        encoding="ascii",
+    )
+    source = work / "inline_locals.cpp"
+    source.write_text(
+        "extern double nested(double);\n"
+        "double first(double x) { return abs_value(nested(x)) + 1.234567; }\n"
+        "double second(double x) { return with_local(nested(x)) + 7.392849; }\n",
+        encoding="ascii",
+    )
+    prefix = header.with_suffix(".mch")
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    flags = (*FLAGS, "-fp_contract", "off", "-inline", "auto", "-O4,p", "-lang=c++", "-func_align", "4")
+    run(reference, *flags, "-precompile", prefix, header, cwd=work)
+    code = []
+    for tool in (reference, compiler):
+        run(tool, *flags, "-prefix", prefix, "-c", source, "-o", obj, cwd=work)
+        run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+        code.append(section.read_bytes())
+    if code[0] != code[1]:
+        raise ValueError(f"{compiler}: instruction bytes differ for inline locals from a stock PCH")
+
+
 def check_stock_pch_templates(compiler, reference, objcopy, nm, work):
     cases = (
         (
@@ -2564,6 +2592,28 @@ double repeated_int_to_float(int a, double x) {
                 run(objcopy, f"--dump-section={section}={output}", obj, cwd=work)
                 results[f"{source.name} {' '.join(options)} {section}"] = output.read_bytes()
 
+    source = work / "inline_saved_uids.c"
+    source.write_text(
+        """
+static inline double abs_value(double x) { return __fabs(x); }
+extern double next_value(double);
+double division_arg(double y, double x) { return next_value(abs_value(y / x)) + 1.2345678900987; }
+double object_arg(double x) { return next_value(abs_value(x)) + 2.3045678076802; }
+double nested_call(double x) { return next_value(abs_value(next_value(x))) + 0.7590142272517; }
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O1", "-O2", "-O3", "-O4,p"):
+        run(
+            compiler, *FLAGS, opt, "-fp_contract", "off", "-inline", "auto", "-func_align", "4",
+            "-c", source, "-o", obj, cwd=work,
+        )
+        for section in (".text", ".strtab"):
+            output = source.with_suffix(section)
+            run(objcopy, f"--dump-section={section}={output}", obj, cwd=work)
+            results[f"{source.name} {opt} {section}"] = output.read_bytes()
+
     source = work / "integer_factoring.c"
     source.write_text(
         """
@@ -2684,6 +2734,7 @@ def main():
                 check_stock_pch_declarations(compiler, stock, args.objcopy, args.nm, work)
                 check_stock_pch_static_data(compiler, stock, args.objcopy, args.nm, args.objdump, work)
                 check_stock_pch_functions(compiler, stock, args.objcopy, args.nm, work)
+                check_stock_pch_inline_locals(compiler, stock, args.objcopy, work)
                 check_stock_spe_pch(compiler, stock, args.objcopy, work)
                 check_aligned_pch(compiler, stock, args.objcopy, work)
                 check_stock_pch_initializers(compiler, stock, args.objcopy, args.nm, args.objdump, work)

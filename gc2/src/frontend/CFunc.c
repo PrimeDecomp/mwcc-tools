@@ -183,6 +183,15 @@ void CFunc_SetupLocalVarInfo(Object* obj) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+void CFunc_AppendLocal(Object* object) {
+    ObjectList* list = lalloc(sizeof(ObjectList));
+    list->object = object;
+    list->next = locals;
+    locals = list;
+}
+#endif
+
 static void adjustargumenttype(DeclInfo* declinfo) {
     switch ((int)declinfo->thetype->type) {
         case TYPECLASS:

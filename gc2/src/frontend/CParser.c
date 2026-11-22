@@ -815,10 +815,14 @@ Object* CParser_NewLocalDataObject(DeclInfo* declinfo, Boolean add_to_locals) {
     }
 
     if (add_to_locals) {
+#if VERSION == VERSION_WII_1_0RC1
+        CFunc_AppendLocal(object);
+#else
         ObjectList* list = lalloc(sizeof(ObjectList));
         list->object = object;
         list->next = locals;
         locals = list;
+#endif
     }
 
     return object;

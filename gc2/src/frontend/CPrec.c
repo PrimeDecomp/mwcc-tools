@@ -54,8 +54,8 @@ typedef struct StaticData {
 #if VERSION == VERSION_WII_1_0RC1
 // Preserve the source PCH record layout by using the high bit of the byte count.
 #define CPREC_STATIC_READ_ONLY 0x80000000u
-// The native alignment qualifiers and tentative flag change the raw source records.
-#define CPREC_SOURCE_VERSION 5146
+#define CPREC_SOURCE_VERSION 5147
+#define CPREC_SOURCE_VERSION_WITHOUT_SAVED_UIDS 5146
 #elif VERSION < VERSION_GC_2_0
 #define CPREC_SOURCE_VERSION 1047
 #else
@@ -2999,7 +2999,21 @@ static CI_FuncData* CPrec_GetInlineFuncPatch(CI_FuncData* ifunc) {
     ifunc->symdeclend = 0;
 
     p = (void*)CPrec_AppendAlign();
+#if VERSION == VERSION_WII_1_0RC1
+    {
+        SInt32* emptyUIDs = NULL;
+        CPrec_AppendData(ifunc, offsetof(CI_FuncData, saved_variable_uids));
+        CPrec_AppendData(&emptyUIDs, sizeof(emptyUIDs));
+        if (ifunc->flags & CI_HasSavedVariableUIDs) {
+            SInt32 start = CPrec_AppendAlign();
+            SInt32 count = ifunc->numarguments + ifunc->numlocals;
+            CPrec_AppendData(ifunc->saved_variable_uids, count * sizeof(SInt32));
+            CPrec_NewPointerPatch(&p->saved_variable_uids, (void*)start);
+        }
+    }
+#else
     CPrec_AppendData(ifunc, sizeof(CI_FuncData));
+#endif
 
     if (ifunc->numarguments) {
         CPrec_NewPointerPatch(
@@ -7659,7 +7673,11 @@ void PrecompilerRead(short refnum, void* buffer) {
         return cparamblkptr->preprocess;
     }
 #endif
-    if (cprec_header->version != CPREC_SOURCE_VERSION) {
+    if (cprec_header->version != CPREC_SOURCE_VERSION
+#if VERSION == VERSION_WII_1_0RC1
+        && cprec_header->version != CPREC_SOURCE_VERSION_WITHOUT_SAVED_UIDS
+#endif
+    ) {
         CError_ErrorTerm(ERR_ILLEGAL_PRECOMPILED_HEADER_VERSION);
     }
     if (cprec_header->target != 2) {

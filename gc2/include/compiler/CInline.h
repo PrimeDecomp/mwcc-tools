@@ -167,6 +167,13 @@ struct CI_Statement {
     } u;
 };
 
+#if VERSION == VERSION_WII_1_0RC1
+enum {
+    CI_UseCallerInlineOptions = 1,
+    CI_HasSavedVariableUIDs = 2
+};
+#endif
+
 struct CI_FuncData {
     short numarguments;
     CI_Var* arguments;
@@ -182,8 +189,9 @@ struct CI_FuncData {
     SInt32 symdeclend;
     UInt8 can_inline;
 #if VERSION == VERSION_WII_1_0RC1
-    // Stock saved bodies inherit the consumer's inlining settings.
-    Boolean use_caller_inline_options;
+    UInt8 flags;
+    // Older source PCH bodies end before this field and have no UID flag.
+    SInt32* saved_variable_uids;
 #endif
 };
 

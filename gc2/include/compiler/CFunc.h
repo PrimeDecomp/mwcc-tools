@@ -123,6 +123,9 @@ extern SInt32 symdeclend;
 extern DeclBlock* CFunc_NewDeclBlock(void);
 extern void CFunc_RestoreBlock(DeclBlock* block);
 extern void CFunc_SetupLocalVarInfo(Object* obj);
+#if VERSION == VERSION_WII_1_0RC1
+extern void CFunc_AppendLocal(Object* object);
+#endif
 extern Boolean CFunc_ParseFakeArgList(Boolean stopAtComma);
 extern FuncArg* parameter_type_list(DeclInfo* declinfo);
 extern CLabel* findlabel(void);
