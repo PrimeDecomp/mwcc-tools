@@ -2485,6 +2485,40 @@ int call_scope(int x) { return with_scope(x); }
         )
         results[f"{source.name} -ipa {mode}"] = obj.read_bytes()
 
+    derived_declarations = (
+        "struct Base { int x; };\n"
+        "struct Derived : Base {};\n"
+        "extern Derived make();\n"
+        "extern void use(const Derived*);\n"
+    )
+    for name, initializer in (
+        ("derived_single", "Derived one() { static Derived d = make(); return d; }\n"),
+        ("derived_global", "Derived d = {make()}; Derived empty = {};\n"),
+        ("derived_member", "struct Holder { Derived field; }; Holder h = {make()};\n"),
+        ("derived_static_array", "void one() { static Derived d[3] = {make(), make()}; use(d); }\n"),
+        ("derived_auto_array", "void one() { Derived d[2][2] = {{make()}, {make(), make()}}; use(d[0]); }\n"),
+    ):
+        source = work / f"{name}.cpp"
+        source.write_text(derived_declarations + initializer, encoding="ascii")
+        obj = source.with_suffix(".o")
+        for mode in ("off", "file"):
+            run(
+                compiler, *FLAGS, "-O4,p", "-inline", "noauto", "-ipa", mode,
+                "-func_align", "4", "-Cpp_exceptions", "off", "-c", source, "-o", obj, cwd=work,
+            )
+            results[f"{source.name} -ipa {mode}"] = obj.read_bytes()
+
+    source = work / "derived_invalid.cpp"
+    for initializer in ("Derived d = {{1}};", "Derived d[2] = {{}, {}};", "Derived d = 1;"):
+        source.write_text(derived_declarations + initializer + "\n", encoding="ascii")
+        proc = subprocess.run(
+            (compiler, *FLAGS, "-c", source.name), cwd=work, capture_output=True, text=True, timeout=30,
+        )
+        output = proc.stdout + proc.stderr
+        if proc.returncode != 1 or "(10174) illegal initialization" not in output:
+            raise ValueError(f"{compiler}: unexpected diagnostic for {initializer}\n{output}")
+        results[f"{source.name} {initializer}"] = output
+
     source = work / "addresses_across_calls.c"
     source.write_text(
         "struct Queue { int count, next, values[6]; };\n"

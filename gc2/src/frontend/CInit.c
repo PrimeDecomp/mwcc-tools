@@ -108,6 +108,9 @@ typedef struct CInit_ParseState {
     Boolean is_vector;
     SInt32 parens;
     Type* type;
+#if VERSION == VERSION_WII_1_0RC1
+    TStreamElement token;
+#endif
 } CInit_ParseState;
 #pragma pack(pop)
 
@@ -255,7 +258,7 @@ static CInit_Initializer* CInit_ParseInitializerClause(void) {
     return init;
 }
 
-static ENode* CInit_ParseInitializer(ENode* expr) {
+static ENode* CInit_ParseInitializer(ENode* expr, TStreamElement* endToken) {
     CInt64 save_int;
     Float save_float;
     SInt32 save_size;
@@ -290,12 +293,18 @@ static ENode* CInit_ParseInitializer(ENode* expr) {
                             break;
                     }
                     tk = lex();
+                    if (endToken) {
+                        *endToken = *CPrep_CurStreamElement();
+                    }
                     CPrep_TokenStreamFlush();
                     return expr;
             }
     }
 
     expr = assignment_expression();
+    if (endToken) {
+        *endToken = *CPrep_CurStreamElement();
+    }
     CPrep_TokenStreamFlush();
     return expr;
 }
@@ -303,6 +312,11 @@ static ENode* CInit_ParseInitializer(ENode* expr) {
 static Stage CInit_ParseNextInit(CInit_ParseState* ps) {
     DeclInfo di;
     short t;
+#if VERSION == VERSION_WII_1_0RC1
+    TStreamElement* endToken = &ps->token;
+#else
+    TStreamElement* endToken = NULL;
+#endif
 
     ps->expr = NULL;
     if (tk == ';') {
@@ -338,13 +352,16 @@ static Stage CInit_ParseNextInit(CInit_ParseState* ps) {
                 }
             } else {
                 if (tk == '{') {
+#if VERSION == VERSION_WII_1_0RC1
+                    ps->token = *CPrep_CurStreamElement();
+#endif
                     tk = lex();
                     ps->parens = 0;
                     ps->stage = StageOpen;
                     return ps->stage;
                 }
             }
-            ps->expr = CInit_ParseInitializer(&ps->myexpr);
+            ps->expr = CInit_ParseInitializer(&ps->myexpr, endToken);
             ps->stage = StageExpr;
             return ps->stage;
         case StageOpen:
@@ -377,6 +394,9 @@ static Stage CInit_ParseNextInit(CInit_ParseState* ps) {
 
     switch (tk) {
         case '{':
+#if VERSION == VERSION_WII_1_0RC1
+            ps->token = *CPrep_CurStreamElement();
+#endif
             tk = lex();
             ps->stage = StageOpen;
             return ps->stage;
@@ -400,7 +420,7 @@ static Stage CInit_ParseNextInit(CInit_ParseState* ps) {
                 return ps->stage;
             }
         default:
-            ps->expr = CInit_ParseInitializer(&ps->myexpr);
+            ps->expr = CInit_ParseInitializer(&ps->myexpr, endToken);
             ps->stage = StageExpr;
             return ps->stage;
     }
@@ -417,6 +437,16 @@ static void CInit_CloseInitList(void) {
         tk = lex();
     }
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static void CInit_InvalidClassInitializer(CInit_ParseState* ps) {
+    TStreamElement* saved;
+
+    CError_LockErrorPos(&ps->token, &saved);
+    CError_Error(ERR_ILLEGAL_INITIALIZATION);
+    CError_UnlockErrorPos(&saved);
+}
+#endif
 
 static Boolean CInit_IsAllZero(char* buf, SInt32 size) {
     SInt32 i;
@@ -437,6 +467,18 @@ static Boolean CInit_IsAllZero(char* buf, SInt32 size) {
 static Boolean CInit_ClassNeedsConstruction(TypeClass* tclass) {
     return CClass_Constructor(tclass) || CClass_Destructor(tclass);
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean CInit_IsNonAggregateClassArray(Type* type) {
+    if (!IS_TYPE_ARRAY(type)) {
+        return FALSE;
+    }
+    do {
+        type = TYPE_POINTER(type)->target;
+    } while (IS_TYPE_ARRAY(type));
+    return IS_TYPE_CLASS(type) && !CClass_IsAggregateClass(TYPE_CLASS(type));
+}
+#endif
 
 static Boolean CInit_IsSimpleStructArrayInit(Type* type) {
     switch (type->type) {
@@ -786,12 +828,19 @@ static void CInit_InitTypeArray(
     SInt32 size;
     Boolean is_char_ptr;
     Boolean is_wchar_ptr;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean class_elements;
+#endif
 
     is_zero_size = tptr->size == 0;
     if (!(targetsize = tptr->target->size)) {
         CError_Error(ERR_DATA_TYPE_INCOMPLETE);
         return;
     }
+#if VERSION == VERSION_WII_1_0RC1
+    class_elements = IS_TYPE_CLASS(tptr->target) &&
+        !CClass_IsAggregateClass(TYPE_CLASS(tptr->target));
+#endif
 
     is_char_ptr = IS_TYPE_INT(tptr->target) && (tptr->target->size == 1);
     is_wchar_ptr = IS_TYPE_INT(tptr->target) && (tptr->target->size == stwchar.size);
@@ -859,6 +908,12 @@ static void CInit_InitTypeArray(
         start = db->size;
         i = 0;
         while (1) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (class_elements && ps->stage == StageOpen) {
+                CInit_InvalidClassInitializer(ps);
+                return;
+            }
+#endif
             if (is_zero_size) {
                 size = (i + 1) * targetsize;
                 db->size = start + size - targetsize - db->offset;
@@ -1134,15 +1189,22 @@ static void CInit_InitTypeClass(
     UInt32 last_offset;
     TypePointer arraytype;
 
+#if VERSION != VERSION_WII_1_0RC1
     if (tclass->bases || tclass->vtable) {
         CError_Error(ERR_ILLEGAL_INITIALIZATION);
         return;
     }
+#endif
 
     switch (ps->stage) {
         case StageOpen:
             braced = TRUE;
             if (CInit_ParseNextInit(ps) == StageClose) {
+#if VERSION == VERSION_WII_1_0RC1
+                if (!CClass_IsAggregateClass(tclass)) {
+                    CInit_InitNonConst(db, TYPE(tclass), NULL);
+                }
+#endif
                 tk = lex();
                 return;
             }
@@ -1163,18 +1225,35 @@ static void CInit_InitTypeClass(
             return;
     }
 
-    if (!braced &&
-        ps->stage == StageExpr &&
+#if VERSION == VERSION_WII_1_0RC1
+    if (ps->stage == StageExpr &&
+        (ps->expr->rtype == TYPE(tclass) ||
+         CExpr_CanImplicitlyConvert(ps->expr, TYPE(tclass), 0))) {
+#else
+    if (!braced && ps->stage == StageExpr &&
         (errorflag ||
          ps->expr->rtype == TYPE(tclass) ||
          CExpr_CanImplicitlyConvert(ps->expr, TYPE(tclass), 0))) {
+#endif
         ps->expr = CExpr_AssignmentPromotion(ps->expr, TYPE(tclass), qual, TRUE);
         if (IS_TYPE_CLASS(ps->expr->rtype)) {
             CInit_InitNonConst(db, TYPE(tclass), ps->expr);
         }
+#if VERSION == VERSION_WII_1_0RC1
+        if (braced) {
+            CInit_CloseInitList();
+            ps->stage = StageClose;
+        }
+#endif
         return;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (!CClass_IsAggregateClass(tclass) || (!braced && errorflag)) {
+        CInit_InvalidClassInitializer(ps);
+        return;
+    }
+#endif
     for (ivar = tclass->ivars; ivar; ivar = ivar->next) {
         if (ivar->access != ACCESSPUBLIC) {
             CError_Error(ERR_ILLEGAL_INITIALIZATION);
@@ -1381,6 +1460,11 @@ static ENode* CInit_InitConcat(ENode* prev, ENode* base, SInt32 offset, Type* ty
     ENode* addr;
     ENode* lvalue;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (!value) {
+        return prev ? prev : nullnode();
+    }
+#endif
     addr = lalloc(sizeof(ENode));
     *addr = *base;
     if (offset) {
@@ -1792,7 +1876,7 @@ static void CInit_Bitfield(TypeBitfield* tbitfield) {
         tk = lex();
     }
 
-    expr = CInit_ParseInitializer(&myexpr);
+    expr = CInit_ParseInitializer(&myexpr, NULL);
     expr = CExpr_AssignmentPromotion(
         expr,
         IS_TYPE_ENUM(tbitfield->bitfieldtype) ? TYPE_ENUM(tbitfield->bitfieldtype)->enumtype
@@ -2151,11 +2235,11 @@ static void CInit_Type(Type* type, UInt32 qual, Boolean isTopLevel) {
         case TYPEMEMBERPOINTER:
             if (tk == '{') {
                 tk = lex();
-                expr = CInit_ParseInitializer(&myexpr);
+                expr = CInit_ParseInitializer(&myexpr, NULL);
                 expr = CExpr_AssignmentPromotion(expr, type, qual & (Q_CONST | Q_VOLATILE), TRUE);
                 CInit_CloseInitList();
             } else {
-                expr = CInit_ParseInitializer(&myexpr);
+                expr = CInit_ParseInitializer(&myexpr, NULL);
                 expr = CExpr_AssignmentPromotion(expr, type, qual & (Q_CONST | Q_VOLATILE), TRUE);
             }
             CInit_TypeExpr(type, expr);
@@ -3158,6 +3242,16 @@ ENode* CInit_AutoObject(Object* obj, Type* type, UInt32 qual) {
         obj_expr = CExpr_NewETEMPNode(type, TRUE);
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (obj && CInit_IsNonAggregateClassArray(type)) {
+        expr = NULL;
+        for (entry = db.nonconst; entry; entry = entry->next) {
+            expr = CInit_InitConcat(expr, obj_expr, entry->offset, entry->type, entry->expr);
+        }
+        return expr ? makecommaexpression(expr, create_objectnode(obj)) : create_objectnode(obj);
+    }
+#endif
+
     if (IS_TYPE_ARRAY((newtype = type))) {
         newtype = CDecl_NewStructType(type->size, CMach_GetTypeAlign(type));
     }
@@ -3216,7 +3310,7 @@ static void CInit_GlobalObject(Object* obj) {
         entry = db.nonconst;
         expr = NULL;
         while (entry) {
-            if (!ENODE_IS(entry->expr, EVECTOR128CONST)) {
+            if (!entry->expr || !ENODE_IS(entry->expr, EVECTOR128CONST)) {
                 expr = CInit_InitConcat(expr, obj_expr, entry->offset, entry->type, entry->expr);
             }
             entry = entry->next;
@@ -3379,21 +3473,28 @@ void CInit_InitializeStaticData(Object* obj, InitExprRegisterCB cb) {
             }
 #endif
 
-            if (!db.nonconst && is_const_object(obj)) {
-                CInit_DeclareReadOnlyData(obj, db.buffer, db.list, db.size);
-            } else {
-                CInit_DeclareData(obj, db.buffer, db.list, db.size);
-            }
-
+            expr = NULL;
             if (db.nonconst) {
                 obj_expr = create_objectrefnode(obj);
                 entry = db.nonconst;
-                expr = NULL;
                 while (entry) {
                     expr =
                         CInit_InitConcat(expr, obj_expr, entry->offset, entry->type, entry->expr);
                     entry = entry->next;
                 }
+#if VERSION == VERSION_WII_1_0RC1
+                if (CInit_IsNonAggregateClassArray(obj->type)) {
+                    CInit_AppendLocalStaticInit(cb, obj, expr);
+                    expr = NULL;
+                }
+#endif
+            }
+            if (!db.nonconst && is_const_object(obj)) {
+                CInit_DeclareReadOnlyData(obj, db.buffer, db.list, db.size);
+            } else {
+                CInit_DeclareData(obj, db.buffer, db.list, db.size);
+            }
+            if (expr) {
                 CInit_AppendLocalStaticInit(cb, obj, expr);
             }
         } else {

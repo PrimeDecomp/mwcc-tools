@@ -568,6 +568,19 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   The C initializer path checks the active IPA mode at `0x541a28`.
   When IPA collects definitions, literal addresses target individual data
   objects. Ordinary backend string rewrites can still use the string pool.
+- RC1 tests a class's aggregate flag at `0x5554a0`. The class trait pass
+  clears that decision for bases, virtual functions, a destructor, a
+  user-declared constructor or nonpublic data members. Outside an array,
+  the initializer paths at `0x542df0` and `0x544fe0` accept compatible
+  class expressions directly, including in a single braced initializer.
+  An empty list for a non-aggregate class records an empty runtime
+  initializer even when the class has no constructor.
+- Non-aggregate class arrays take the separate path at `0x546fa0`. It
+  initializes each supplied element directly via `0x548910`. A local
+  array does not copy a zero-filled aggregate first. For a function-scope
+  static array, the guard is emitted before the array. Nested braces that
+  attempt to initialize the class's members still report error 10174 at
+  the offending opening brace.
 - RC1's `CParser_ParseDeclaration` calls `CMid_GlobalDeclarationActions`
   (`0x47c120`) at the common exit at `0x44f43e`, including after the
   template, namespace, using and linkage branches. This runs deferred

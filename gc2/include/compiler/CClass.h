@@ -30,6 +30,9 @@ extern Object* CClass_Destructor(TypeClass* tclass);
 extern Boolean CClass_IsConstructor(Object* obj);
 extern Boolean CClass_IsDestructor(Object* obj);
 extern Boolean CClass_IsPODClass(TypeClass* tclass);
+#if VERSION == VERSION_WII_1_0RC1
+extern Boolean CClass_IsAggregateClass(TypeClass* tclass);
+#endif
 extern Boolean CClass_IsTrivialCopyClass(TypeClass* tclass);
 extern Boolean CClass_IsTrivialCopyAssignClass(TypeClass* tclass);
 extern Boolean CClass_ReferenceArgument(TypeClass* tclass);

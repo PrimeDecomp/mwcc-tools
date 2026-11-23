@@ -595,6 +595,30 @@ Boolean CClass_IsPODClass(TypeClass* tclass) {
     return TRUE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+Boolean CClass_IsAggregateClass(TypeClass* tclass) {
+    NameSpaceObjectList* entry;
+    ObjMemberVar* member;
+
+    if (tclass->bases || tclass->vtable || CClass_Destructor(tclass)) {
+        return FALSE;
+    }
+    for (entry = CClass_Constructor(tclass); entry; entry = entry->next) {
+        if (entry->object->otype == OT_OBJECT &&
+            IS_TYPE_FUNC(OBJECT(entry->object)->type) &&
+            !(TYPE_FUNC(OBJECT(entry->object)->type)->flags & FUNC_AUTO_GENERATED)) {
+            return FALSE;
+        }
+    }
+    for (member = tclass->ivars; member; member = member->next) {
+        if (member->access != ACCESSPUBLIC) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+#endif
+
 Boolean CClass_IsTrivialCopyClass(TypeClass* tclass) {
     Object* object;
     ClassList* base;
