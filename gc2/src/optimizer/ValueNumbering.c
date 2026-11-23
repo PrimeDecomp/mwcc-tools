@@ -449,12 +449,11 @@ static void addavailablevalue(PCode* pcode) {
     av->next = opvalue[pcode->op], opvalue[pcode->op] = av;
 }
 
-static int isCSEop(PCode* pcode) {
-    PCodeArg* baseOp;
-    PCodeArg* op;
-    int i;
-
-    baseOp = &pcode->args[0];
+static int machinespecific_isCSEop(PCode* pcode, int aggressive) {
+    if (PCODE_FLAG_SET_F(pcode) &
+        (fIsVolatile | fSideEffects | fOverflow | fSetsCarry | fRecordBit)) {
+        return FALSE;
+    }
 
     switch (pcode->op) {
         case PC_CMPI:
@@ -463,27 +462,38 @@ static int isCSEop(PCode* pcode) {
         case PC_CMPL:
         case PC_FCMPU:
         case PC_FCMPO:
-            if (!moreaggressiveoptimization) {
-                return FALSE;
-            }
-            break;
-        case PC_LI:
+            return aggressive != 0;
         case PC_LIS:
-            if (!moreaggressiveoptimization) {
-                return FALSE;
+#if VERSION == VERSION_WII_1_0RC1
+            if (pcode->args[1].kind == PCOp_MEMORY) {
+                return TRUE;
             }
-            if (pcode->args[0].data.reg.reg < first_fe_temporary_register[RegClass_GPR] ||
-                pcode->args[0].data.reg.reg > last_temporary_register[RegClass_GPR]) {
-                return FALSE;
-            }
-            break;
+#endif
+            // fall through
+        case PC_LI: {
+#if VERSION == VERSION_WII_1_0RC1
+            int first = first_temporary_register[RegClass_GPR];
+#else
+            int first = first_fe_temporary_register[RegClass_GPR];
+#endif
+            int dest = pcode->args[0].data.reg.reg;
+            return aggressive && dest >= first && dest <= last_temporary_register[RegClass_GPR];
+        }
     }
 
-    if (PCODE_FLAG_SET_F(pcode) &
-        (fIsVolatile | fSideEffects | fOverflow | fSetsCarry | fRecordBit)) {
+    return TRUE;
+}
+
+static int isCSEop(PCode* pcode) {
+    PCodeArg* baseOp;
+    PCodeArg* op;
+    int i;
+
+    if (!machinespecific_isCSEop(pcode, moreaggressiveoptimization)) {
         return FALSE;
     }
 
+    baseOp = &pcode->args[0];
     for (i = 0, op = &pcode->args[0]; i < pcode->argCount; i++, op++) {
         if (op != baseOp &&
             op->kind == baseOp->kind &&

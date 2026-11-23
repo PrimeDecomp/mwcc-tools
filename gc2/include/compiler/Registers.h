@@ -45,6 +45,7 @@ extern SInt32 scratch_registers[RegClassMax][RegisterMax];
 extern SInt32 n_nonvolatile_registers[RegClassMax];
 extern SInt32 nonvolatile_registers[RegClassMax][RegisterMax];
 extern UInt8 reg_state[RegClassMax][RegisterMax];
+extern SInt32 first_temporary_register[RegClassMax];
 extern SInt32 last_temporary_register[RegClassMax];
 extern char* register_class_name[RegClassMax];
 extern char* register_class_format[RegClassMax];

@@ -577,6 +577,13 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
 - The constant propagation pass at `0x646890` folds XOR inputs from
   `LI` and `LIS`. Comparisons with zero, one, and
   `0x7abc000000000000` reach the move, `XORI`, and `XORIS` rewrites.
+- `machinespecific_isCSEop` at `0x5a6ca0` uses the code-generation
+  `first_temporary_register` and `last_temporary_register` bounds
+  for immediate `LI` and `LIS` candidates in aggressive value numbering.
+  Relocatable `LIS` operands bypass the mode and register tests. In the
+  inlined comparisons in Echoes' `CloseEnough.cpp`, the zero loads target
+  three registers below the first code-generation temporary, so stock
+  keeps all three loads.
 - The `RLWINM` branch at `0x6457b1` rotates and masks the sign-extended
   immediate from a reaching `LI`. It rewrites the instruction when the
   result fits a single `LI` or `LIS`. This also folds the packing shift in

@@ -3774,6 +3774,31 @@ void overwrite(File* f, int a) { f->flags = 0; f->offset = a; f->handle = 0; use
         run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
         results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
 
+    source = work / "temporary_immediate_reuse.cpp"
+    source.write_text(
+        """\
+struct Values {
+    float extra, x, y, z, w;
+    float a() const { return x; }
+    float b() const { return y; }
+    float c() const { return z; }
+    float d() const { return w; }
+};
+bool same(const Values& a, const Values& b) {
+    return a.a() == b.a() && a.b() == b.b() && a.c() == b.c() && a.d() == b.d();
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    for opt in ("-O2,p", "-O4,p"):
+        run(compiler, *FLAGS, opt, "-ipa", "file", "-inline", "auto",
+            "-Cpp_exceptions", "off", "-fp_contract", "off", "-func_align", "4",
+            "-c", source.name, "-o", obj, cwd=work)
+        run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+        results[f"{source.name} {opt}"] = section.read_bytes()
+
     source = work / "local_declaration_weight.c"
     source.write_text(
         "void declaration_weight(int x) {\n"
