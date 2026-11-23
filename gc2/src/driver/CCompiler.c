@@ -193,6 +193,7 @@ static void initialize_compiler_options(CompilerLinkerParamBlk* params) {
     copts.oldprefixname = pFrontEnd.oldprefixname;
     copts.multibyteaware = pFrontEnd.multibyteaware;
 #if VERSION == VERSION_WII_1_0RC1
+    copts.c9x = pFrontEnd.c99;
     copts.source_encoding = pFrontEnd.source_encoding;
     copts.multibyteaware |= pFrontEnd.source_encoding == SourceEncodingSJIS;
     copts.inline_bottom_up = !pFrontEnd.inline_top_down;

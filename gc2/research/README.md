@@ -598,6 +598,10 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   at `0x50efd0`. A bare return before the end gets an additional check at
   the closing brace. The `warn_missingreturn_as_error` pragma updates
   both missing-return options, including when it resets them (`0x444040`).
+- The driver option at `0x688fa9` sets the C99 preference byte without
+  changing whether a translation unit uses C or C++. The `c99` and
+  `c9x` pragmas update the same compiler option and can restore its
+  command-line setting.
 - The uninitialized-variable diagnostic at `0x5d2926` uses the local
   object's declaration token. File IPA preserves the declaration location
   when it reconstructs the optimized function body, even with debug

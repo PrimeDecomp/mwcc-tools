@@ -1831,6 +1831,55 @@ int instantiate(int n) { return select(n) + partial(n); }
     return results
 
 
+def check_c99_language(compiler, objcopy, work):
+    source = work / "c99_language.cpp"
+    source.write_text(
+        """\
+#if __option(c99) != C99 || __option(c9x) != C99
+#error incorrect C99 option
+#endif
+#if defined(__cplusplus) != CPP
+#error incorrect language
+#endif
+#if __STDC_VERSION__ != (C99 ? 199901L : 199409L)
+#error incorrect standard version
+#endif
+#pragma c99 off
+#if __option(c9x) || __STDC_VERSION__ != 199409L
+#error c99 off did not clear the option
+#endif
+#pragma c99 reset
+#if __option(c9x) != C99
+#error c99 reset did not restore the command-line option
+#endif
+#pragma c9x on
+#if !__option(c99) || __STDC_VERSION__ != 199901L
+#error c9x did not set c99
+#endif
+int result(void) { return __STDC_VERSION__ == 199901L; }
+""",
+        encoding="ascii",
+    )
+    results = {}
+    obj = source.with_suffix(".o")
+    normal = source.with_suffix(".normalized.o")
+    for options, c99, cpp in (
+        ((), 0, 1),
+        (("-lang", "c99"), 1, 1),
+        (("-lang", "c99", "-lang", "c"), 1, 0),
+        (("-lang", "c", "-dialect", "c99"), 1, 0),
+    ):
+        output = run(
+            compiler, *FLAGS, *options, f"-DC99={c99}", f"-DCPP={cpp}", "-w", "pragmas",
+            "-c", source.name, "-o", obj, cwd=work,
+        )
+        if output:
+            raise ValueError(f"{compiler}: unexpected C99 diagnostics\n{output}")
+        run(objcopy, "--remove-section=.comment", obj, normal, cwd=work)
+        results[f"{source.name} {' '.join(options)}"] = normal.read_bytes()
+    return results
+
+
 def check_backend_diagnostics(compiler, objcopy, work):
     source = work / "uninitialized.c"
     source.write_text(
@@ -3886,6 +3935,7 @@ void member_call(V* v) { Guard guard; v->g(); }
     results.update(check_template_actions(compiler, objcopy, nm, work))
     results.update(check_reference_cast_diagnostics(compiler, objcopy, work))
     results.update(check_return_diagnostics(compiler, work))
+    results.update(check_c99_language(compiler, objcopy, work))
     results.update(check_backend_diagnostics(compiler, objcopy, work))
     results.update(check_reference_initializers(compiler, objcopy, work))
 

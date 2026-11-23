@@ -51,11 +51,21 @@ SET_T optlstFrontEndC_035 = {11, 0x01, 0, 0, 1, 0x1, (void *)&pFrontEndC.cpluspl
 SET_T optlstFrontEndC_036 = {11, 0x01, 0, (PARAM_T *)&optlstFrontEndC_035, 1, 0x1, (void *)&pFrontEndC.ecplusplus};
 Option optlstFrontEndC_037 = {"ec++", 0x40100, (PARAM_T *)&optlstFrontEndC_036, 0, &optlstFrontEndC_041, "generate warnings for use of C++ features outside Embedded C++ subset (implies 'dialect cplus')"};
 Option optlstFrontEndC_038 = {"objc", 0x42900, 0, 0, &optlstFrontEndC_041, "Objective C no longer supported on this target"};
+#if VERSION == VERSION_WII_1_0RC1
+static SET_T c99Setting = {11, 0x01, 0, 0, 1, 1, (void *)&pFrontEndC.c99};
+static Option langC99 = {"c99", 0x40100, (PARAM_T *)&c99Setting, 0, &optlstFrontEndC_041,
+                         "compile with C99 extensions. When compiling file with non-standard file "
+                         "extension, please further specify the type of language being compiled "
+                         "using the -lang option above"};
+#endif
 Option *optlstFrontEndC_039[] = {
     &optlstFrontEndC_032,
     &optlstFrontEndC_034,
     &optlstFrontEndC_037,
     &optlstFrontEndC_038,
+#if VERSION == VERSION_WII_1_0RC1
+    &langC99,
+#endif
     0
 };
 OptionList optlstFrontEndC_040 = {0, 0x101, optlstFrontEndC_039};

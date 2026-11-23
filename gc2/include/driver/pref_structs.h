@@ -145,6 +145,7 @@ typedef struct PFrontEndC {
     Boolean defer_codegen;
     Boolean templateparser;
 #if VERSION == VERSION_WII_1_0RC1
+    Boolean c99;
     UInt8 source_encoding;
     Boolean inline_top_down;
 #endif

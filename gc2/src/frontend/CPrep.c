@@ -182,6 +182,9 @@ CompilerOption compileroptions[] = {
     "suppress_init_code", OPT_OFFSET(suppress_init_code),
     "reverse_bitfields", OPT_OFFSET(reverse_bitfields),
     "c9x", OPT_OFFSET(c9x),
+#if VERSION == VERSION_WII_1_0RC1
+    "c99", OPT_OFFSET(c9x),
+#endif
     "float_constants", OPT_OFFSET(float_constants),
     "no_static_dtors", OPT_OFFSET(no_static_dtors),
     "longlong_prepeval", OPT_OFFSET(longlong_prepeval),
