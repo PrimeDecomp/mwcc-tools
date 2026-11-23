@@ -13,6 +13,7 @@
 #include "compiler/CParser.h"
 #include "compiler/CScope.h"
 #include "compiler/CSOM.h"
+#include <string.h>
 #include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/scopes.h"
@@ -2290,6 +2291,26 @@ void CABI_AddLayeredDestructors(TypeClass* tclass) {
         }
     }
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+Object* CABI_NewGuardVariable(Object* owner) {
+    Object* guard = CParser_NewCompilerDefDataObject();
+    guard->type = TYPE(&stsignedchar);
+    guard->name = CParser_GetUniqueName();
+    guard->sclass = owner->sclass;
+    guard->qual = owner->qual & (Q_IMPLICIT_WEAK | Q_WEAK);
+    CParser_UpdateObject(guard, NULL);
+
+    const char* name = CMangler_GetLinkName(owner)->name;
+    const char* suffix = strchr(name, '@');
+    if (suffix && strncmp(suffix, "@LOCAL@", 7) == 0) {
+        name = suffix + 7;
+    }
+    guard->u.data.linkname = CParser_NameConcat("@GUARD@", name);
+    CInit_DeclareData(guard, NULL, NULL, guard->type->size);
+    return guard;
+}
+#endif
 
 ENode* CABI_DestroyObject(
     Object* dtor, ENode* objexpr, CABIDestroyMode mode, Boolean nonvirtual, Boolean dealloc

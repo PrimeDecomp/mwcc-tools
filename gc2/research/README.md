@@ -508,6 +508,15 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   only read. The deletion at `0x64f708` follows checks for aliasing and
   remaining uses. Argument setup at `0x5fe975` sets the extension flag
   for narrow integer arguments, including prototyped destructor calls.
+- Static reference initialization records relocatable non-class lvalue
+  addresses at `0x542640` and appends runtime assignments at `0x542779`.
+  Class temporaries use static storage and register their destructor before
+  assigning the reference. Function-scope initialization uses the guard
+  object created at `0x567e90` and named at `0x56a180`. A class temporary
+  owns the guard when its construction is the first runtime expression.
+  The translation-unit initializer at `0x595840` starts its filename
+  suffix at the final backslash in the input path and replaces periods
+  with underscores.
 - The `AND` case of constant propagation (`0x6462f1`) follows `LI` and
   `LIS` definitions. Contiguous masks become `RLWINM` with a zero shift.
   Disjoint masks use `ANDI` or `ANDIS` and define CR0. The stock formatter

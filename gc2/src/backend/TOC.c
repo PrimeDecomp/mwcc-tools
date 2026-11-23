@@ -2653,14 +2653,25 @@ Boolean needdescriptor(void) {
 }
 
 Object* createstaticinitobject(void) {
+#if VERSION == VERSION_WII_1_0RC1
+    char path[256];
+    char buf[sizeof(path) + sizeof("__sinit_")];
+#else
     Str255 fname;
     char buf[100];
+#endif
     Object* obj;
     TypeFunc* tfunc;
     char* p;
 
+#if VERSION == VERSION_WII_1_0RC1
+    COS_FileGetPathName(path, &cparamblkptr->sourcefile, NULL);
+    const char* name = strrchr(path, '\\');
+    sprintf(buf, "__sinit_%s", name ? name : path);
+#else
     COS_FileGetFSSpecInfo(&cparamblkptr->sourcefile, NULL, NULL, fname);
     sprintf(buf, "__sinit_%*.*s", -fname[0], fname[0], &fname[1]);
+#endif
     for (p = &buf[1]; *p; p++) {
         if (*p == '.') {
             *p = '_';

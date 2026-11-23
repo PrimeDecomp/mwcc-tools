@@ -7,6 +7,10 @@
 extern "C" {
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+extern Object* CABI_NewGuardVariable(Object* owner);
+#endif
+
 typedef enum CABIDestroyMode {
     CABIDestroyBase = 0,
     CABIDestroyComplete = 1,

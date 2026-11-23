@@ -1184,9 +1184,23 @@ static void CFunc_NameLocalStaticDataObject(Object* obj, char* str) {
     }
 }
 
-static void sinit_insert_expr(ENode* expr) {
-    Statement* stmt;
+static void sinit_skip_initialized(void) {
+    sinit_label = newlabel();
+    Statement* stmt = CFunc_AppendStatement(ST_IFGOTO);
+    stmt->expr = create_objectnode(sinit_first_object);
+    stmt->label = sinit_label;
+}
 
+#if VERSION == VERSION_WII_1_0RC1
+void CFunc_BeginStaticReferenceInitialization(Object* owner) {
+    if (!sinit_first_object) {
+        sinit_first_object = CABI_NewGuardVariable(owner);
+        sinit_skip_initialized();
+    }
+}
+#endif
+
+static void sinit_insert_expr(ENode* expr) {
     if (!sinit_first_object) {
         sinit_first_object = CParser_NewCompilerDefDataObject();
         sinit_first_object->type = TYPE(&stsignedchar);
@@ -1194,13 +1208,10 @@ static void sinit_insert_expr(ENode* expr) {
         CFunc_NameLocalStaticDataObject(sinit_first_object, "init");
         CInit_DeclareData(sinit_first_object, NULL, NULL, sinit_first_object->type->size);
 
-        sinit_label = newlabel();
-        stmt = CFunc_AppendStatement(ST_IFGOTO);
-        stmt->expr = create_objectnode(sinit_first_object);
-        stmt->label = sinit_label;
+        sinit_skip_initialized();
     }
 
-    stmt = CFunc_AppendStatement(ST_EXPRESSION);
+    Statement* stmt = CFunc_AppendStatement(ST_EXPRESSION);
     stmt->expr = expr;
 }
 

@@ -1796,6 +1796,32 @@ void test() {
     use(&first, &second);
 }
 """,
+        "global_reference_relocation.cpp": """\
+struct Value { int data; };
+extern Value source;
+const int& value(source.data);
+""",
+        "global_reference_lifetime.cpp": """\
+struct Value { Value(); Value(const Value&); ~Value(); int data; };
+extern Value make();
+const Value& value = make();
+""",
+        "static_reference_lifetime.cpp": """\
+struct Value { Value(); Value(const Value&); ~Value(); int data; };
+extern void use(const Value&);
+void test() {
+    static const Value& value = Value();
+    use(value);
+}
+""",
+        "static_reference_conversion.cpp": """\
+extern float source;
+extern void use(const int&);
+void test() {
+    static const int& value = source;
+    use(value);
+}
+""",
     }
 
     results = {}

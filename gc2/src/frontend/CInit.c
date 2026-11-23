@@ -2632,6 +2632,7 @@ static ENode* CInit_AutoTempNode(Type* type, Boolean assignID) {
     return node;
 }
 
+#if VERSION != VERSION_WII_1_0RC1
 static ENode* CInit_GlobalTempNode(Type* type, Boolean assignID) {
     Object* dtor;
     ENode* funcnode;
@@ -2692,6 +2693,7 @@ static void CInit_RefInit(Type* type, ENode* expr, Boolean unused) {
         InitExpr_Register(objexpr, cinit_initinfo->obj);
     }
 }
+#endif
 
 static Boolean CInit_IsDtorTemp(ENode* expr) {
     return ENODE_IS(expr, ETEMP) && expr->data.temp.needs_dtor;
@@ -2782,13 +2784,35 @@ static Boolean CInit_CanBindClassRValue(ENode* expr) {
     return TRUE;
 }
 
-static ENode* CInit_MaterializeAutoReferenceTemp(Type* type, UInt32 qual, ENode* value) {
+static void CInit_AppendReferenceInit(ENode* expr, Object* owner, Boolean isLocal) {
+    if (isLocal) {
+        cinit_initinfo->insert_expr_cb(expr);
+    } else if (cinit_initinfo->use_register_cb) {
+        CFunc_BeginStaticReferenceInitialization(owner);
+        cinit_initinfo->init_expr_register_cb(expr);
+    } else {
+        InitExpr_Register(expr, owner);
+    }
+}
+
+static ENode* CInit_MaterializeReferenceTemp(Type* type, UInt32 qual, ENode* value, Boolean isLocal) {
     ENode* result;
     ENode* call;
     ENode* address;
-    Object* dtor = NULL;
-    Object* temp = create_temp_object(type);
-    temp->qual = qual;
+    Object* dtor;
+    Object* temp;
+
+    if (isLocal) {
+        temp = create_temp_object(type);
+        temp->qual = qual;
+    } else {
+        temp = CParser_NewGlobalDataObject(NULL);
+        temp->name = CParser_GetUniqueName();
+        temp->nspace = cscope_root;
+        temp->type = type;
+        temp->qual = qual;
+        CInit_DeclareData(temp, NULL, NULL, type->size);
+    }
 
     address = create_objectrefnode(temp);
     if (!IS_TYPE_CLASS(type)) {
@@ -2821,20 +2845,25 @@ static ENode* CInit_MaterializeAutoReferenceTemp(Type* type, UInt32 qual, ENode*
         value = makediadicnode(create_objectnode2(temp), value, EASS);
     }
 
-    cinit_initinfo->insert_expr_cb(value);
+    CInit_AppendReferenceInit(value, temp, isLocal);
     if (dtor) {
-        cinit_initinfo->register_object_cb(type, temp, 0, FALSE);
+        if (isLocal) {
+            cinit_initinfo->register_object_cb(type, temp, 0, FALSE);
+        } else if (!copts.no_static_dtors) {
+            CInit_AppendReferenceInit(CInit_RegisterDtorObject(type, dtor, address), temp, FALSE);
+        }
     }
     return address;
 }
 
-static ENode* CInit_BindAutoReference(Object* obj, ENode* value) {
+static ENode* CInit_BindReference(Object* obj, ENode* value, Boolean isLocal) {
     Type* target = TPTR_TARGET(obj->type);
     UInt32 qual = obj->qual & Q_CV;
     UInt32 cv = CParser_GetCVTypeQualifiers(target, qual);
+    Boolean lvalue = CExpr_IsLValue(value);
 
-    if (!CExpr_IsLValue(value) && (cv & Q_CONST)) {
-        if (IS_TYPE_CLASS(target) && IS_TYPE_CLASS(value->rtype) &&
+    if (cv & Q_CONST) {
+        if (!lvalue && IS_TYPE_CLASS(target) && IS_TYPE_CLASS(value->rtype) &&
             CExpr_IsReferenceCompatible(target, qual, value->rtype, ENODE_QUALS(value))) {
             if (cv & Q_VOLATILE) {
                 CError_Error(ERR_ILLEGAL_CONST_VOLATILE_AMPERSAND_REFERENCE_INITIALIZATION);
@@ -2842,70 +2871,108 @@ static ENode* CInit_BindAutoReference(Object* obj, ENode* value) {
             }
             if (!CInit_CanBindClassRValue(value)) {
                 Type* actual = value->rtype;
-                ENode* address = CInit_MaterializeAutoReferenceTemp(actual, qual, value);
+                ENode* address = CInit_MaterializeReferenceTemp(actual, qual, value, isLocal);
                 return CClass_ClassPointerCast(
                     address, TYPE_CLASS(actual), TYPE_CLASS(target), TRUE, TRUE, TRUE
                 );
             }
         } else if (!(cv & Q_VOLATILE) && !IS_TYPE_CLASS(value->rtype) &&
-                   !IS_TYPE_CLASS(target) && !IS_TYPE_ARRAY(target) && !IS_TYPE_FUNC(target)) {
-            return CInit_MaterializeAutoReferenceTemp(target, qual, value);
+                   !IS_TYPE_CLASS(target) && !IS_TYPE_ARRAY(target) && !IS_TYPE_FUNC(target) &&
+                   (!lvalue || !CExpr_IsReferenceCompatible(
+                       target, qual, value->rtype, ENODE_QUALS(value)
+                   ))) {
+            return CInit_MaterializeReferenceTemp(target, qual, value, isLocal);
         }
     }
 
     value = CExpr_AssignmentPromotion(value, obj->type, qual, TRUE);
-    CInit_RefTempTransform(obj->type, value);
+    if (isLocal) {
+        CInit_RefTempTransform(obj->type, value);
+    }
     return value;
 }
-#endif
 
+static Boolean CInit_RelocateReference(Object* obj, ENode* expr) {
+    Type* target = TPTR_TARGET(obj->type);
+    UInt32 qual = obj->qual & Q_CV;
+    Object* source;
+    CInt64 offset;
+
+    if (IS_TYPE_CLASS(target) || !CExpr_IsLValue(expr) ||
+        !CExpr_IsReferenceCompatible(target, qual, expr->rtype, ENODE_QUALS(expr))) {
+        return FALSE;
+    }
+    ENode* address = getnodeaddress(expr, FALSE);
+    if (!CInit_RelocInitCheck(address, &source, &offset, FALSE)) {
+        return FALSE;
+    }
+
+    OLinkList* reloc = NULL;
+    void* data = lalloc(obj->type->size);
+    memset(data, 0, obj->type->size);
+    if (source) {
+        reloc = lalloc(sizeof(OLinkList));
+        reloc->next = NULL;
+        reloc->obj = source;
+        reloc->offset = 0;
+        reloc->addend = CInt64_GetULong(&offset);
+    } else {
+        CMach_InitIntMem(TYPE(&stunsignedlong), offset, data);
+    }
+    CInit_DeclareData(obj, data, reloc, obj->type->size);
+    return TRUE;
+}
+
+static Boolean CInit_InitReference(Object* obj, Boolean isLocal) {
+    Boolean parenthesized = tk == '(' && copts.cplusplus;
+    ENode* expr;
+    TempNodeCB saved_callback = cinit_tempnodefunc;
+
+    if (tk != '=' && !parenthesized) {
+        return FALSE;
+    }
+    if (isLocal) {
+        cinit_tempnodefunc = CInit_AutoTempNode;
+    }
+    tk = lex();
+    if (parenthesized) {
+        ENodeList* args = CExpr_ScanExpressionList(TRUE);
+        if (tk == ')') {
+            tk = lex();
+        }
+        if (!args || args->next) {
+            CError_Error(args ? ERR_TOO_MANY_INITIALIZERS : ERR_ILLEGAL_INITIALIZATION);
+        }
+        expr = args ? args->node : nullnode();
+    } else {
+        expr = assignment_expression();
+    }
+
+    if (isLocal || !CInit_RelocateReference(obj, expr)) {
+        expr = CInit_BindReference(obj, expr, isLocal);
+        expr = makediadicnode(create_objectnode2(obj), expr, EASS);
+        CInit_AppendReferenceInit(expr, obj, isLocal);
+        if (!isLocal) {
+            CInit_DeclareData(obj, NULL, NULL, obj->type->size);
+        }
+    }
+    cinit_tempnodefunc = saved_callback;
+    return TRUE;
+}
+#else
 static Boolean CInit_InitReference(Object* obj, Boolean isLocal) {
     ENode* expr;
     SInt32 size;
 
-    if (tk == '='
-#if VERSION == VERSION_WII_1_0RC1
-        || (isLocal && tk == '(' && copts.cplusplus)
-#endif
-    ) {
-#if VERSION == VERSION_WII_1_0RC1
-        Boolean parenthesized = tk == '(';
-#endif
-        if (isLocal) {
-            cinit_tempnodefunc = CInit_AutoTempNode;
-        } else {
-            cinit_tempnodefunc = CInit_GlobalTempNode;
-        }
+    if (tk == '=') {
+        cinit_tempnodefunc = isLocal ? CInit_AutoTempNode : CInit_GlobalTempNode;
         tk = lex();
-#if VERSION == VERSION_WII_1_0RC1
-        if (parenthesized) {
-            ENodeList* args = CExpr_ScanExpressionList(TRUE);
-            if (tk == ')') {
-                tk = lex();
-            }
-            if (!args || args->next) {
-                CError_Error(args ? ERR_TOO_MANY_INITIALIZERS : ERR_ILLEGAL_INITIALIZATION);
-            }
-            expr = args ? args->node : nullnode();
-        } else
-#endif
-        {
-            expr = assignment_expression();
-        }
-#if VERSION == VERSION_WII_1_0RC1
-        if (isLocal) {
-            expr = CInit_BindAutoReference(obj, expr);
-        } else
-#endif
-        {
-            expr = CExpr_AssignmentPromotion(expr, obj->type, obj->qual & Q_CV, TRUE);
-        }
+        expr = assignment_expression();
+        expr = CExpr_AssignmentPromotion(expr, obj->type, obj->qual & Q_CV, TRUE);
         cinit_tempnodefunc = NULL;
 
         if (isLocal) {
-#if VERSION != VERSION_WII_1_0RC1
             CInit_RefTempTransform(obj->type, expr);
-#endif
             expr = makediadicnode(create_objectnode2(obj), expr, EASS);
             cinit_initinfo->insert_expr_cb(expr);
         } else {
@@ -2930,6 +2997,7 @@ static Boolean CInit_InitReference(Object* obj, Boolean isLocal) {
 
     return FALSE;
 }
+#endif
 
 #if VERSION == VERSION_WII_1_0RC1
 static ENode* CInit_SPEConstant(Type* type, const char* buffer) {
