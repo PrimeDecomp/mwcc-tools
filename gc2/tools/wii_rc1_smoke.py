@@ -2444,6 +2444,47 @@ int call_scope(int x) { return with_scope(x); }
         )
         results[f"{source.name} -ipa {mode}"] = obj.read_bytes()
 
+    source = work / "literal_pooling.cpp"
+    literals = (
+        "extern void text(const char*);\n"
+        "extern void wide(const wchar_t*);\n"
+        "extern void single(float);\n"
+        "extern void twice(double);\n"
+        'void first() { text("alpha"); wide(L"beta"); single(1.25f); twice(8.5625); }\n'
+        'void second() { text("alpha"); wide(L"beta"); single(1.25f); twice(8.5625);\n'
+        '    text("gamma"); wide(L"delta"); single(3.14f); twice(1.33333333333); }\n'
+    )
+    obj = source.with_suffix(".o")
+    for mode in ("off", "file"):
+        for pool in ("off", "on"):
+            for override, options in (
+                ("", ("-str", "noreuse,nopool,readonly")),
+                ("", ("-str", "noreuse,nopool,noreadonly")),
+                ("#pragma pool_strings off\n", ("-str", "noreuse,nopool", "-rostr")),
+            ):
+                source.write_text(override + literals, encoding="ascii")
+                run(
+                    compiler, *FLAGS, "-O4,p", "-inline", "noauto", "-ipa", mode, "-pool", pool,
+                    *options, "-func_align", "4", "-Cpp_exceptions", "off", "-c", source, "-o", obj, cwd=work,
+                )
+                results[f"{source.name} -ipa {mode} -pool {pool} {' '.join(options)}"] = obj.read_bytes()
+
+    source = work / "literal_initializers.cpp"
+    source.write_text(
+        'static const char* const first = "alpha";\n'
+        'static const wchar_t* const second = L"beta";\n'
+        "const char* one() { return first; }\n"
+        "const wchar_t* two() { return second; }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for mode in ("off", "file"):
+        run(
+            compiler, *FLAGS, "-O4,p", "-inline", "noauto", "-ipa", mode, "-str", "reuse,pool,readonly",
+            "-func_align", "4", "-Cpp_exceptions", "off", "-c", source, "-o", obj, cwd=work,
+        )
+        results[f"{source.name} -ipa {mode}"] = obj.read_bytes()
+
     source = work / "addresses_across_calls.c"
     source.write_text(
         "struct Queue { int count, next, values[6]; };\n"

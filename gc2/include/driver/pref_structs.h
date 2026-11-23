@@ -220,7 +220,9 @@ typedef struct PBackEnd {
     UInt8 altivec;
     Boolean vrsave;
 #if VERSION == VERSION_WII_1_0RC1
-    UInt8 unknown16[0x30 - 0x16];
+    UInt8 unknown16[0x2e - 0x16];
+    Boolean disable_readonly_string_pool;
+    Boolean named_float_constants;
     UInt8 spe;
     UInt8 unknown31[0x3a - 0x31];
 #elif VERSION < VERSION_GC_2_0

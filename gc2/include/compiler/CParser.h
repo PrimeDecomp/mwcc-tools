@@ -309,6 +309,7 @@ struct CompilerLinkerOptions {
     Boolean comment_prepdump;
     Boolean space_prepdump;
     Boolean macro_prepdump;
+    Boolean pool_float_constants;
 #endif
 };
 #pragma pack(pop)

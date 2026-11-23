@@ -3785,7 +3785,11 @@ void CInit_RewriteString(ENode* expr, Boolean unused) {
     CError_ASSERT(4229, expr->rtype->type == TYPEPOINTER);
 
     is_wide = TYPE_POINTER(expr->rtype)->target->size != 1;
-    if (copts.poolstrings) {
+    if (copts.poolstrings
+#if VERSION == VERSION_WII_1_0RC1
+        && !CMid_InIPA() && !cparamblkptr->precompile
+#endif
+    ) {
         if (is_wide) {
             str = CInit_DeclarePooledWString(expr->data.string.data, expr->data.string.size);
         } else {

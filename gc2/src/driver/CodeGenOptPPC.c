@@ -61,6 +61,12 @@ void CodeGen_InitBackEndOptions(void) {
     copts.cats = TRUE;
     copts.littleendian = !pp.endian;
     copts.readonly_strings = pb.readonlystrings;
+#if VERSION == VERSION_WII_1_0RC1
+    if (copts.readonly_strings) {
+        copts.poolstrings = !pb.disable_readonly_string_pool;
+    }
+    copts.pool_float_constants = copts.poolstrings && !pb.named_float_constants;
+#endif
     copts.misaligned_mem_access = FALSE;
     copts.unsafe_global_reg_vars = TRUE;
     copts.schedule_factor = 2;

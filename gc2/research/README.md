@@ -554,6 +554,20 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   A stock `.irobj` puts the referenced arrays at the end of its graph in
   emission order. During replay each input retains its own data order.
   The raw PCH payload stores the expression sequence at offset `+8`.
+- RC1's `CodeGen_InitBackEndOptions` at `0x44be50` overrides the frontend
+  string-pooling option for read-only literals. The branch at `0x44c412`
+  checks the backend read-only preference at `+0x03` and uses the inverse
+  of its byte at `+0x2e` as the pooling flag. The resulting setting also
+  enables floating-point pooling unless the backend byte at `+0x2f` is
+  set. A later `#pragma pool_strings` changes only the string flag.
+- The float rewrite at `0x596c09` uses a separate pool when data pooling
+  is disabled and the driver enabled floating-point pooling. The lookup
+  at `0x599c90` compares target-endian bytes and appends new values to
+  `@floatBase0` or `@doubleBase0`. The first value chooses the small
+  read-only section when its size is strictly below the threshold.
+  The C initializer path checks the active IPA mode at `0x541a28`.
+  When IPA collects definitions, literal addresses target individual data
+  objects. Ordinary backend string rewrites can still use the string pool.
 - RC1's `CParser_ParseDeclaration` calls `CMid_GlobalDeclarationActions`
   (`0x47c120`) at the common exit at `0x44f43e`, including after the
   template, namespace, using and linkage branches. This runs deferred

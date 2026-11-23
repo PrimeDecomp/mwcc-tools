@@ -326,6 +326,63 @@ Object* createfloatconstant(Type* type, Float* data) {
     return obj;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void RewritePooledFloatConst(ENode* expr) {
+    SInt32 size = expr->rtype->size;
+    PoolEntry** pool = size == 4 ? &floatconstpool : &doubleconstpool;
+    PoolEntry* entry;
+    Object* object;
+    SInt32 offset;
+    ENode* address;
+    UInt8 bytes[8];
+
+    CMach_InitFloatMem(expr->rtype, expr->data.floatval, bytes);
+    for (entry = *pool; entry; entry = entry->next) {
+        if (!memcmp(entry->buffer, bytes, size)) {
+            break;
+        }
+    }
+    if (!entry) {
+        if (*pool) {
+            object = (*pool)->object;
+            offset = (*pool)->offset + size;
+            object->type->size += size;
+        } else {
+            DeclInfo decl;
+            memclrw(&decl, sizeof(decl));
+            decl.thetype = CDecl_NewArrayType(size == 4 ? TYPE(&stfloat) : TYPE(&stdouble), size);
+            decl.name = GetHashNameNodeExport(size == 4 ? "@floatBase0" : "@doubleBase0");
+            decl.qual = Q_CONST;
+            decl.storageclass = TK_STATIC;
+            decl.is_extern_c = TRUE;
+            decl.section = GetCurrentSection(
+                (UInt32)copts.sdata2_threshold > (UInt32)size ? SECT_SCONST_TYPE : SECT_CONST_TYPE
+            );
+            object = CParser_NewGlobalDataObject(&decl);
+            MakeSymbolTableEntry(object);
+            object->nspace = cscope_root;
+            offset = 0;
+        }
+        entry = galloc(sizeof(PoolEntry));
+        entry->next = *pool;
+        entry->object = object;
+        entry->offset = offset;
+        entry->buffer = galloc(size);
+        memcpy(entry->buffer, bytes, size);
+        *pool = entry;
+    }
+
+    address = create_objectrefnode(entry->object);
+    if (entry->offset) {
+        address = makediadicnode(address, intconstnode(TYPE(&stunsignedlong), entry->offset), EADD);
+    }
+    expr->type = EINDIRECT;
+    expr->cost = 1;
+    expr->flags |= ENODE_FLAG_CONST;
+    expr->data.monadic = address;
+}
+#endif
+
 void DeclarePooledConstants(void) {
     PoolEntry* entry;
     char* buffer;
@@ -1816,6 +1873,14 @@ static void expandTOCexpression(ENode* expr, Type* type, int ignored) {
             expr->hascall = FALSE;
             break;
         case EFLOATCONST:
+#if VERSION == VERSION_WII_1_0RC1
+            if (!copts.soft_float && !copts.pool_data && copts.pool_float_constants) {
+                uses_globals = TRUE;
+                RewritePooledFloatConst(expr);
+                expandTOCexpression(expr, NULL, FALSE);
+                break;
+            }
+#endif
             if (!copts.soft_float) {
                 obj = createfloatconstant(expr->rtype, &expr->data.floatval);
                 uses_globals = TRUE;
