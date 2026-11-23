@@ -535,6 +535,8 @@ Boolean CIRStream_UnpackFunctionOptions(
 #undef READ_SHORT
 #undef READ_BYTE
     options->function_align = (UInt8)(1U << bytes[0x78]);
+    options->peephole = bytes[0x12] ? CInlinePeepholeOn : CInlinePeepholeOff;
+    options->opt_bcc_lr_ctr = bytes[0x9e];
     branchRange = CIRStream_ReadWord(bytes + 0xa8);
     // Sidecars from older source builds omitted both range words.
     if (branchRange || CIRStream_ReadWord(bytes + 0xac)) {
@@ -547,7 +549,8 @@ Boolean CIRStream_PackFunctionOptions(
     CIRStreamWriter* stream,
     const struct CInlineBackendOptions* options,
     UInt8 canInline,
-    Boolean initializer
+    Boolean initializer,
+    Boolean defaultPeephole
 ) {
     UInt8 bytes[CIRStreamFunctionOptionsSize];
     UInt8 alignment = options->function_align;
@@ -572,6 +575,8 @@ Boolean CIRStream_PackFunctionOptions(
 #undef WRITE_WORD
 #undef WRITE_SHORT
 #undef WRITE_BYTE
+    bytes[0x12] = options->peephole ? options->peephole == CInlinePeepholeOn : defaultPeephole;
+    bytes[0x9e] = options->opt_bcc_lr_ctr;
     CIRStream_WriteWord(bytes + 0xa8, branchRange == CInlineExplicitZeroBranchRange ? 0 : branchRange);
     CIRStream_WriteWord(bytes + 0xac, 0x04000000);
     bytes[0xb7] = CPU_IS_SPE(options->processor);

@@ -207,7 +207,8 @@ Boolean CIRStream_PackFunctionOptions(
     CIRStreamWriter* stream,
     const struct CInlineBackendOptions* options,
     UInt8 canInline,
-    Boolean initializer
+    Boolean initializer,
+    Boolean defaultPeephole
 );
 Boolean CIRStream_UnpackReferenceHeader(CIRStreamReader* stream, CIRStreamReferenceHeader* header);
 // Decode a single translation unit using a fresh type context. Code and initializer

@@ -500,6 +500,53 @@ def check_program_branch_ranges(codec, compiler, reference, work):
             assert linked_program_text(reference, work, name, flags=(*flags, "-nostdlib")), name
 
 
+def check_program_peephole(compiler, reference, work):
+    (work / "peephole.cpp").write_text(
+        "volatile int counter;\n"
+        "static int next_value() { return ++counter; }\n"
+        'extern "C" int __start() { static int value = next_value(); return value; }\n',
+        "ascii",
+    )
+    flags = ("-inline", "noauto", "-func_align", "4", "-Cpp_exceptions", "off")
+    linker_path = os.pathsep.join((str(reference.parent), os.environ.get("PATH", "")))
+    stock_text = {}
+    with patch.dict(os.environ, PATH=linker_path):
+        for opt, opposite in (("peep", "nopeep"), ("nopeep", "peep")):
+            stock = f"stock_{opt}"
+            source = f"source_{opt}"
+            for name, producer in ((stock, reference), (source, compiler)):
+                run(producer, *FLAGS, "-O4,p", *flags, "-opt", opt, "-ipa", "program",
+                    "-c", "peephole.cpp", "-o", f"{name}.o", cwd=work)
+            link_flags = (*flags, "-nostdlib", "-opt", opposite)
+            stock_text[opt] = linked_program_text(reference, work, stock, flags=link_flags)
+            assert linked_program_text(reference, work, source, flags=link_flags) == stock_text[opt], opt
+            assert linked_program_text(
+                compiler, work, f"replay_{opt}", [f"{stock}.irobj"], link_flags
+            ) == stock_text[opt], opt
+    assert stock_text["peep"] != stock_text["nopeep"]
+
+
+def check_program_conditional_returns(compiler, reference, work):
+    stock_text = {}
+    flags = ("-inline", "noauto", "-func_align", "4", "-Cpp_exceptions", "off", "-opt", "nopeep")
+    for setting in ("on", "off"):
+        (work / "conditional_return.cpp").write_text(
+            f"#pragma ppc_opt_bclr_bcctr {setting}\n"
+            "extern volatile signed char gate;\n"
+            'extern "C" int __start() { return gate ? 15 : 27; }\n'
+            "volatile signed char gate = 10;\n",
+            "ascii",
+        )
+        stock = f"stock_return_{setting}"
+        source = f"source_return_{setting}"
+        for name, producer in ((stock, reference), (source, compiler)):
+            run(producer, *FLAGS, "-O4,p", *flags, "-ipa", "program",
+                "-c", "conditional_return.cpp", "-o", f"{name}.o", cwd=work)
+        stock_text[setting] = linked_program_text(reference, work, stock, flags=(*flags, "-nostdlib"))
+        assert linked_program_text(reference, work, source, flags=(*flags, "-nostdlib")) == stock_text[setting], setting
+    assert stock_text["on"] != stock_text["off"]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("reference", type=Path, help="path to stock Wii 1.0RC1")
@@ -638,6 +685,8 @@ def main():
                     check_live_program(codec, compiler, reference, work, compiler_flags)
                     check_program_inline_strings(compiler, reference, work)
                     check_program_branch_ranges(codec, compiler, reference, work)
+                    check_program_peephole(compiler, reference, work)
+                    check_program_conditional_returns(compiler, reference, work)
                     check_spe_program(compiler, reference, work)
         finally:
             # Windows keeps a loaded DLL open until its last reference is released.

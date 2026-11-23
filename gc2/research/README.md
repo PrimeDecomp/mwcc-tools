@@ -1376,6 +1376,16 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   `0x466E87` before checking the limit. Stock populates the unconditional range even
   when the conditional range is zero. Older source sidecars omitted both words.
   The source reader preserves the active range when both words are zero.
+- `CMach_GetBackEndOptions` at `0x4F09C2` reads the peephole setting from
+  `0x74F4CA` and writes it to byte `0x12`. `CMach_SetBackEndOptions` at
+  `0x4F02B7` restores it. Compiling a function-local static with `-opt peep`
+  and `-opt nopeep` toggles the byte and changes the guard code in the linked
+  program. The smoke test compares the full PowerPC text in both directions
+  with the opposite setting on the link command line. Sidecars emitted before
+  the flag was saved contain zero at this offset, which stock reads as off.
+- `#pragma ppc_opt_bclr_bcctr` changes byte `0x9e` in the same options record.
+  Stock uses this flag to replace a conditional branch to a shared return with
+  a conditional branch to the link register when possible.
 - `CTempl_Parse` at `0x511070` recognizes friend templates before parsing class
   declarations. Its friend-class handler at `0x5F0C10` resets template parameter
   nesting for new namespace-scope declarations and registers the class with

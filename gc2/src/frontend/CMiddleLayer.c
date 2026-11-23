@@ -352,7 +352,7 @@ static Boolean pack_live_function(
     definition->header.options.size = output.size;
     definition->header.inlineSize = body->numstatements;
     if (!CIRStream_PackFunctionOptions(
-            &output, &body->options, body->can_inline, node->initializer
+            &output, &body->options, body->can_inline, node->initializer, copts.peephole
         )) {
         return FALSE;
     }

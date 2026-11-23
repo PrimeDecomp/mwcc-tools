@@ -16,6 +16,10 @@ enum {
     // Earlier source PCHs left bc_range at zero. Keep that value for missing options.
     CInlineExplicitZeroBranchRange = 0x10001
 };
+enum {
+    CInlinePeepholeOff = 1,
+    CInlinePeepholeOn
+};
 #endif
 
 struct CInlineBackendOptions {
@@ -56,7 +60,12 @@ struct CInlineBackendOptions {
     UInt8 soft_float;
 #endif
     UInt8 codegen_pic;
+#if VERSION == VERSION_WII_1_0RC1
+    // Reuse an unused byte of the source PCH options. Zero means no saved setting.
+    UInt8 peephole;
+#else
     UInt8 full_dwarf;
+#endif
     UInt8 no_comment_records;
     UInt8 rel109_offset;
     struct ObjGenSection* textSection;
