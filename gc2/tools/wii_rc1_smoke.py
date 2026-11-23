@@ -2155,6 +2155,27 @@ done:
         run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    source = work / "switch_declaration.cpp"
+    source.write_text(
+        "extern int read_value();\n"
+        "extern void effect();\n"
+        "void local(int n) { switch (n) { default: int a = 1; case 2: break; } }\n"
+        "void empty(int n) { switch (n) { default: case 2: break; } }\n"
+        "void call() { switch (read_value()) { default: case 2: break; } }\n"
+        "void load(volatile int* p) { switch (*p) { default: case 2: break; } }\n"
+        "void branch(int n) { switch (n) { default: effect(); case 2: break; } }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opts in (
+        ("-O0",), ("-O1",), ("-O2",), ("-O3",), ("-O4,p",), ("-O4,s",),
+        ("-O0", "-pragma", "opt_optimizecontrolflow on"),
+        ("-O2", "-pragma", "opt_dead_assignments off"),
+    ):
+        run(compiler, *FLAGS, "-Cpp_exceptions", "on", "-func_align", "4",
+            *opts, "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {' '.join(opts)}"] = obj.read_bytes()
+
     source = work / "pointer_aliases.c"
     source.write_text(
         """\

@@ -347,6 +347,13 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   Stock saves the flag at offset `0x5a` in the IPA function options.
   Corruption's optimized MetroTRK `mainloop.c` now matches all compared ELF
   sections, including the single range check for event types 3 and 4.
+- The scope marker path in `LinearizeExpr` at `0x5daba9` checks the
+  enabled optimizer passes before emitting block and local declaration
+  markers. With those passes enabled, a case label can fall through a
+  removed local initialization without a marker obstructing jump cleanup.
+  `IRO_RemoveRedundantJumps` at `0x61f870` preserves loop-ending gotos
+  and rebuilds the flowgraph after changing a transfer. The default
+  options at `0x58d30f` enable dead assignment elimination at `-O2`.
 - RC1's equality-chain pass at `0x62c0e0` follows fallthrough blocks and
   checks each successor against the original branch destination. It can
   end the chain at an inverted branch whose fallthrough is that

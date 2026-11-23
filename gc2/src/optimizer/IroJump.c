@@ -404,6 +404,11 @@ Boolean IRO_RemoveRedundantJumps(void) {
             linear = node->last;
             switch (linear->type) {
                 case IROLinearGoto:
+#if VERSION == VERSION_WII_1_0RC1
+                    if (linear->flags & IROLF_EndLoop) {
+                        break;
+                    }
+#endif
                     scan = linear->next;
                     while (scan &&
                            ((scan->type == IROLinearNop) ||
@@ -434,7 +439,11 @@ Boolean IRO_RemoveRedundantJumps(void) {
                     while (scan && scan->type == IROLinearNop) {
                         scan = scan->next;
                     }
-                    if (scan && scan->type == IROLinearGoto) {
+                    if (scan && scan->type == IROLinearGoto
+#if VERSION == VERSION_WII_1_0RC1
+                        && !(scan->flags & IROLF_EndLoop)
+#endif
+                        ) {
                         scan2 = scan->next;
                         while (scan2 &&
                                ((scan2->type == IROLinearNop) ||
@@ -505,8 +514,12 @@ Boolean IRO_RemoveRedundantJumps(void) {
     }
 
     if (result) {
+#if VERSION == VERSION_WII_1_0RC1
+        IRO_BuildFlowgraph(IRO_FirstLinear);
+#else
         IRO_ComputeSuccPred();
         IRO_ComputeDom();
+#endif
     }
 
     IRO_CheckForUserBreak();

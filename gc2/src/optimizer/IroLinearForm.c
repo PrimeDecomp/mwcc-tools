@@ -1463,6 +1463,17 @@ static void MarkAllSubExprs(IROLinear* linear) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean KeepScopeMarkers(void) {
+    // Higher levels also enable tree and expression transforms that discard scope markers.
+    return copts.optimizationlevel <= 0 &&
+        !(copts.multiplepasses || copts.removeemptyloops || copts.loopinvariants ||
+          copts.strengthreduction || copts.lifetimes || copts.unrolling || copts.vectorizeloops ||
+          copts.deadstore || copts.commonsubs || copts.propagation || copts.deadcode ||
+          copts.opt_optimizecontrolflow);
+}
+#endif
+
 void IRO_Linearize(Statement* stmt) {
     IROLinear* linear;
 
@@ -1488,8 +1499,7 @@ void IRO_Linearize(Statement* stmt) {
                 break;
             case ST_EXPRESSION:
 #if VERSION == VERSION_WII_1_0RC1
-                if (copts.optimizationlevel > 0 && stmt->expr->type == ESCOPE &&
-                    stmt->expr->data.scope.kind != EScope_LocalDeclaration) {
+                if (stmt->expr->type == ESCOPE && !KeepScopeMarkers()) {
                     break;
                 }
 #endif

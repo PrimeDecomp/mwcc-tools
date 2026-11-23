@@ -475,7 +475,12 @@ void IRO_Cleanup(void) {
 void CodeGen_UpdateOptimizerOptions(void) {
     copts.deadcode = copts.optimizationlevel >= 1;
     copts.commonsubs = copts.propagation = copts.optimizationlevel >= 2;
-    copts.loopinvariants = copts.strengthreduction = copts.lifetimes = copts.deadstore =
+#if VERSION == VERSION_WII_1_0RC1
+    copts.deadstore = copts.optimizationlevel >= 2;
+#else
+    copts.deadstore = copts.optimizationlevel >= 3;
+#endif
+    copts.loopinvariants = copts.strengthreduction = copts.lifetimes =
         copts.unrolling = copts.vectorizeloops = copts.optimizationlevel >= 3;
     copts.multiplepasses = copts.optimizationlevel >= 4;
 #if VERSION == VERSION_WII_1_0RC1
