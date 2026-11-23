@@ -3808,6 +3808,29 @@ void construct(Header *header, Word size) {
         run(compiler, *FLAGS, "-inline", "auto", opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    source = work / "loop_preheader.c"
+    source.write_text(
+        """\
+int count(int n) {
+    int sum = 0;
+    do {
+        sum += n;
+        --n;
+    } while (n > 0);
+    return sum;
+}
+int state(int value) {
+    static int saved = 1;
+    return saved += value;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O2", "-O4,p"):
+        run(compiler, *FLAGS, "-inline", "auto", opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     source = work / "memory_references.c"
     source.write_text(
         """\

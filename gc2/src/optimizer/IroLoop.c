@@ -64,8 +64,8 @@ static Boolean SearchTargetFound;
 static IROLinear* SearchTarget;
 #endif
 
-static void MyHandleLoop_Vector(IRONode* fnode);
-static void MyHandleLoop_Motion(IRONode* fnode);
+static void MyHandleLoop_Vector(IRONode* fnode, IRONode* motionPreheader);
+static IRONode* MyHandleLoop_Motion(IRONode* fnode);
 static void CheckAllLoopAddresses(IRONode* fnode, BitVector* bv, Boolean* resultFlag);
 static void MakeLoopEntry(
     IROLinear* nd, IROAddrRecord* rec, Boolean mustreach1, Boolean cannotSpeculate
@@ -1120,9 +1120,9 @@ void IRO_FindLoops(void) {
             IncLoopDepth();
             IRO_Dump("IRO_FindLoops:Found loop with header %d\n", fnode->index);
             IRO_DumpBits("Loop includes: ", InLoop);
-            MyHandleLoop_Motion(fnode);
+            IRONode* motionPreheader = MyHandleLoop_Motion(fnode);
             IRO_UpdateFlagsOnInts();
-            MyHandleLoop_Vector(fnode);
+            MyHandleLoop_Vector(fnode, motionPreheader);
             RemoveNoopsFromExprList();
             IRO_UpdateFlagsOnInts();
             IRO_UpdateVars();
@@ -1559,7 +1559,7 @@ static void MarkStrengthReductionCandidates(void) {
     }
 }
 
-static void MyHandleLoop_Vector(IRONode* fnode) {
+static void MyHandleLoop_Vector(IRONode* fnode, IRONode* motionPreheader) {
     IRONode* pred;
     UInt16 i;
     IROExpr* expr;
@@ -1615,7 +1615,13 @@ static void MyHandleLoop_Vector(IRONode* fnode) {
         return;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    /* The preheader created by loop motion can fall through to the loop. */
+    if (!preheader || (preheader != motionPreheader && preheader->last->type != IROLinearGoto)) {
+#else
+    (void)motionPreheader;
     if (!preheader || preheader->last->type != IROLinearGoto) {
+#endif
         preheader = CreatePreHeader(fnode, fallpred);
     }
     PredInt = preheader->last;
@@ -1764,7 +1770,7 @@ static void MyHandleLoop_Vector(IRONode* fnode) {
     }
 }
 
-static void MyHandleLoop_Motion(IRONode* fnode) {
+static IRONode* MyHandleLoop_Motion(IRONode* fnode) {
     IROLoopMemRef* memref;
     IRONode* pred;
     UInt16 i;
@@ -1815,7 +1821,7 @@ static void MyHandleLoop_Motion(IRONode* fnode) {
 
     if (!hasOutsidePred) {
         IRO_Dump("No predecessor outside the loop\n");
-        return;
+        return NULL;
     }
 
     if (!preheader || preheader->last->type != IROLinearGoto) {
@@ -1950,6 +1956,7 @@ static void MyHandleLoop_Motion(IRONode* fnode) {
     }
 
     IRO_DumpAfterPhase("After Motion", FALSE);
+    return preheader;
 }
 
 static Boolean CheckLoopAddress(IROLinear* nd, Boolean mustreach1) {
