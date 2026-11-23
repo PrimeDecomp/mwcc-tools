@@ -320,17 +320,17 @@ SInt32 linenumber;
 static CPrepFileInfo* filestack[32];
 static CPrepFileInfoList* cprep_files;
 #if VERSION == VERSION_WII_1_0RC1
-typedef struct StockPCHFile {
-    struct StockPCHFile* next;
-    const char* path;
-    const char* basename;
-    const char* condition;
-    Boolean once;
-    Boolean system;
-} StockPCHFile;
+typedef struct CPrepIncludedFile {
+    struct CPrepIncludedFile* next;
+    CPrecStockFile file;
+    Boolean precompiled;
+} CPrepIncludedFile;
 
-static StockPCHFile* stock_pch_files;
-static Boolean CPrep_SkipPrecompiledFile(const char* path, const char* name, Boolean system);
+static CPrepIncludedFile* included_files;
+static Boolean CPrep_SkipIncludedFile(const char* path, const char* name, Boolean system);
+static void CPrep_RecordIncludedFile(
+    const char* path, const char* name, Boolean system, Boolean once
+);
 #endif
 static CPrepFileInfo* cprep_extrafile;
 static UInt32 linetick;
@@ -485,7 +485,7 @@ int setupprep(void) {
     cprep_cursymfile = NULL;
     cprep_files = NULL;
 #if VERSION == VERSION_WII_1_0RC1
-    stock_pch_files = NULL;
+    included_files = NULL;
 #endif
 
     CLT_filesp = &filesp;
@@ -581,10 +581,15 @@ void cleanupprep(void) {
 
 #if VERSION == VERSION_WII_1_0RC1
 static void CPrep_ReadPrecompiledHeader(
-    short refnum, void* data, SInt32 size, const char* name, Boolean isSystem
+    short refnum, void* data, SInt32 size, const CPrepFileInfo* file, const char* name,
+    Boolean isImport
 ) {
+    CPrep_RecordIncludedFile(
+        file->nameNode->name, name, file->isSystemInclude,
+        isImport || copts.always_import || include_once
+    );
     if (PrecompilerRead(refnum, data, size)) {
-        CPrep_PreprocessDumpPCH(name, isSystem);
+        CPrep_PreprocessDumpPCH(name, file->isSystemInclude);
     }
 }
 #endif
@@ -623,15 +628,17 @@ static Boolean setupfile(StringPtr filename, Boolean fullsearch, Boolean isImpor
             return FALSE;
         }
 
+#if VERSION != VERSION_WII_1_0RC1
         if ((isImport || include_once) && fileinfo.alreadyincluded) {
             return TRUE;
         }
+#endif
 
         prepinfo.textfile = fileinfo.filespec;
         prepinfo.nameNode = CTool_GetPathName(&fileinfo.filespec, &prepinfo.fileModDate);
 #if VERSION == VERSION_WII_1_0RC1
-        if (stock_pch_files &&
-            CPrep_SkipPrecompiledFile(prepinfo.nameNode->name, myfilename, !fullsearch)) {
+        if (included_files &&
+            CPrep_SkipIncludedFile(prepinfo.nameNode->name, myfilename, !fullsearch)) {
             if (fileinfo.filedatatype == cwFileTypeText) {
                 CWReleaseFileText(cparamblkptr->context, fileinfo.filedata);
             }
@@ -647,7 +654,8 @@ static Boolean setupfile(StringPtr filename, Boolean fullsearch, Boolean isImpor
             } else if (fileinfo.filedatatype == cwFileTypePrecompiledHeader) {
 #if VERSION == VERSION_WII_1_0RC1
                 CPrep_ReadPrecompiledHeader(
-                    0, (void*)fileinfo.filedata, fileinfo.filedatalength, myfilename, !fullsearch
+                    0, (void*)fileinfo.filedata, fileinfo.filedatalength, &prepinfo, myfilename,
+                    isImport
                 );
 #else
                 PrecompilerRead(0, (void*)fileinfo.filedata);
@@ -690,7 +698,7 @@ static Boolean setupfile(StringPtr filename, Boolean fullsearch, Boolean isImpor
                     COS_FileClose(refnum);
                     CWCachePrecompiledHeader(cparamblkptr->context, &prepinfo.textfile, cache_hnd);
 #if VERSION == VERSION_WII_1_0RC1
-                    CPrep_ReadPrecompiledHeader(0, cache, file_size, myfilename, !fullsearch);
+                    CPrep_ReadPrecompiledHeader(0, cache, file_size, &prepinfo, myfilename, isImport);
 #else
                     PrecompilerRead(0, cache);
 #endif
@@ -698,7 +706,9 @@ static Boolean setupfile(StringPtr filename, Boolean fullsearch, Boolean isImpor
                     return TRUE;
                 } else {
 #if VERSION == VERSION_WII_1_0RC1
-                    CPrep_ReadPrecompiledHeader(refnum, NULL, file_size, myfilename, !fullsearch);
+                    CPrep_ReadPrecompiledHeader(
+                        refnum, NULL, file_size, &prepinfo, myfilename, isImport
+                    );
 #else
                     PrecompilerRead(refnum, NULL);
 #endif
@@ -727,6 +737,14 @@ static Boolean setupfile(StringPtr filename, Boolean fullsearch, Boolean isImpor
         prepinfo.recordbrowseinfo = cparamblkptr->recordbrowseinfo;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (filename) {
+        CPrep_RecordIncludedFile(
+            prepinfo.nameNode->name, myfilename, !fullsearch,
+            isImport || copts.always_import || include_once
+        );
+    }
+#endif
     if (filesp >= 0) {
         filestack[filesp]->linenumber = linenumber;
         filestack[filesp]->hasprepline = cprep_hasprepline;
@@ -2224,25 +2242,64 @@ static const char* CPrep_IncludeBasename(const char* path) {
     return name;
 }
 
-int CPrep_RememberPrecompiledFile(const CPrecStockFile* file, void* context) {
-    StockPCHFile* record = galloc(sizeof(*record));
+static CPrepIncludedFile* CPrep_AddIncludedFile(const CPrecStockFile* file, Boolean precompiled) {
+    CPrepIncludedFile* record = galloc(sizeof(*record));
 
-    (void)context;
-    record->path = GetHashNameNodeExport(file->path)->name;
-    record->basename = file->includeName
-        ? GetHashNameNodeExport(CPrep_IncludeBasename(file->includeName))->name : NULL;
-    record->condition = NULL;
+    record->file = *file;
+    record->file.path = GetHashNameNodeExport(file->path)->name;
+    record->file.includeName =
+        file->includeName ? GetHashNameNodeExport(file->includeName)->name : NULL;
     if (file->condition) {
         size_t length = strlen(file->condition) + 1;
         char* condition = galloc(length);
         memcpy(condition, file->condition, length);
-        record->condition = condition;
+        record->file.condition = condition;
     }
-    record->once = file->includeOnce;
-    record->system = file->systemInclude;
-    record->next = stock_pch_files;
-    stock_pch_files = record;
+    record->precompiled = precompiled;
+    record->next = included_files;
+    included_files = record;
+    return record;
+}
+
+int CPrep_RememberPrecompiledFile(const CPrecStockFile* file, void* context) {
+    (void)context;
+    CPrep_AddIncludedFile(file, TRUE);
     return 1;
+}
+
+int CPrep_VisitIncludedFiles(int (*visit)(const CPrecStockFile*, void*), void* context) {
+    const CPrepIncludedFile* record;
+
+    for (record = included_files; record; record = record->next) {
+        if (!visit(&record->file, context)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static CPrepIncludedFile* CPrep_FindIncludedFile(const char* path) {
+    CPrepIncludedFile* record;
+
+    for (record = included_files; record; record = record->next) {
+        if (OS_EqualPath(record->file.path, path)) {
+            return record;
+        }
+    }
+    return NULL;
+}
+
+static void CPrep_RecordIncludedFile(
+    const char* path, const char* name, Boolean system, Boolean once
+) {
+    CPrepIncludedFile* record = CPrep_FindIncludedFile(path);
+
+    if (!record) {
+        CPrecStockFile file = {path, name, NULL, once, system};
+        CPrep_AddIncludedFile(&file, FALSE);
+    } else if (once) {
+        record->file.includeOnce = TRUE;
+    }
 }
 
 static Boolean CPrep_PrecompiledConditionIsEmpty(const char* condition) {
@@ -2320,17 +2377,21 @@ static Boolean CPrep_PrecompiledConditionIsEmpty(const char* condition) {
     return depth == 0;
 }
 
-static Boolean CPrep_SkipPrecompiledFile(const char* path, const char* name, Boolean system) {
-    const StockPCHFile* file;
+static Boolean CPrep_SkipIncludedFile(const char* path, const char* name, Boolean system) {
+    const CPrepIncludedFile* record = CPrep_FindIncludedFile(path);
     const char* basename = CPrep_IncludeBasename(name);
 
-    for (file = stock_pch_files; file; file = file->next) {
-        if (OS_EqualPath(file->path, path)) {
-            return file->once || CPrep_PrecompiledConditionIsEmpty(file->condition);
-        }
-        if (file->once && file->system == system && file->basename &&
+    if (record) {
+        return record->file.includeOnce ||
+            CPrep_PrecompiledConditionIsEmpty(record->file.condition);
+    }
+    // Once the spelling has resolved to a known file, its state takes precedence over a PCH alias.
+    for (record = included_files; record; record = record->next) {
+        const CPrecStockFile* file = &record->file;
+        if (record->precompiled && file->includeOnce &&
+            file->systemInclude == system && file->includeName &&
             (!file->condition || file->condition[0] == '$') &&
-            OS_EqualPath(file->basename, basename)) {
+            OS_EqualPath(CPrep_IncludeBasename(file->includeName), basename)) {
             return TRUE;
         }
     }
@@ -3858,6 +3919,7 @@ static void pragma_precompile_target(void) {
     goendofline();
 }
 
+#if VERSION != VERSION_WII_1_0RC1
 static inline void CPrep_DefinePragmaOnceMacro(StringPtr name, Boolean isSystemInclude) {
     HashNameNode* namenode;
     Macro* macro;
@@ -3871,6 +3933,7 @@ static inline void CPrep_DefinePragmaOnceMacro(StringPtr name, Boolean isSystemI
         macrohashtable[namenode->hashval] = macro;
     }
 }
+#endif
 
 static void CPrep_PragmaOnce(void) {
     if (notendofline()) {
@@ -3888,9 +3951,16 @@ static void CPrep_PragmaOnce(void) {
         }
         return;
     } else {
+#if VERSION == VERSION_WII_1_0RC1
+        const char* path = CPrep_GetSourceFilePath(prep_file)->name;
+        CPrep_RecordIncludedFile(
+            path, CPrep_IncludeBasename(path), prep_file->isSystemInclude, TRUE
+        );
+#else
         unsigned char filename[256];
         COS_FileGetFSSpecInfo(&prep_file->textfile, NULL, NULL, filename);
         CPrep_DefinePragmaOnceMacro(filename, prep_file->isSystemInclude);
+#endif
     }
 }
 
@@ -4733,9 +4803,11 @@ static void prepinclude(Boolean isImport) {
 
     goendofline();
     if (!ismacroname4(CPrep_PragmaOnceName((StringPtr)buf, !fullsearch))) {
+#if VERSION != VERSION_WII_1_0RC1
         if (isImport || copts.always_import) {
             CPrep_DefinePragmaOnceMacro((StringPtr)buf, !fullsearch);
         }
+#endif
 
         if (copts.flat_include) {
             for (t = len; t > 0; t--) {

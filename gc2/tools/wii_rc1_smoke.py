@@ -359,6 +359,89 @@ def check_stock_pch_macros(compiler, reference, work):
         raise ValueError(f"{compiler}: stock PCH macro expansions changed the replayed object")
 
 
+def check_pch_include_state(compiler, reference, objcopy, work, *, timeout=30):
+    compiler = compiler if isinstance(compiler, tuple) else (compiler,)
+    directory = work / "pch-include-state"
+    alternate = directory / "other"
+    alternate.mkdir(parents=True)
+    inner = directory / "inner.h"
+    outer = directory / "outer.h"
+    body = directory / "body.cpp"
+    routes = directory / "routes.cpp"
+    repeated = directory / "repeated.cpp"
+    prefix = directory / "prefix.mch"
+    obj = directory / "body.o"
+    section = directory / "body.text"
+    flags = (*FLAGS, "-lang=c++", "-O2", "-i", ".")
+
+    (alternate / "inner.h").write_text("different_header\n", encoding="ascii")
+    routes.write_text(
+        '#include "inner.h"\n'
+        '#include "./inner.h"\n'
+        '#include "other/inner.h"\n'
+        '#include <other/inner.h>\n'
+        '#include "other/inner.h"\n'
+        "int route() { return PCH_VALUE; }\n",
+        encoding="ascii",
+    )
+    body.write_text(
+        '#include "./inner.h"\nint entry() { return PCH_VALUE; }\n', encoding="ascii"
+    )
+    repeated.write_text(
+        '#import "prefix.mch"\n#include "./prefix.mch"\nPCH_VALUE\n', encoding="ascii"
+    )
+    for prologue, directive in (
+        ("#pragma once\n", '#include "inner.h"\n'),
+        ("", '#import "inner.h"\n'),
+        ("", '#pragma once on\n#include "inner.h"\n'),
+    ):
+        outer.write_text(directive, encoding="ascii")
+        results = []
+        for tool in ((reference,), compiler):
+            inner.write_text(prologue + "#define PCH_VALUE 23\n", encoding="ascii")
+            run(*tool, *flags, "-precompile", prefix, outer, cwd=directory, timeout=timeout)
+            inner.write_text("#error precompiled once-only file was reopened\n", encoding="ascii")
+            preprocessed = run(
+                *tool, *flags, "-E", "-prefix", prefix.name, routes.name, cwd=directory,
+                timeout=timeout
+            )
+            imported = run(*tool, *flags, "-E", repeated.name, cwd=directory, timeout=timeout)
+            run(*tool, *flags, "-prefix", prefix.name, "-MMD", "-c", body.name, "-o", obj.name,
+                cwd=directory, timeout=timeout)
+            run(objcopy, f"--dump-section=.text={section}", obj, cwd=directory)
+            dependency = obj.with_suffix(".d").read_bytes()
+            if b"inner.h" not in dependency:
+                raise ValueError(f"{tool}: a skipped PCH include is missing from its dependencies")
+            results.append((preprocessed, imported, section.read_bytes(), dependency))
+            inner.unlink()
+            missing = subprocess.run(
+                (*tool, *flags, "-msgstyle", "parseable", "-prefix", prefix.name,
+                 "-c", body.name, "-o", obj.name),
+                cwd=directory, text=True, capture_output=True, timeout=timeout,
+            )
+            if missing.returncode != 1 or "(10151)" not in missing.stdout:
+                raise ValueError(f"{tool}: a missing once-only header did not report error 10151")
+        if results[0] != results[1]:
+            raise ValueError(f"{compiler}: once-only PCH include replay differs from stock")
+
+    inner.write_text("ordinary_header\n", encoding="ascii")
+    routes.write_text(
+        '#include "inner.h"\n'
+        '#include "./inner.h"\n'
+        '#import "inner.h"\n'
+        '#include "./inner.h"\n'
+        '#pragma once on\n'
+        '#include "other/inner.h"\n'
+        '#pragma once off\n'
+        '#include <other/inner.h>\n',
+        encoding="ascii",
+    )
+    if run(*compiler, *flags, "-E", routes.name, cwd=directory, timeout=timeout) != run(
+        reference, *flags, "-E", routes.name, cwd=directory
+    ):
+        raise ValueError(f"{compiler}: live import or once-only include behavior differs from stock")
+
+
 def check_stock_pch_declarations(compiler, reference, objcopy, nm, work):
     cases = (
         (
@@ -4470,6 +4553,7 @@ def main():
                     if results[name] != reference[name]:
                         raise ValueError(f"{name}: output differs from stock RC1")
                 check_stock_pch_macros(compiler, stock, work)
+                check_pch_include_state(compiler, stock, args.objcopy, work)
                 check_stock_pch_declarations(compiler, stock, args.objcopy, args.nm, work)
                 check_stock_pch_static_data(compiler, stock, args.objcopy, args.nm, args.objdump, work)
                 check_stock_pch_functions(compiler, stock, args.objcopy, args.nm, work)

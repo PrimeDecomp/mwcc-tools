@@ -75,6 +75,7 @@ struct Macro {
 #if VERSION == VERSION_WII_1_0RC1
 struct CPrecStockFile;
 int CPrep_RememberPrecompiledFile(const struct CPrecStockFile* file, void* context);
+int CPrep_VisitIncludedFiles(int (*visit)(const struct CPrecStockFile*, void*), void* context);
 void CPrep_InstallPrecompiledMacro(Macro* macro);
 #endif
 struct TokenStack {

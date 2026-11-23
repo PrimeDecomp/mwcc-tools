@@ -10,7 +10,7 @@ from _ctypes import FreeLibrary
 from pathlib import Path
 from unittest.mock import patch
 
-from wii_rc1_smoke import FLAGS, IPA_CPP_SOURCE, ROOT, run
+from wii_rc1_smoke import FLAGS, IPA_CPP_SOURCE, ROOT, check_pch_include_state, run
 
 U32 = c.c_uint32
 I32 = c.c_int32
@@ -753,6 +753,7 @@ def main():
                 with patch.dict(os.environ, MWCC_ORACLE_ROOT=str(wasm_root), MWCC_WASM_DOWNLOAD="0"):
                     check_wasm_program_replay(reference, wasm, work)
                     check_wasm_precompiled_locals(reference, wasm, work)
+                    check_pch_include_state(wasm, reference, "llvm-objcopy", work, timeout=180)
         finally:
             # Windows keeps a loaded DLL open until its last reference is released.
             FreeLibrary(codec._handle)

@@ -55,7 +55,8 @@ typedef struct StaticData {
 #if VERSION == VERSION_WII_1_0RC1
 // Preserve the source PCH record layout by using the high bit of the byte count.
 #define CPREC_STATIC_READ_ONLY 0x80000000u
-#define CPREC_SOURCE_VERSION 5147
+#define CPREC_SOURCE_VERSION 5148
+#define CPREC_SOURCE_VERSION_WITHOUT_FILES 5147
 #define CPREC_SOURCE_VERSION_WITHOUT_SAVED_UIDS 5146
 #elif VERSION < VERSION_GC_2_0
 #define CPREC_SOURCE_VERSION 1047
@@ -121,7 +122,11 @@ typedef struct Header {
     UInt32 xBC;
     UInt32 xC0;
     UInt32 xC4;
+#if VERSION == VERSION_WII_1_0RC1
+    UInt32 includedFiles;
+#else
     UInt32 xC8;
+#endif
     UInt32 xCC;
     UInt32 xD0;
     UInt32 xD4;
@@ -4077,6 +4082,56 @@ static int CPrec_CompressPatches(void) {
 #define CError_LINE_DELTA 0
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+static UInt32 CPrec_AppendIncludedFileName(const char* text) {
+    HashNameNode* name;
+    UInt32 offset;
+
+    if (!text) {
+        return 0;
+    }
+    offset = CPrec_AppendAlign();
+    name = GetHashNameNodeExport(text);
+    CPrec_AppendWord32(0);
+    CPrec_AppendWord32(0);
+    CPrec_AppendWord16(name->hashval);
+    CPrec_AppendString(text);
+    return offset;
+}
+
+static int CPrec_AppendIncludedFile(const CPrecStockFile* file, void* context) {
+    static const UInt8 padding[CPrecStockFileMetadataOffset - CPrecStockFileKindOffset] = {0};
+    UInt8 flags[CPrecStockFileMetadataSize - 12] = {0};
+    UInt32* first = context;
+    UInt32 path = CPrec_AppendIncludedFileName(file->path);
+    UInt32 name = CPrec_AppendIncludedFileName(file->includeName);
+    UInt32 condition = 0;
+    UInt32 metadata;
+    UInt32 record;
+
+    if (file->condition) {
+        condition = cprec_offset;
+        CPrec_AppendString(file->condition);
+    }
+    metadata = CPrec_AppendAlign();
+    CPrec_AppendWord32(0);
+    CPrec_AppendWord32(name);
+    CPrec_AppendWord32(condition);
+    flags[CPrecStockFileIncludeOnceOffset - 12] = file->includeOnce != 0;
+    flags[CPrecStockFileSystemIncludeOffset - 12] = file->systemInclude != 0;
+    CPrec_AppendData(flags, sizeof(flags));
+
+    // These records retain raw offsets and are read before relocating the enclosing graph.
+    record = CPrec_AppendAlign();
+    CPrec_AppendWord32(path);
+    CPrec_AppendWord32(*first);
+    CPrec_AppendData(padding, sizeof(padding));
+    CPrec_AppendWord32(metadata);
+    *first = record;
+    return CPrec_FlushBufferCheck() == noErr;
+}
+#endif
+
 static OSErr CPrec_DumpColorSymbolTable(Boolean doWrite) {
     OSErr err;
 
@@ -4261,6 +4316,16 @@ static OSErr CPrec_DumpColorSymbolTable(Boolean doWrite) {
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (doWrite) {
+        UInt32 first = 0;
+        if (!CPrep_VisitIncludedFiles(CPrec_AppendIncludedFile, &first)) {
+            return cprec_ioerror;
+        }
+        cprec_header->includedFiles = first;
+        return CPrec_FlushRawBuffer();
+    }
+#endif
     return noErr;
 }
 
@@ -7708,6 +7773,7 @@ void PrecompilerRead(short refnum, void* buffer) {
     if (cprec_header->version != CPREC_SOURCE_VERSION
 #if VERSION == VERSION_WII_1_0RC1
         && cprec_header->version != CPREC_SOURCE_VERSION_WITHOUT_SAVED_UIDS
+        && cprec_header->version != CPREC_SOURCE_VERSION_WITHOUT_FILES
 #endif
     ) {
         CError_ErrorTerm(ERR_ILLEGAL_PRECOMPILED_HEADER_VERSION);
@@ -7719,6 +7785,13 @@ void PrecompilerRead(short refnum, void* buffer) {
     copts.checkprecompflags = cprec_header->check_header_flags;
 #if VERSION == VERSION_WII_1_0RC1
     CPrec_ReadRawBuffer(size);
+    if (cprec_header->version == CPREC_SOURCE_VERSION &&
+        !CPrec_VisitRawFiles(
+            (const UInt8*)cprec_rawbuffer, cprec_header->rawsize, cprec_header->includedFiles,
+            CPrep_RememberPrecompiledFile, NULL
+        )) {
+        CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+    }
     CPrec_RelocateRawBuffer(size);
 #else
     CPrec_ReadRawBuffer();
@@ -7907,7 +7980,7 @@ void PrecompilerRead(short refnum, void* buffer) {
 #endif
     }
 #if VERSION == VERSION_WII_1_0RC1
-    return FALSE;
+    return cparamblkptr->preprocess;
 #endif
 }
 #if VERSION == VERSION_GC_1_3_2

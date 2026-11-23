@@ -83,6 +83,24 @@ typedef struct CPrecStockFile {
     int systemInclude;
 } CPrecStockFile;
 
+enum {
+    CPrecStockFileKindOffset = 0x08,
+    CPrecStockFileMetadataOffset = 0x2a,
+    CPrecStockFileIncludeNameOffset = 0x04,
+    CPrecStockFileConditionOffset = 0x08,
+    CPrecStockFileIncludeOnceOffset = 0x0e,
+    CPrecStockFileSystemIncludeOffset = 0x0f,
+    CPrecStockFileMetadataSize = 0x14
+};
+
+int CPrec_VisitRawFiles(
+    const unsigned char* raw,
+    size_t rawSize,
+    size_t offset,
+    int (*visit)(const CPrecStockFile* file, void* context),
+    void* context
+);
+
 int CPrec_VisitStockFiles(
     const void* expanded,
     size_t imageSize,

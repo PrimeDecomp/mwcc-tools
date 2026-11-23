@@ -21,14 +21,7 @@ enum {
     PCH_MACRO_BUCKET_COUNT = 0x800,
     PCH_MACRO_ARGUMENT_COUNT = 0x1c,
     PCH_MACRO_ARGUMENTS = 0x20,
-    PCH_HASH_NAME_TEXT = 0x0a,
-    PCH_FILE_KIND = 0x08,
-    PCH_FILE_METADATA = 0x2a,
-    PCH_FILE_INCLUDE_NAME = 0x04,
-    PCH_FILE_CONDITION = 0x08,
-    PCH_FILE_INCLUDE_ONCE = 0x0e,
-    PCH_FILE_SYSTEM_INCLUDE = 0x0f,
-    PCH_FILE_METADATA_SIZE = 0x14
+    PCH_HASH_NAME_TEXT = 0x0a
 };
 
 static unsigned int readHalfword(const unsigned char* p) {
@@ -293,6 +286,66 @@ int CPrec_IndexStockBuiltins(
     return 0;
 }
 
+int CPrec_VisitRawFiles(
+    const unsigned char* raw,
+    size_t rawSize,
+    size_t offset,
+    int (*visit)(const CPrecStockFile* file, void* context),
+    void* context
+) {
+    size_t seen = 0;
+
+    for (; offset; offset = readWord(raw + offset + 4)) {
+        const unsigned char* record;
+        const unsigned char* metadata;
+        size_t metadataOffset;
+        size_t nameOffset;
+        size_t conditionOffset;
+        CPrecStockFile file;
+
+        if (offset > rawSize ||
+            rawSize - offset <= CPrecStockFileKindOffset ||
+            ++seen > rawSize / (CPrecStockFileKindOffset + 1)) {
+            return 0;
+        }
+        record = raw + offset;
+        if (record[CPrecStockFileKindOffset] != 0) {
+            continue;
+        }
+        if (rawSize - offset < CPrecStockFileMetadataOffset + 4) {
+            return 0;
+        }
+        metadataOffset = readWord(record + CPrecStockFileMetadataOffset);
+        if (!metadataOffset ||
+            metadataOffset > rawSize ||
+            rawSize - metadataOffset < CPrecStockFileMetadataSize) {
+            return 0;
+        }
+        metadata = raw + metadataOffset;
+        file.path = CPrec_StockHashName(raw, rawSize, readWord(record));
+        nameOffset = readWord(metadata + CPrecStockFileIncludeNameOffset);
+        file.includeName = nameOffset ? CPrec_StockHashName(raw, rawSize, nameOffset) : NULL;
+        conditionOffset = readWord(metadata + CPrecStockFileConditionOffset);
+        file.condition = NULL;
+        if (conditionOffset) {
+            if (conditionOffset >= rawSize ||
+                !memchr(raw + conditionOffset, 0, rawSize - conditionOffset)) {
+                return 0;
+            }
+            file.condition = (const char*)raw + conditionOffset;
+        }
+        file.includeOnce = metadata[CPrecStockFileIncludeOnceOffset] != 0;
+        file.systemInclude = metadata[CPrecStockFileSystemIncludeOffset] != 0;
+        if (!file.path ||
+            !*file.path ||
+            (nameOffset && !file.includeName) ||
+            !visit(&file, context)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int CPrec_VisitStockFiles(
     const void* expanded,
     size_t imageSize,
@@ -302,61 +355,8 @@ int CPrec_VisitStockFiles(
     const unsigned char* image = expanded;
     size_t rawSize;
     const unsigned char* raw = stockRawGraph(image, imageSize, &rawSize);
-    size_t offset;
-    size_t seen = 0;
 
-    if (!raw) {
-        return 0;
-    }
-    for (offset = readWord(image + PCH_UNIQUE_FILES); offset; offset = readWord(raw + offset + 4)) {
-        const unsigned char* record;
-        const unsigned char* metadata;
-        size_t metadataOffset;
-        size_t nameOffset;
-        size_t conditionOffset;
-        CPrecStockFile file;
-
-        if (offset > rawSize ||
-            rawSize - offset <= PCH_FILE_KIND ||
-            ++seen > rawSize / (PCH_FILE_KIND + 1)) {
-            return 0;
-        }
-        record = raw + offset;
-        if (record[PCH_FILE_KIND] != 0) {
-            continue;
-        }
-        if (rawSize - offset < PCH_FILE_METADATA + 4) {
-            return 0;
-        }
-        metadataOffset = readWord(record + PCH_FILE_METADATA);
-        if (!metadataOffset ||
-            metadataOffset > rawSize ||
-            rawSize - metadataOffset < PCH_FILE_METADATA_SIZE) {
-            return 0;
-        }
-        metadata = raw + metadataOffset;
-        file.path = CPrec_StockHashName(raw, rawSize, readWord(record));
-        nameOffset = readWord(metadata + PCH_FILE_INCLUDE_NAME);
-        file.includeName = nameOffset ? CPrec_StockHashName(raw, rawSize, nameOffset) : NULL;
-        conditionOffset = readWord(metadata + PCH_FILE_CONDITION);
-        file.condition = NULL;
-        if (conditionOffset) {
-            if (conditionOffset >= rawSize ||
-                !memchr(raw + conditionOffset, 0, rawSize - conditionOffset)) {
-                return 0;
-            }
-            file.condition = (const char*)raw + conditionOffset;
-        }
-        file.includeOnce = metadata[PCH_FILE_INCLUDE_ONCE] != 0;
-        file.systemInclude = metadata[PCH_FILE_SYSTEM_INCLUDE] != 0;
-        if (!file.path ||
-            !*file.path ||
-            (nameOffset && !file.includeName) ||
-            !visit(&file, context)) {
-            return 0;
-        }
-    }
-    return 1;
+    return raw && CPrec_VisitRawFiles(raw, rawSize, readWord(image + PCH_UNIQUE_FILES), visit, context);
 }
 
 const char* CPrec_StockMacroArgument(const CPrecStockMacro* macro, size_t index) {

@@ -996,6 +996,19 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   Bit 0 of the macro's flags marks a variadic definition. Bit 1 preserves
   GNU variadic behavior at the definition site, including removal of the
   comma in `, ## __VA_ARGS__` when the argument is empty.
+- Stock stores the visited files under the raw-graph root at header offset
+  `0xce`. A text file record has its physical path at `0x00` and its
+  metadata pointer at `0x2a`. The metadata holds the include name, the
+  condition stream, and the once-only and system-include flags. Bare
+  `#pragma once` marks the current file. `#import` and `#pragma once on`
+  mark files as they enter the preprocessor. A previous ordinary include
+  can run again when it first enters under either option.
+- Source PCH revision 5148 writes the file records and reuses the stock
+  record reader. Once-only replay resolves the requested path and records
+  the dependency before skipping the file. A file already opened by
+  physical path also takes precedence over the saved PCH basename.
+  Revisions 5146 and 5147 remain readable. The port still needs stock
+  condition generation and the rest of the stock writer's graph layout.
 - The stock root namespace uses `0x400` buckets at header offset `0x40da`.
   The first four words of an entry are its next link, hash name, next object
   in the overload list, and first object. This agrees with the source
