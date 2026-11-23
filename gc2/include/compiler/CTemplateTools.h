@@ -10,6 +10,11 @@ extern "C" {
 
 extern short ctempl_instdepth;
 
+#if VERSION == VERSION_WII_1_0RC1
+extern void CTemplTool_ResetInstanceContexts(void);
+extern void CTemplTool_SaveInstanceContext(const void* owner);
+extern TemplStack* CTemplTool_GetInstanceContext(const void* owner);
+#endif
 extern void CTemplTool_PushInstance(TemplStack* stack, TypeClass* tmclass, Object* func);
 extern void CTemplTool_PopInstance(TemplStack* stack);
 extern Boolean CTemplTool_InitDeduceInfo(

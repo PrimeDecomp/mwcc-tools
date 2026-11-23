@@ -18,6 +18,7 @@
 #include "compiler/CPrepTokenizer.h"
 #include "compiler/CScope.h"
 #include "compiler/CTemplateNew.h"
+#include "compiler/CTemplateTools.h"
 #include "compiler/enode.h"
 #include "compiler/Exceptions.h"
 #include "compiler/InlineAsm.h"
@@ -4375,6 +4376,11 @@ void CInline_AddInlineFunctionAction(
     action->u.inlinefunc.tclass = tclass;
     action->u.inlinefunc.fileoffset = *fileoffset;
     action->u.inlinefunc.stream = *stream;
+#if VERSION == VERSION_WII_1_0RC1
+    if (object->qual & Q_IS_TEMPLATED) {
+        CTemplTool_SaveInstanceContext(action);
+    }
+#endif
 
     if (isTemplate) {
         action->next = cinline_tactionlist;
@@ -4439,6 +4445,9 @@ static void CInline_AddFRefList_Object(Object* object) {
     ObjectList* list;
 
 #if VERSION == VERSION_WII_1_0RC1
+    if ((object->qual & Q_IS_TEMPLATED) && !CTemplTool_GetInstanceContext(object)) {
+        CTemplTool_SaveInstanceContext(object);
+    }
     if (visitGraphReference) {
         visitGraphReference(object, FALSE);
         return;
@@ -4723,6 +4732,11 @@ static void CInline_GenerateTemplateInline(Object* object) {
 void CInline_ObjectAddrRef(Object* object) {
     CI_FuncData* funcdata;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if ((object->qual & Q_IS_TEMPLATED) && !CTemplTool_GetInstanceContext(object)) {
+        CTemplTool_SaveInstanceContext(object);
+    }
+#endif
     object->flags |= OBJECT_REFERENCED;
 
     switch (object->datatype) {
@@ -5042,6 +5056,14 @@ static void CInline_GenerateInlineFunc(CI_Action* action) {
     TemplClassInst* inst;
     DeclInfo di;
     SInt32 streamState;
+#if VERSION == VERSION_WII_1_0RC1
+    TemplStack* point = CTemplTool_GetInstanceContext(action);
+    TemplStack* saved_instance = ctempl_curinstance;
+
+    if (point) {
+        ctempl_curinstance = point;
+    }
+#endif
 
     object = action->obj;
 
@@ -5078,6 +5100,9 @@ static void CInline_GenerateInlineFunc(CI_Action* action) {
     }
 
     CPrep_StreamRemove(&action->u.inlinefunc.stream, &streamState);
+#if VERSION == VERSION_WII_1_0RC1
+    ctempl_curinstance = saved_instance;
+#endif
 }
 
 Boolean CInline_CanFreeLHeap(void) {

@@ -9,6 +9,7 @@
 #include "compiler/CMachine.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
+#include "compiler/CPrep.h"
 #include "compiler/CScope.h"
 #include "compiler/CTemplateClass.h"
 #include "compiler/CTemplateNew.h"
@@ -21,7 +22,76 @@
 
 short ctempl_instdepth;
 
-void CTemplTool_PushInstance(TemplStack* stack, TypeClass* tmclass, Object* func) {
+#if VERSION == VERSION_WII_1_0RC1
+typedef struct TemplateInstanceContext {
+    struct TemplateInstanceContext* next;
+    const void* owner;
+    TemplStack point;
+} TemplateInstanceContext;
+
+enum { InstanceContextBuckets = 257 };
+static TemplateInstanceContext* instance_contexts[InstanceContextBuckets];
+
+static void CTemplTool_CaptureInstance(TemplStack* point) {
+
+    if (ctempl_curinstance) {
+        *point = *ctempl_curinstance;
+    } else {
+        memclrw(point, sizeof(TemplStack));
+        point->is_poi = TRUE;
+        point->is_func = cscope_currentfunc != NULL || cscope_currentclass == NULL;
+        if (point->is_func) {
+            point->u.func = cscope_currentfunc;
+        } else {
+            point->u.theclass = cscope_currentclass;
+        }
+    }
+    if (prep_file) {
+        CPrep_NewFileOffsetInfo(&point->source, cerror_locktoken);
+    }
+}
+
+void CTemplTool_ResetInstanceContexts(void) {
+    memset(instance_contexts, 0, sizeof(instance_contexts));
+}
+
+void CTemplTool_SaveInstanceContext(const void* owner) {
+    unsigned index = ((UInt32)owner >> 2) % InstanceContextBuckets;
+    TemplateInstanceContext* context = galloc(sizeof(TemplateInstanceContext));
+
+    context->owner = owner;
+    CTemplTool_CaptureInstance(&context->point);
+    context->next = instance_contexts[index];
+    instance_contexts[index] = context;
+}
+
+TemplStack* CTemplTool_GetInstanceContext(const void* owner) {
+    unsigned index = ((UInt32)owner >> 2) % InstanceContextBuckets;
+    TemplateInstanceContext* context;
+
+    for (context = instance_contexts[index]; context; context = context->next) {
+        if (context->owner == owner) {
+            return &context->point;
+        }
+    }
+    return NULL;
+}
+#endif
+
+void CTemplTool_PushInstance(TemplStack* saved, TypeClass* tmclass, Object* func) {
+#if VERSION == VERSION_WII_1_0RC1
+    TemplStack* stack = galloc(sizeof(TemplStack));
+    memclrw(stack, sizeof(TemplStack));
+    saved->next = ctempl_curinstance;
+    stack->next = ctempl_curinstance;
+    if (!stack->next || tmclass) {
+        stack->next = galloc(sizeof(TemplStack));
+        CTemplTool_CaptureInstance(stack->next);
+    }
+#else
+    TemplStack* stack = saved;
+    stack->next = ctempl_curinstance;
+#endif
     if (tmclass) {
         stack->u.theclass = tmclass;
         stack->is_func = FALSE;
@@ -29,7 +99,6 @@ void CTemplTool_PushInstance(TemplStack* stack, TypeClass* tmclass, Object* func
         stack->u.func = func;
         stack->is_func = TRUE;
     }
-    stack->next = ctempl_curinstance;
     ctempl_curinstance = stack;
 
     if (++ctempl_instdepth >= 64) {
@@ -38,7 +107,9 @@ void CTemplTool_PushInstance(TemplStack* stack, TypeClass* tmclass, Object* func
 }
 
 void CTemplTool_PopInstance(TemplStack* stack) {
+#if VERSION != VERSION_WII_1_0RC1
     CError_ASSERT(53, ctempl_curinstance == stack);
+#endif
 
     ctempl_curinstance = stack->next;
     if (--ctempl_instdepth < 0) {

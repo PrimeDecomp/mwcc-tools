@@ -4763,6 +4763,11 @@ ENode* scandelete(Boolean isGlobal) {
     if (innertype->size == 0) {
         CDecl_CompleteType(innertype);
     }
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_TYPE_VOID(innertype)) {
+        CError_Warning(ERR_DELETING_VOID_POINTER);
+    }
+#endif
 
     if (IS_TYPE_ARRAY(innertype) && !is_array) {
         CError_Error(ERR_ILLEGAL_TYPE);

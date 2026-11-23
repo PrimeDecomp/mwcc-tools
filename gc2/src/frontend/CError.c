@@ -42,6 +42,9 @@ int CError_BreakPointcount;
 
 static void CError_BufferAppendType(CErrorBuffer* eb, Type* ty, UInt32 qual);
 static void CError_AppendObjectName(CErrorBuffer* eb, Object* obj);
+#if VERSION == VERSION_WII_1_0RC1
+static void CError_ReportInstantiation(void);
+#endif
 
 void CError_Init(void) {
     cerror_errorcount = 0;
@@ -76,6 +79,12 @@ void CError_ResetErrorSkip(void) {
 }
 
 static void CError_GetErrorString(char* buf, short code) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (code == ERR_DELETING_VOID_POINTER) {
+        strcpy(buf, "deleting a void pointer is undefined");
+        return;
+    }
+#endif
     CError_ASSERT(142, code >= ERR_ILLEGAL_CHARACTER_CONSTANT && code < ERR_MAX);
     COS_GetString(buf, 10000, code - 99);
 }
@@ -797,25 +806,81 @@ void CError_ErrorMessage(int errTable, char* str, Boolean isTerminal, Boolean is
         }
 #if VERSION == VERSION_WII_1_0RC1
         if (copts.numbered_diagnostics && errTable >= 10000 + ERR_ILLEGAL_CHARACTER_CONSTANT) {
-            CErrorBuffer message;
-            char prefix[24];
+            int length = snprintf(numbered, sizeof(numbered), "(%5d) %s", errTable, str);
 
-            snprintf(prefix, sizeof(prefix), "(%5d) ", errTable);
-            CError_BufferInit(&message, numbered, sizeof(numbered));
-            CError_BufferAppendString(&message, prefix);
-            CError_BufferAppendString(&message, str);
-            CError_BufferTerminate(&message);
-            str = message.start;
+            if (length > (int)sizeof(numbered)) {
+                char* expanded = lalloc(length + 1);
+                snprintf(expanded, length + 1, "(%5d) %s", errTable, str);
+                str = expanded;
+            } else {
+                str = numbered;
+            }
         }
 #endif
         if (CWReportMessage(cparamblkptr->context, ref, str, buf, messagetype, errTable) !=
             cwNoErr) {
             longjmp(errorreturn, 1);
         }
+#if VERSION == VERSION_WII_1_0RC1
+        CError_ReportInstantiation();
+#endif
     }
 
     cerror_token = NULL;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static void CError_ReportInstantiation(void) {
+    const TemplStack* child = ctempl_curinstance;
+
+    if (cprep_nomem_exit) {
+        return;
+    }
+    while (child && child->next) {
+        const TemplStack* caller = child->next;
+
+        if (caller->source.file) {
+            TStreamElement token = {0};
+            CWMessageRef ref;
+            CPrepFileInfo* tokenfile;
+            short tokensize;
+            char source[128];
+            char text[256];
+            CErrorBuffer message;
+            int code = child->is_func ? 10544 : 10543;
+
+            token.tokenfile = caller->source.file;
+            token.tokenline = caller->source.tokenline;
+            token.tokenoffset = caller->source.tokenoffset;
+            CPrep_GetTokenContext(
+                &token, &tokenfile, &ref.selectionoffset, &tokensize, &ref.linenumber, source,
+                &ref.tokenoffset, &ref.tokenlength, cerror_synchdata, &cerror_synchoffset
+            );
+            ref.selectionlength = tokensize;
+            ref.sourcefile = tokenfile->textfile;
+
+            CError_BufferInit(&message, text, sizeof(text));
+            if (copts.numbered_diagnostics) {
+                CError_BufferAppendString(&message, child->is_func ? "(10544) " : "(10543) ");
+            }
+            CError_BufferAppendString(&message, "    (corresponding point of instantiation for '");
+            if (child->is_func) {
+                CError_AppendObjectName(&message, child->u.func);
+            } else {
+                CError_BufferAppendType(&message, (Type*)child->u.theclass, 0);
+            }
+            CError_BufferAppendString(&message, "')");
+            CError_BufferTerminate(&message);
+            if (CWReportMessage(
+                    cparamblkptr->context, &ref, message.start, source, messagetypeInfo, code
+                ) != cwNoErr) {
+                longjmp(errorreturn, 1);
+            }
+        }
+        child = caller;
+    }
+}
+#endif
 
 static void CError_BufferAppendTemplateStack(CErrorBuffer* eb) {
     TemplStack* stack[64];
@@ -835,7 +900,18 @@ static void CError_BufferAppendTemplateStack(CErrorBuffer* eb) {
         for (indent = index; indent < count; indent++) {
             CError_BufferAppendChar(eb, ' ');
         }
+#if VERSION == VERSION_WII_1_0RC1
+        CError_BufferAppendString(
+            eb, stack[index]->is_poi ? "(point of instantiation: '" : "(instantiating: '"
+        );
+        if (stack[index]->is_poi && stack[index]->is_func && !stack[index]->u.func) {
+            CError_BufferAppendString(eb, "global scope");
+            CError_BufferAppendString(eb, "')");
+            continue;
+        }
+#else
         CError_BufferAppendString(eb, "(instantiating: '");
+#endif
         if (stack[index]->is_func) {
             CError_AppendObjectName(eb, stack[index]->u.func);
         } else {

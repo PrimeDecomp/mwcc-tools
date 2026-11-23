@@ -116,6 +116,9 @@ struct TemplPartialSpec {
 
 struct TemplStack {
     TemplStack* next;
+#if VERSION == VERSION_WII_1_0RC1
+    FileOffsetInfo source;
+#endif
     union {
         Object* func;
         TypeClass* theclass;

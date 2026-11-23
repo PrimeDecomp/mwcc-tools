@@ -129,6 +129,9 @@ static TemplFuncInstance* CTempl_GetCreateFuncInstance(
     }
 
     inst->args = arg;
+#if VERSION == VERSION_WII_1_0RC1
+    CTemplTool_SaveInstanceContext(inst);
+#endif
 #if VERSION != VERSION_WII_1_0RC1
     inst->next = templ->instances;
     templ->instances = inst;

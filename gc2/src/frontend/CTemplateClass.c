@@ -1831,8 +1831,13 @@ Boolean CTempl_InstantiateTemplateClass(TypeClass* tclass) {
     }
 
     inst->is_instantiated = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+    CTemplTool_PushInstance(&stack, tclass, NULL);
+    CScope_SetClassScope(tclass, &saveScope);
+#else
     CScope_SetClassScope(tclass, &saveScope);
     CTemplTool_PushInstance(&stack, tclass, NULL);
+#endif
 
     tryBlock = trychain;
     trychain = NULL;

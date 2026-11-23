@@ -35,6 +35,9 @@ static Boolean CTempl_GenClassInstance(TemplClassInst* inst, Boolean isExplicit)
 
 void CTempl_Setup(void) {
     ctempl_curinstance = NULL;
+#if VERSION == VERSION_WII_1_0RC1
+    CTemplTool_ResetInstanceContexts();
+#endif
     ctempl_templates = NULL;
     ctempl_templatefuncs = NULL;
     ctempl_instdepth = 0;
@@ -1789,6 +1792,10 @@ Boolean CTempl_GenFuncInstance(
     SInt32 streamState;
     DeclInfo di;
     TemplStack stack;
+#if VERSION == VERSION_WII_1_0RC1
+    TemplStack* saved_instance;
+    TemplStack* point;
+#endif
 
     if (inst->is_extern && !isExplicit) {
         return FALSE;
@@ -1813,6 +1820,13 @@ Boolean CTempl_GenFuncInstance(
     }
 
     inst->is_instantiated = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+    saved_instance = ctempl_curinstance;
+    point = CTemplTool_GetInstanceContext(inst);
+    if (point) {
+        ctempl_curinstance = point;
+    }
+#endif
 
     CPrep_StreamInsert(&templ->stream, &streamState);
 
@@ -1858,6 +1872,9 @@ Boolean CTempl_GenFuncInstance(
 
     CTemplTool_PopInstance(&stack);
 
+#if VERSION == VERSION_WII_1_0RC1
+    ctempl_curinstance = saved_instance;
+#endif
     CPrep_StreamRemove(&templ->stream, &streamState);
     copts.filesyminfo = saveDebugInfo;
 
@@ -1883,6 +1900,14 @@ void CTempl_InstantiateMember(
     SInt32 savedState;
     DeclInfo di;
     TemplStack stack;
+#if VERSION == VERSION_WII_1_0RC1
+    TemplStack* saved_instance = ctempl_curinstance;
+    TemplStack* point = CTemplTool_GetInstanceContext(object);
+
+    if (point) {
+        ctempl_curinstance = point;
+    }
+#endif
 
     CTemplTool_PushInstance(&stack, NULL, object);
     nspace = CTemplTool_InsertTemplateArgumentNameSpace(
@@ -1933,6 +1958,9 @@ void CTempl_InstantiateMember(
     }
 
     CTemplTool_PopInstance(&stack);
+#if VERSION == VERSION_WII_1_0RC1
+    ctempl_curinstance = saved_instance;
+#endif
     CTemplTool_RemoveTemplateArgumentNameSpace(nspace, inst, &savedScope);
     CPrep_StreamRemove(&tmemb->stream, &savedState);
     copts.filesyminfo = saveDebugInfo;

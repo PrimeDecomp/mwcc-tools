@@ -1569,6 +1569,72 @@ def check_aligned_pch(compiler, reference, objcopy, work):
         raise ValueError(f"{compiler}: accepted a source PCH with the previous qualifier layout")
 
 
+def check_void_delete_diagnostics(compiler, work):
+    fixtures = {
+        "void_delete.cpp": (
+            "#define DELETE(p) delete p\n"
+            "void scalar(void* p) { DELETE(p); }\n"
+            "void array(const volatile void* p) { ::delete[] p; }\n"
+            "class Incomplete;\n"
+            "void incomplete(Incomplete* p) { delete p; }\n",
+            2,
+            0,
+        ),
+        "nested_void_delete.cpp": (
+            "template<class T> void leaf(T* p) { delete p; }\n"
+            "template<class T> void inner(T* p) { leaf(p); }\n"
+            "template<class T> void outer(T* p) { inner(p); }\n"
+            "void root(void* p) { outer(p); }\n",
+            1,
+            3,
+        ),
+        "member_void_delete.cpp": (
+            "template<class T> struct Box { T* p; ~Box() { delete p; } void release(); };\n"
+            "template<class T> void Box<T>::release() { delete[] p; }\n"
+            "void destroy(Box<void>* p) { delete p; }\n"
+            "void release(Box<void>& p) { p.release(); }\n",
+            2,
+            2,
+        ),
+        "explicit_void_delete.cpp": (
+            "template<class T> void kill(T* p) { delete p; }\n"
+            "template void kill<void>(void*);\n",
+            1,
+            1,
+        ),
+    }
+    results = {}
+    for name, (contents, warnings, notes) in fixtures.items():
+        source = work / name
+        source.write_text(contents, encoding="ascii")
+        for flags, expected in (((), warnings), (("-w", "off"), 0),
+                                (("-pragma", "ANSI_strict on"), warnings)):
+            output = run(compiler, *FLAGS, *flags, "-msgstyle", "parseable", "-c", source.name,
+                         "-o", source.with_suffix(".o"), cwd=work)
+            if (output.count(">(10480) deleting a void pointer is undefined") != expected or
+                    output.count("|Compiler|Warning") != expected or
+                    output.count(">(10544)     (corresponding point of instantiation for ") != notes):
+                raise ValueError(f"{compiler}: unexpected delete diagnostics for {name}\n{output}")
+            results[f"{name} {flags}"] = output
+
+    source = work / "numbered_diagnostic_length.cpp"
+    for length in (133, 134, 135):
+        source.write_text(
+            "template<class T> void kill(T* p) { delete p; }\n"
+            f"void {'a' * length}(void* p) {{ kill(p); }}\n",
+            encoding="ascii",
+        )
+        output = run(compiler, *FLAGS, "-msgstyle", "parseable", "-nowraplines", "-c",
+                     source.name, "-o", source.with_suffix(".o"), cwd=work)
+        frame = ">  (instantiating: 'kill<void>(void *)'"
+        if length != 134:
+            frame += ")"
+        if frame not in output.splitlines():
+            raise ValueError(f"{compiler}: unexpected numbered message length\n{output}")
+        results[f"{source.name} {length}"] = output
+    return results
+
+
 def check(compiler, objcopy, nm, objdump, work):
     if "Version 4.2 build 140" not in run(compiler, "-version", cwd=work):
         raise ValueError(f"{compiler}: incorrect version banner")
@@ -3288,6 +3354,7 @@ void member_call(V* v) { Guard guard; v->g(); }
     ]:
         raise ValueError(f"{compiler}: unexpected strict-mode diagnostic\n{output}")
     results[source.name] = (process.stdout, process.stderr)
+    results.update(check_void_delete_diagnostics(compiler, work))
 
     source = work / "jump_warnings.cpp"
     jump_warnings = (

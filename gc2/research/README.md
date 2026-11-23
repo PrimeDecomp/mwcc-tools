@@ -456,6 +456,20 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   `ObjGen_Setup` enables message numbers for Gekko at `0x4c7ce2`.
   `Msg_EmitCoreV` checks that setting at `0x45a841` before prefixing
   the diagnostic text. The `750` and `e500` targets leave that setting off.
+  The format helper retries when the required length exceeds its buffer
+  at `0x45af09`, leaving a single byte clipped at exactly 256 bytes.
+- `CExpr_New_DELETE_Node` reports warning 10480 after completing a void
+  pointee type at `0x5c43fd`. This precedes the scalar and array branches.
+  The warning applies to qualified void pointers and retains warning
+  severity under `ANSI_strict`.
+  Native template instance creation at `0x5f4e2b`, inline member scheduling
+  at `0x47ef83`, and member references at `0x47daff` capture the caller
+  before replaying the definition. `CError_ErrorMessage` calls the related
+  diagnostic walker at `0x45e9a0`. The walker reports 10544 for functions
+  and 10543 for classes, from the innermost call site through the original
+  point of instantiation. The driver can hide warning 10480 while keeping
+  those notes. The source keeps the captured contexts for the current
+  translation unit without extending the PCH records for pending actions.
 - The `AND` case of constant propagation (`0x6462f1`) follows `LI` and
   `LIS` definitions. Contiguous masks become `RLWINM` with a zero shift.
   Disjoint masks use `ANDI` or `ANDIS` and define CR0. The stock formatter
