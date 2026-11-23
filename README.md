@@ -100,6 +100,18 @@ python configure.py
 mwcc-tools run ninja
 ```
 
+A project with several versions is configured for all of them at once by `mwcc-tools run configure`, in place of
+`uv run configure.py` once per version. It runs the project's configure script (`--configure "uv run configure.py"`)
+for each version (its `--version` choices, else `config/*/config.yml`, else `--versions A,B`) and merges the
+`build.ninja` files into one that builds every version in parallel. The tools' downloads and the same rules are kept
+once and what differs between versions is renamed `NAME__VERSION`. `objdiff.json` and `compile_commands.json` are the
+default version's (the script's own default, or `--default VERSION`). The configure script's own options go after `--`:
+
+```sh
+mwcc-tools run configure -- --map
+mwcc-tools run ninja
+```
+
 It takes ninja's usual options (`-j N`, `-k N`, `-n`, `-v`, targets...). `mwcc-tools run COMPILER ARGS...` runs a
 single compiler or linker command the same way. [wasm.md](docs/wasm.md#a-projects-build-mwcc-tools-run) has the details.
 

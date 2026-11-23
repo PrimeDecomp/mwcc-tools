@@ -8,6 +8,7 @@ use serde_json::json;
 use std::{env, fs, path::PathBuf, process::ExitCode, time::Duration};
 mod binary_cli;
 mod build_cli;
+mod configure_cli;
 mod ninja_cli;
 mod provenance_cli;
 mod release_cli;

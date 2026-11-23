@@ -23,6 +23,7 @@ use std::{
 };
 
 const USAGE: &str = "mwcc-tools run [sjiswrap.exe] EXE ARGS...\nmwcc-run [sjiswrap.exe] EXE ARGS...\n\
+mwcc-tools run configure [-C DIR] [--configure COMMAND] [--versions A,B,...] [--default V] [-- ARGS...]
 mwcc-tools run ninja [-C DIR] [-f FILE] [-j N] [-k N] [-n] [-v] [-d explain] [--json FILE] [TARGETS...]\n\
 mwcc-tools run ninja [-C DIR] [-f FILE] -t commands [-s] [TARGETS...]\n\
 mwcc-tools run ninja [-C DIR] [-f FILE] -t inputs [-E] [-0] [-d] [TARGETS...]\n\
@@ -89,6 +90,9 @@ pub fn run(args: &[String]) -> Result<i32> {
     if args.is_empty() || matches!(args[0].as_str(), "--help" | "-h") {
         println!("{USAGE}");
         return Ok(0);
+    }
+    if args[0] == "configure" {
+        return crate::configure_cli::run(&args[1..]);
     }
     if args[0] == "ninja" {
         return crate::ninja_cli::run(&args[1..]);

@@ -32,6 +32,11 @@ impl<T: AsRef<str>> EvalString<T> {
         EvalString(parts)
     }
 
+    /// The literal texts and variable references.
+    pub fn parts(&self) -> &[EvalPart<T>] {
+        &self.0
+    }
+
     fn evaluate_inner(&self, result: &mut String, envs: &[&dyn Env]) {
         for part in &self.0 {
             match part {
