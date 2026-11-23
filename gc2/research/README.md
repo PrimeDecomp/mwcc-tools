@@ -541,6 +541,14 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   so on, regardless of whether the variable names repeat. The frontend
   keeps the source identifier. Hidden function-name strings keep private
   numbered symbols and use the ordinary unique ID counter.
+- RC1's `CParser_ParseDeclaration` calls `CMid_GlobalDeclarationActions`
+  (`0x47c120`) at the common exit at `0x44f43e`, including after the
+  template, namespace, using and linkage branches. This runs deferred
+  inline bodies before parsing the next declaration. If consecutive
+  explicit class specializations share a queue, their bodies are parsed
+  in reverse class order and consume unique IDs in a different order.
+  The two-specialization smoke case compares complete objects, including
+  the generated data names, with file IPA enabled and disabled.
 - All function-scope dynamic initializers share the guard path at
   `0x548ce7`. Static scalar and aggregate data is emitted before
   appending its runtime assignment. Class initialization appends the

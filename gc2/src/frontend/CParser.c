@@ -3968,28 +3968,28 @@ static void CParser_ParseDeclaration(DeclInfo* di) {
     switch (tk) {
         case TK_AT_INTERFACE:
             CObjC_ParseInterface();
-            return;
+            break;
         case TK_AT_IMPLEMENTATION:
             CObjC_ParseImplementation();
-            return;
+            break;
         case TK_AT_PROTOCOL:
             CObjC_ParseProtocol();
-            return;
+            break;
         case TK_AT_CLASS:
             CObjC_ParseClassDeclaration();
-            return;
+            break;
         case TK_NAMESPACE:
             CParser_ParseNameSpace(di);
-            return;
+            break;
         case TK_EXPORT:
             CError_Error(ERR_UNIMPLEMENTED_C_FEATURE);
             if ((tk = lex()) != TK_TEMPLATE) {
                 CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
-                return;
+                break;
             }
         case TK_TEMPLATE:
             CTempl_Parse(NULL, 0);
-            return;
+            break;
         case TK_USING:
             if ((tk = lex()) == TK_NAMESPACE) {
                 tk = lex();
@@ -3997,13 +3997,13 @@ static void CParser_ParseDeclaration(DeclInfo* di) {
             } else {
                 CScope_ParseUsingDeclaration(cscope_current, 0, FALSE);
             }
-            return;
+            break;
         case TK_EXTERN:
             if (copts.cplusplus) {
                 di->storageclass = TK_EXTERN;
                 if ((tk = lex()) == TK_STRING) {
                     CParser_ParseLinkageSpecification(di);
-                    return;
+                    break;
                 }
             }
         default:
@@ -4021,9 +4021,14 @@ static void CParser_ParseDeclaration(DeclInfo* di) {
             } else {
                 CParser_CheckAnonymousUnion(di, FALSE);
             }
+#if VERSION != VERSION_WII_1_0RC1
             CParser_GlobalCleanup(FALSE);
-            return;
+#endif
+            break;
     }
+#if VERSION == VERSION_WII_1_0RC1
+    CParser_GlobalCleanup(FALSE);
+#endif
 }
 
 #ifdef MWCC_PERSIST

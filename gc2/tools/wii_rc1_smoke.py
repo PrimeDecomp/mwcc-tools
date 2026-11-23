@@ -2380,6 +2380,32 @@ int call_scope(int x) { return with_scope(x); }
         run(objcopy, f"--dump-section=.text={section}", f"--dump-section=.rela.text={relocations}", obj, cwd=work)
         results[f"{source.name} {opt}"] = (section.read_bytes(), relocations.read_bytes())
 
+    source = work / "deferred_specializations.cpp"
+    source.write_text(
+        "extern void consume(const int&);\n"
+        "template<class T> struct Wrapper;\n"
+        "template<> struct Wrapper<int> {\n"
+        "    static void first(int value) { consume(value); }\n"
+        "    static void second(int) { consume(12); }\n"
+        "};\n"
+        "template<> struct Wrapper<char> {\n"
+        "    static void first(char value) { consume(value); }\n"
+        "    static void second(char) { consume(24); }\n"
+        "};\n"
+        "void entry(int value) {\n"
+        "    Wrapper<int>::first(value);\n"
+        "    Wrapper<char>::second(value);\n"
+        "}\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for mode in ("off", "file"):
+        run(
+            compiler, *FLAGS, "-O4,p", "-inline", "noauto", "-ipa", mode,
+            "-func_align", "4", "-Cpp_exceptions", "off", "-c", source, "-o", obj, cwd=work,
+        )
+        results[f"{source.name} -ipa {mode}"] = obj.read_bytes()
+
     source = work / "addresses_across_calls.c"
     source.write_text(
         "struct Queue { int count, next, values[6]; };\n"
