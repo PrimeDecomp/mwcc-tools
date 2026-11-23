@@ -1,5 +1,6 @@
 #include "compiler/IroUnrollLoop.h"
 #include "compiler/IroDump.h"
+#include "compiler/IroEval.h"
 #include "compiler/IroFlowgraph.h"
 #include "compiler/IroLinearForm.h"
 #include "compiler/IroLoop.h"
@@ -60,11 +61,31 @@ IROLinear* BuildOrigIterationCount(IROList* list, IROLoop* loop);
 IROLinear* BuildNewFinalvalue(
     IROLinear* iterCount, UInt32 unrollFactor, IROList* list, IROLoop* loop
 );
-void BuildUnrolledBodyEntryTest(
-    IROList* list, IROLinear* iterCount, UInt32 unrollFactor, CLabel* label
+Boolean BuildUnrolledBodyEntryTest(
+    IROLoop* loop, IROList* list, IROLinear* iterCount, UInt32 unrollFactor, CLabel* label
 );
 void ChangeInductionReference(IROLinear* first, IROLinear* last, CInt64 val, IROLoop* loop);
 IROLinear* UpdateInductionIncrement(IROLoop* loop, SInt32 value, IROLinear* before);
+
+#if VERSION == VERSION_WII_1_0RC1
+static void SplitUnrolledBodyEntryBlock(IRONode* node) {
+    IROLinear* last = node->last;
+    IROLinear* scan;
+
+    for (scan = node->first; scan != last; scan = scan->next) {
+        if (scan->type == IROLinearIf || scan->type == IROLinearIfNot ||
+            scan->next->type == IROLinearLabel) {
+            IRONode* next = IRO_NewFlowGraphNode();
+            next->first = scan->next;
+            next->last = last;
+            next->nextnode = node->nextnode;
+            node->last = scan;
+            node->nextnode = next;
+            node = next;
+        }
+    }
+}
+#endif
 
 void IRO_LoopUnroller(void) {
     VectorPhaseCalledFromUnroll = TRUE;
@@ -650,7 +671,7 @@ static UInt32 UnrollWhileLoop(
     IRO_Paste(list.head, list.tail, fnode2->last);
 
     IRO_InitList(&list);
-    BuildUnrolledBodyEntryTest(&list, origIterationCount, unrollFactor, lastlabel);
+    BuildUnrolledBodyEntryTest(loop, &list, origIterationCount, unrollFactor, lastlabel);
     IRO_Paste(list.head, list.tail, fnode2->last);
     unrolledBodyEntryTest = list.tail;
 
@@ -1029,6 +1050,7 @@ static UInt32 UnrollForLoop(
     UInt32 needOrigLoop = FALSE;
     UInt32 needUnrollBodyTest = FALSE;
     UInt32 resetUnrolledFinalValue = FALSE;
+    Boolean guardedBodyEntry;
     SInt32 leftOver;
     CInt64 iterCount;
     CInt64 val;
@@ -1078,7 +1100,9 @@ static UInt32 UnrollForLoop(
     IRO_Paste(list.head, list.tail, fnode2->last);
 
     IRO_InitList(&list);
-    BuildUnrolledBodyEntryTest(&list, origIterationCount, unrollFactor, lastlabel);
+    guardedBodyEntry = BuildUnrolledBodyEntryTest(
+        isConstant ? NULL : loop, &list, origIterationCount, unrollFactor, lastlabel
+    );
     IRO_Paste(list.head, list.tail, fnode2->last);
     unrolledBodyEntryTest = list.tail;
 
@@ -1188,6 +1212,14 @@ static UInt32 UnrollForLoop(
     newfnode5->last = lastnd;
     newfnode4->nextnode = newfnode5;
     newfnode5->nextnode = oldNext;
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (guardedBodyEntry) {
+        SplitUnrolledBodyEntryBlock(newfnode1);
+    }
+#else
+    (void)guardedBodyEntry;
+#endif
 
     newfnode6 = oalloc(sizeof(IRONode));
     memset(newfnode6, 0, sizeof(IRONode));
@@ -2249,8 +2281,69 @@ static IROLinear* BuildUnrolledFinalvalue_DoWhile(
     return ass->u.diadic.left;
 }
 
-void BuildUnrolledBodyEntryTest(
-    IROList* list, IROLinear* iterCount, UInt32 unrollFactor, CLabel* label
+#if VERSION == VERSION_WII_1_0RC1
+static IROLinear* AppendGuardOperator(
+    IROList* list, ENodeType op, IROLinear* left, IROLinear* right
+) {
+    IROLinear* node = IRO_NewLinear(IROLinearOp2Arg);
+    node->index = ++IRO_NumLinear;
+    node->nodetype = op;
+    node->rtype = (Type*)&stbool;
+    node->u.diadic.left = left;
+    node->u.diadic.right = right;
+    IRO_AddToList(node, list);
+    return node;
+}
+
+static void LinearizeUnrolledBodyGuard(IROList* list, IROLinear* bound) {
+    IROLinearIRSave save;
+    IROList guard;
+    IROLinear* lower;
+    IROLinear* upper;
+    IROLinear* left;
+    IROLinear* right;
+    IROLinear* scan;
+    IROLinear* tail;
+    Statement* head;
+    Type* type = bound->rtype;
+    CInt64 limit = CInt64_Sub(IRO_MaxValueOfIntegerType(type), cint64_one);
+
+    IRO_SaveLinearIR(&save);
+    IRO_InitList(&guard);
+    left = IRO_NewIntConst(cint64_zero, type);
+    IRO_AddToList(left, &guard);
+    right = IRO_DuplicateExpr(bound, &guard);
+    lower = AppendGuardOperator(&guard, ELESSEQU, left, right);
+    left = IRO_DuplicateExpr(bound, &guard);
+    right = IRO_NewIntConst(limit, type);
+    IRO_AddToList(right, &guard);
+    upper = AppendGuardOperator(&guard, ELESSEQU, left, right);
+    AppendGuardOperator(&guard, ELAND, lower, upper);
+
+    // Delinearizing renumbers its input. Isolate the guard to preserve the original loop's indices.
+    IRO_FirstLinear = guard.head;
+    IRO_LastLinear = guard.tail;
+    head = lalloc(sizeof(Statement));
+    memset(head, 0, sizeof(Statement));
+    // Prelinearization inserts the short-circuit branches before the expression statement.
+    head->type = ST_NOP;
+    head->next = IRO_Delinearize(NULL, guard.head);
+    IRO_PreLinearize(head);
+    IRO_Linearize(head);
+    for (tail = IRO_FirstLinear; tail->next != IRO_LastLinear; tail = tail->next) {
+    }
+    tail->next = NULL;
+    guard.head = IRO_FirstLinear;
+    IRO_RestoreLinearIR(&save);
+    for (scan = guard.head; scan; scan = scan->next) {
+        scan->index = ++IRO_NumLinear;
+    }
+    IRO_AddToList(guard.head, list);
+}
+#endif
+
+Boolean BuildUnrolledBodyEntryTest(
+    IROLoop* loop, IROList* list, IROLinear* iterCount, UInt32 unrollFactor, CLabel* label
 ) {
     IROLinear* value;
     IROLinear* countCopy;
@@ -2289,6 +2382,35 @@ void BuildUnrolledBodyEntryTest(
     ifnot->rtype = type;
     ifnot->u.label.label = label;
     IRO_AddToList(ifnot, list);
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (loop &&
+        !(loop->flags & LP_WHILE_LOOP) &&
+        (loop->flags & LP_INDUCTION_AT_LEFT) &&
+        loop->cond->nodetype == ELESS &&
+        loop->induction->addConst == 1 &&
+        IRO_IsIntConstant(loop->init->u.diadic.right) &&
+        CInt64_IsZero(&loop->init->u.diadic.right->u.node->data.intval)) {
+        IROLinear* bound = loop->cond->u.diadic.right;
+        Type* inductionType = loop->induction->nd->rtype;
+        if (IS_TYPE_INT(inductionType) && !is_unsigned(inductionType) &&
+            IS_TYPE_INT(bound->rtype) && !is_unsigned(bound->rtype) &&
+            bound->rtype->size == inductionType->size && !IRO_IsIntConstant(bound)) {
+            LinearizeUnrolledBodyGuard(list, bound);
+            ifnot = IRO_NewLinear(IROLinearIfNot);
+            ifnot->index = ++IRO_NumLinear;
+            ifnot->u.label.cond = list->tail;
+            ifnot->u.label.cond->flags |= IROLF_Reffed;
+            ifnot->rtype = type;
+            ifnot->u.label.label = label;
+            IRO_AddToList(ifnot, list);
+            return TRUE;
+        }
+    }
+#else
+    (void)loop;
+#endif
+    return FALSE;
 }
 
 void ChangeInductionReference(IROLinear* first, IROLinear* last, CInt64 val, IROLoop* loop) {

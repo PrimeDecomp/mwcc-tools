@@ -736,6 +736,16 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   target at the end of the body. The three while loops in `e_sqrt.c` account
   for the shift from `@194` to the stock floating constant name `@197`.
   The optimized `e_sqrt.c` object now matches stock.
+- For a signed induction variable starting at zero and advancing by one
+  under a strict upper-bound comparison, the stock unroller guards the
+  fast path with `0 <= bound && bound <= max - 1`. The comparisons are
+  inputs to the logical AND observed in `0x604050`. The helper runs them
+  through the frontend linearizer before `0x603f30` adds the fallback
+  branch. Bypassing that branch in stock made the simplest fixture match
+  the earlier source output. The guard now matches stock for tested
+  signed 32-bit loops. Stock also narrows mixed-width bounds to the
+  induction type. The port still differs for mixed-width bounds, other
+  trip-count calculations, and instruction selection for narrow indices.
 - RC1's `make_distinct_virtual_alias` at `0x5bfab0` allocates a named
   virtual alias even for ordinary writable pointer parameters. In
   `TRKDispatchMessage` it allocates `@87` before `create_switch_table`

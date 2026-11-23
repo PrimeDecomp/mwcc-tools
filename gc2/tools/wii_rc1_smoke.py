@@ -2359,6 +2359,31 @@ def check_auto_aggregate_initialization(compiler, work):
     return results
 
 
+def check_unrolled_loop_guard(compiler, work):
+    results = {}
+    for name, bound_type, index_type, pragma in (
+        ("signed", "int", "int", ""),
+        ("promoted", "short", "int", ""),
+        ("unsigned", "unsigned int", "unsigned int", ""),
+        ("disabled", "int", "int", "#pragma opt_unroll_loops off\n"),
+    ):
+        source = work / f"unroll_guard_{name}.cpp"
+        obj = source.with_suffix(".o")
+        source.write_text(
+            pragma
+            + f'extern "C" int sum(const int* p, {bound_type} n) {{\n'
+            + "    int result = 0;\n"
+            + f"    for ({index_type} i = 0; i < n; ++i) result += p[i];\n"
+            + "    return result;\n"
+            + "}\n",
+            encoding="ascii",
+        )
+        run(compiler, *FLAGS, "-O4,p", "-lang=c++", "-inline", "noauto", "-func_align", "4",
+            "-Cpp_exceptions", "off", "-c", source.name, "-o", obj, cwd=work)
+        results[source.name] = obj.read_bytes()
+    return results
+
+
 def check(compiler, objcopy, nm, objdump, work):
     if "Version 4.2 build 140" not in run(compiler, "-version", cwd=work):
         raise ValueError(f"{compiler}: incorrect version banner")
@@ -4421,6 +4446,7 @@ bool same(const Values& a, const Values& b) {
     check_source_encoding(compiler, objcopy, work)
     results.update(check_unconditional_branch_ranges(compiler, objcopy, work))
     results.update(check_auto_aggregate_initialization(compiler, work))
+    results.update(check_unrolled_loop_guard(compiler, work))
     return results
 
 
