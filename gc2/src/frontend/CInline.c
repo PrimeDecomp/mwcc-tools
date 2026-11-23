@@ -3961,15 +3961,27 @@ void CInline_PackIFunctionData(CI_FuncData* funcdata, Statement* stmt, Object* o
 
 #if VERSION == VERSION_WII_1_0RC1
     if (funcdata->numarguments || funcdata->numlocals) {
-        SInt32* uid = galloc(sizeof(*uid) * (funcdata->numarguments + funcdata->numlocals));
-        funcdata->flags |= CI_HasSavedVariableUIDs;
+        int count = funcdata->numarguments + funcdata->numlocals;
+        SInt32* uid = galloc(sizeof(*uid) * count);
+        TStreamElement* token = galloc(sizeof(*token) * count);
+        funcdata->flags |= CI_HasSavedVariableUIDs | CI_HasSavedVariableTokens;
         funcdata->saved_variable_uids = uid;
+        funcdata->saved_variable_tokens = token;
+        memclrw(token, sizeof(*token) * count);
         for (list = arguments; list; list = list->next) {
             *uid++ = list->object->u.var.uid;
+            if (list->object->u.var.info) {
+                *token = list->object->u.var.info->deftoken;
+            }
+            token++;
         }
         for (list = locals; list; list = list->next) {
             if (list->object->datatype == DLOCAL) {
                 *uid++ = list->object->u.var.uid;
+                if (list->object->u.var.info) {
+                    *token = list->object->u.var.info->deftoken;
+                }
+                token++;
             }
         }
     }
@@ -4035,6 +4047,20 @@ void CInline_PackIFunctionData(CI_FuncData* funcdata, Statement* stmt, Object* o
     }
 }
 
+static void CInline_RestoreVariableToken(Object* object, const CI_FuncData* body, int index) {
+    TStreamElement* token = &object->u.var.info->deftoken;
+#if VERSION == VERSION_WII_1_0RC1
+    if ((body->flags & CI_HasSavedVariableTokens) && body->saved_variable_tokens[index].tokenfile) {
+        *token = body->saved_variable_tokens[index];
+        return;
+    }
+#endif
+    if (body->fileoffset.file) {
+        token->tokenfile = body->fileoffset.file;
+        token->tokenoffset = body->functionbodyoffset;
+    }
+}
+
 void CInline_UnpackIFunctionData(Object* object, CI_FuncData* funcdata, Statement* firstStmt) {
     Object* obj;
     CLabel** labels;
@@ -4080,10 +4106,7 @@ void CInline_UnpackIFunctionData(Object* object, CI_FuncData* funcdata, Statemen
         CFunc_SetupLocalVarInfo(obj);
 #endif
 
-        if (funcdata->fileoffset.file) {
-            obj->u.var.info->deftoken.tokenfile = funcdata->fileoffset.file;
-            obj->u.var.info->deftoken.tokenoffset = funcdata->functionbodyoffset;
-        }
+        CInline_RestoreVariableToken(obj, funcdata, i);
     }
 
     for (i = 0, var = funcdata->locals; i < funcdata->numlocals; i++, var++) {
@@ -4113,10 +4136,7 @@ void CInline_UnpackIFunctionData(Object* object, CI_FuncData* funcdata, Statemen
         CFunc_SetupLocalVarInfo(obj);
 #endif
 
-        if (funcdata->fileoffset.file) {
-            obj->u.var.info->deftoken.tokenfile = funcdata->fileoffset.file;
-            obj->u.var.info->deftoken.tokenoffset = funcdata->functionbodyoffset;
-        }
+        CInline_RestoreVariableToken(obj, funcdata, funcdata->numarguments + i);
     }
 
     enode_idtrans = NULL;

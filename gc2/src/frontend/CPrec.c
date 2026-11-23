@@ -3002,7 +3002,10 @@ static CI_FuncData* CPrec_GetInlineFuncPatch(CI_FuncData* ifunc) {
 #if VERSION == VERSION_WII_1_0RC1
     {
         SInt32* emptyUIDs = NULL;
-        CPrec_AppendData(ifunc, offsetof(CI_FuncData, saved_variable_uids));
+        CI_FuncData body;
+        memcpy(&body, ifunc, offsetof(CI_FuncData, saved_variable_uids));
+        body.flags &= ~CI_HasSavedVariableTokens;
+        CPrec_AppendData(&body, offsetof(CI_FuncData, saved_variable_uids));
         CPrec_AppendData(&emptyUIDs, sizeof(emptyUIDs));
         if (ifunc->flags & CI_HasSavedVariableUIDs) {
             SInt32 start = CPrec_AppendAlign();

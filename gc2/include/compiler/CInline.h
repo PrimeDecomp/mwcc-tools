@@ -171,7 +171,8 @@ struct CI_Statement {
 #if VERSION == VERSION_WII_1_0RC1
 enum {
     CI_UseCallerInlineOptions = 1,
-    CI_HasSavedVariableUIDs = 2
+    CI_HasSavedVariableUIDs = 2,
+    CI_HasSavedVariableTokens = 4
 };
 #endif
 
@@ -193,6 +194,8 @@ struct CI_FuncData {
     UInt8 flags;
     // Older source PCH bodies end before this field and have no UID flag.
     SInt32* saved_variable_uids;
+    // Source tokens are kept for live IPA bodies. PCH bodies omit source locations.
+    TStreamElement* saved_variable_tokens;
 #endif
 };
 

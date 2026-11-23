@@ -1831,6 +1831,116 @@ int instantiate(int n) { return select(n) + partial(n); }
     return results
 
 
+def check_backend_diagnostics(compiler, objcopy, work):
+    source = work / "uninitialized.c"
+    source.write_text(
+        """\
+int first(void) {
+    register int value;
+    return value;
+}
+
+int second(void) {
+    register int result;
+    return result;
+}
+""",
+        encoding="ascii",
+    )
+    results = {}
+    for mode in ("off", "file"):
+        output = run(
+            compiler, *FLAGS, "-O4,p", "-ipa", mode, "-w", "on", "-msgstyle", "parseable",
+            "-c", source.name, "-o", source.with_suffix(".o"), cwd=work,
+        )
+        lines = output.splitlines()
+        warnings = [
+            (lines[index - 2].split("|")[1:4], line)
+            for index, line in enumerate(lines)
+            if line.startswith(">(10185) ")
+        ]
+        if warnings != [
+            (["2", "17", "5"], ">(10185) variable 'value' is not initialized before being used"),
+            (["7", "17", "6"], ">(10185) variable 'result' is not initialized before being used"),
+        ]:
+            raise ValueError(f"{compiler}: unexpected variable warning locations with -ipa {mode}\n{output}")
+        results[f"{source.name} {mode}"] = output
+
+    source = work / "section_promotion.cpp"
+    source.write_text(
+        """\
+extern const float input;
+extern const float runtime;
+const float* address() { return &runtime; }
+extern const float runtime = input;
+
+int after() { return 1; }
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    normal = source.with_suffix(".normalized.o")
+    for mode, small, warnings, row, column, section in (
+        ("off", "0", "on", "4", "34", ".rodata"),
+        ("file", "0", "on", "6", "24", ".rodata"),
+        ("file", "4", "on", "6", "24", ".sbss2"),
+        ("file", "0", "off", "6", "24", ".rodata"),
+        ("file", "0", "error", "6", "24", ".rodata"),
+    ):
+        proc = subprocess.run(
+            (compiler, *FLAGS, "-O4,p", "-ipa", mode, "-sdata", small, "-sdata2", small,
+             "-w", warnings, "-msgstyle", "parseable", "-c", source.name, "-o", obj),
+            cwd=work, capture_output=True, text=True, timeout=30,
+        )
+        status = int(warnings == "error")
+        severity = "Error" if status else "Warning"
+        lines = proc.stdout.splitlines()
+        if warnings == "off":
+            diagnostic_matches = not lines
+        else:
+            diagnostic_matches = (
+                len(lines) >= 6
+                and lines[0].endswith(f"|Compiler|{severity}")
+                and lines[1].split("|")[1:4] == [row, column, "1"]
+                and lines[3].startswith(f">(33058) 'RW' object 'runtime' is being put into section '{section}'")
+                and lines[5] == ">section's access permission will be changed to 'RW'"
+            )
+        if proc.returncode != status or not diagnostic_matches:
+            raise ValueError(f"{compiler}: unexpected section permission diagnostic\n{proc.stdout}{proc.stderr}")
+        if status:
+            contents = b""
+        else:
+            headers = run("llvm-readobj", "--sections", obj, cwd=work)
+            header = headers.split(f"Name: {section} (", 1)[-1].split("}", 1)[0]
+            if "SHF_WRITE" not in header:
+                raise ValueError(f"{compiler}: {section} remained read-only\n{header}")
+            run(objcopy, "--remove-section=.comment", obj, normal, cwd=work)
+            contents = normal.read_bytes()
+        results[f"{source.name} {mode} {small} {warnings}"] = (proc.stdout, proc.stderr, contents)
+
+    source = work / "vtable_section.cpp"
+    source.write_text(
+        """\
+struct Widget { Widget(); virtual ~Widget(); };
+Widget::Widget() {}
+Widget::~Widget() {}
+Widget value;
+""",
+        encoding="ascii",
+    )
+    for mode in ("off", "file"):
+        obj = source.with_suffix(".o")
+        output = run(
+            compiler, *FLAGS, "-O4,p", "-RTTI", "off", "-sdata", "0", "-sdata2", "0",
+            "-ipa", mode, "-msgstyle", "parseable", "-c", source.name, "-o", obj, cwd=work,
+        )
+        symbols = run("llvm-readobj", "--symbols", obj, cwd=work)
+        vtable = symbols.partition("Name: __vt__6Widget (")[2].partition("}")[0]
+        if output or "Section: .data (" not in vtable:
+            raise ValueError(f"{compiler}: unexpected vtable section with -ipa {mode}\n{output}{vtable}")
+    return results
+
+
 def check_reference_initializers(compiler, objcopy, work):
     cases = {
         "local_reference_cast.cpp": """\
@@ -3776,6 +3886,7 @@ void member_call(V* v) { Guard guard; v->g(); }
     results.update(check_template_actions(compiler, objcopy, nm, work))
     results.update(check_reference_cast_diagnostics(compiler, objcopy, work))
     results.update(check_return_diagnostics(compiler, work))
+    results.update(check_backend_diagnostics(compiler, objcopy, work))
     results.update(check_reference_initializers(compiler, objcopy, work))
 
     source = work / "jump_warnings.cpp"

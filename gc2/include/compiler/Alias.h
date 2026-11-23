@@ -55,6 +55,7 @@ extern Alias* make_distinct_virtual_alias(Object* obj);
 extern void gather_alias_info(void);
 extern Boolean may_alias(PCode* a, PCode* b);
 #if VERSION == VERSION_WII_1_0RC1
+extern Boolean is_safe_const(Object* obj);
 extern Boolean may_alias_worst_case(PCode* pcode);
 #endif
 #if VERSION == VERSION_GC_2_0P2

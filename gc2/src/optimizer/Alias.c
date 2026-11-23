@@ -54,7 +54,10 @@ static Boolean is_virtual_object(Object* object) {
 }
 #endif
 
-static Boolean is_safe_const(Object* obj) {
+#if VERSION != VERSION_WII_1_0RC1
+static
+#endif
+Boolean is_safe_const(Object* obj) {
     Type* type;
 
     type = obj->type;
@@ -67,10 +70,14 @@ static Boolean is_safe_const(Object* obj) {
         type = TPTR_TARGET(type);
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (Registers_ClassForType(type) != RegClassMax || IS_TYPE_STRUCT(type)) {
+#else
     if (TYPE_FITS_IN_REGISTER(type) ||
         IS_TYPE_VECTOR(type) ||
         IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(type) ||
         IS_TYPE_STRUCT(type)) {
+#endif
         return is_const_object(obj);
     }
 

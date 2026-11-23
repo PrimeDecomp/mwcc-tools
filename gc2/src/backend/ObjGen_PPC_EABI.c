@@ -1,5 +1,6 @@
 #include "compiler/ObjGen_PPC_EABI.h"
 #if VERSION == VERSION_WII_1_0RC1
+#include "compiler/Alias.h"
 #include "compiler/CIRStreamCallGraph.h"
 #include "compiler/CMiddleLayer.h"
 #endif
@@ -958,6 +959,8 @@ int ObjGen_GetAddressing(Object* obj) {
 
 #if VERSION < VERSION_GC_2_0
     PPC_EABI_SetSection(obj, obj->type->size, FALSE);
+#elif VERSION == VERSION_WII_1_0RC1
+    PPC_EABI_SetSection(obj, obj->type->size, is_safe_const(obj), FALSE);
 #else
     PPC_EABI_SetSection(obj, obj->type->size, FALSE, FALSE);
 #endif
@@ -1454,7 +1457,18 @@ void PPC_EABI_SetSection(Object* object, SInt32 size, Boolean isConst, Boolean a
             object->name->name[1] == '_' &&
             strncmp(object->name->name, "__vt__", 6) == 0) {
             size = object->type->size;
+#if VERSION == VERSION_WII_1_0RC1
+            isConst = FALSE;
+#endif
         }
+#if VERSION == VERSION_WII_1_0RC1
+        if ((object->u.data.linkname &&
+             strncmp(object->u.data.linkname->name, "@STRING@", 8) == 0) ||
+            (object->name && (strncmp(object->name->name, "__RTTI__", 8) == 0 ||
+                              strncmp(object->name->name, "__FUNCTION__", 12) == 0))) {
+            isConst = FALSE;
+        }
+#endif
 #if VERSION >= VERSION_GC_2_0
         if (!allowSmall) {
             if ((size <= sdata2_threshold && size <= sdata_threshold) ||
@@ -1647,6 +1661,10 @@ static void report_section_permission_conflict(
         current,
         changed
     );
+#if VERSION == VERSION_WII_1_0RC1
+    section->permissions |= permissions;
+    section->shdr.sh_flags = requested;
+#endif
 }
 
 static void allocate_object_storage(Object* object, SInt32 size, Boolean isConst) {

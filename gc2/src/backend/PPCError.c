@@ -13,9 +13,15 @@ static void PPCError_GetErrorString(char* str, short code) {
 
 static void PPCError_VAErrorMessage(int code, va_list list, Boolean isTerminal, Boolean isWarning) {
     char format[256];
+    int messageCode = code + 10001;
 
     PPCError_GetErrorString(format, code);
-    CError_ErrorMessageVA(code + 10001, format, list, isTerminal, isWarning);
+#if VERSION == VERSION_WII_1_0RC1
+    if (code == PPCERR_SECTION_PERMISSION_CHANGED) {
+        messageCode = 33058;
+    }
+#endif
+    CError_ErrorMessageVA(messageCode, format, list, isTerminal, isWarning);
 }
 
 void PPCError_Error(int code, ...) {

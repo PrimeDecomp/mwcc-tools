@@ -556,6 +556,14 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   selects BSS from the null buffer and still emits the initializer code.
   The default small constant section and its BSS partner are read-only
   in `InitElfSections` (`0x4c6153` supplies `SHF_ALLOC`).
+  `ObjGen_GetAddressing` at `0x4c6cb0` uses `is_safe_const` at
+  `0x5c05a0` when an object has no section yet. A reference can pick a
+  const section before a runtime initializer requires write access.
+  `PPC_EABI_SetSection` overrides the const classification for
+  `__vt__`, `__RTTI__`, `__FUNCTION__`, and the `@STRING@` link-name
+  prefix (`0x4c5a4f` through `0x4c5bcd`).
+  The permission check at `0x4c5510` emits 33058 and adds the requested
+  permissions and ELF flags to the section already selected.
   With `-O4,p -ipa file`, combining `Value empty = Value();` and
   `Value runtime = {source()};` for a one-member aggregate still diverges
   in exception-table symbol numbers. Stock delinearization of the non-void
@@ -590,6 +598,10 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   at `0x50efd0`. A bare return before the end gets an additional check at
   the closing brace. The `warn_missingreturn_as_error` pragma updates
   both missing-return options, including when it resets them (`0x444040`).
+- The uninitialized-variable diagnostic at `0x5d2926` uses the local
+  object's declaration token. File IPA preserves the declaration location
+  when it reconstructs the optimized function body, even with debug
+  information disabled.
 - The `RLWINM` branch at `0x6457b1` rotates and masks the sign-extended
   immediate from a reaching `LI`. It rewrites the instruction when the
   result fits a single `LI` or `LIS`. This also folds the packing shift in
