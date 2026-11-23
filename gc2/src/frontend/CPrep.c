@@ -326,11 +326,35 @@ typedef struct CPrepIncludedFile {
     Boolean precompiled;
 } CPrepIncludedFile;
 
+typedef struct CPrepConditionFrame {
+    SInt32 start;
+    Boolean ignored;
+    Boolean alternative;
+    Boolean allArms;
+    Boolean allArmsDirect;
+    Boolean content;
+    Boolean directContent;
+    Boolean firstArmActive;
+    Boolean hasElse;
+    Boolean insideSkippedBranch;
+} CPrepConditionFrame;
+
+typedef struct CPrepFileCondition {
+    CPrepIncludedFile* file;
+    GList stream;
+    unsigned int depth;
+    CPrepConditionFrame frames[64];
+} CPrepFileCondition;
+
 static CPrepIncludedFile* included_files;
+static CPrepFileCondition* file_conditions[32];
+static const char* CPrep_IncludeBasename(const char* path);
 static Boolean CPrep_SkipIncludedFile(const char* path, const char* name, Boolean system);
-static void CPrep_RecordIncludedFile(
+static CPrepIncludedFile* CPrep_RecordIncludedFile(
     const char* path, const char* name, Boolean system, Boolean once
 );
+static void CPrep_BeginFileCondition(CPrepIncludedFile* file);
+static void CPrep_EndFileCondition(int level);
 #endif
 static CPrepFileInfo* cprep_extrafile;
 static UInt32 linetick;
@@ -486,6 +510,7 @@ int setupprep(void) {
     cprep_files = NULL;
 #if VERSION == VERSION_WII_1_0RC1
     included_files = NULL;
+    memset(file_conditions, 0, sizeof(file_conditions));
 #endif
 
     CLT_filesp = &filesp;
@@ -737,14 +762,6 @@ static Boolean setupfile(StringPtr filename, Boolean fullsearch, Boolean isImpor
         prepinfo.recordbrowseinfo = cparamblkptr->recordbrowseinfo;
     }
 
-#if VERSION == VERSION_WII_1_0RC1
-    if (filename) {
-        CPrep_RecordIncludedFile(
-            prepinfo.nameNode->name, myfilename, !fullsearch,
-            isImport || copts.always_import || include_once
-        );
-    }
-#endif
     if (filesp >= 0) {
         filestack[filesp]->linenumber = linenumber;
         filestack[filesp]->hasprepline = cprep_hasprepline;
@@ -760,6 +777,15 @@ static Boolean setupfile(StringPtr filename, Boolean fullsearch, Boolean isImpor
     prep_file_start = prep_file->textbuffer;
     prep_file_end = prep_file->textbuffer + prep_file->textlength;
 #if VERSION == VERSION_WII_1_0RC1
+    if (filename || cparamblkptr->precompile == 1) {
+        CPrepIncludedFile* file;
+        const char* path = CPrep_GetSourceFilePath(prep_file)->name;
+        file = CPrep_RecordIncludedFile(
+            path, filename ? myfilename : CPrep_IncludeBasename(path), !fullsearch,
+            filename && (isImport || copts.always_import || include_once)
+        );
+        CPrep_BeginFileCondition(file);
+    }
     if (preprocessing_only) {
         if (filename == copts.oldprefixname) {
             CPrep_PreprocessEnterPrefix();
@@ -1516,6 +1542,9 @@ void popfile(void) {
         return;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    CPrep_EndFileCondition(filesp);
+#endif
     CWReleaseFileText(cparamblkptr->context, prep_file->textbuffer);
     prep_file->textbuffer = NULL;
     if (cprep_extrafile && (text = cprep_extrafile->textbuffer)) {
@@ -2261,6 +2290,314 @@ static CPrepIncludedFile* CPrep_AddIncludedFile(const CPrecStockFile* file, Bool
     return record;
 }
 
+static void CPrep_BeginFileCondition(CPrepIncludedFile* file) {
+    CPrepFileCondition* condition;
+    int level;
+
+    if (cparamblkptr->precompile != 1 || file->file.condition) {
+        return;
+    }
+    for (level = 0; level < filesp; ++level) {
+        if (file_conditions[level] && file_conditions[level]->file == file) {
+            return;
+        }
+    }
+    condition = galloc(sizeof(*condition));
+    memset(condition, 0, sizeof(*condition));
+    condition->file = file;
+    if (InitGList(&condition->stream, 64)) {
+        CError_NoMem();
+    }
+    file_conditions[filesp] = condition;
+}
+
+static void CPrep_EndFileCondition(int level) {
+    CPrepFileCondition* condition = file_conditions[level];
+
+    if (condition) {
+        if (!condition->depth && !condition->file->file.condition) {
+            char* saved = galloc(condition->stream.size + 1);
+            memcpy(saved, *condition->stream.data, condition->stream.size);
+            saved[condition->stream.size] = 0;
+            condition->file->file.condition = saved;
+        }
+        FreeGList(&condition->stream);
+        file_conditions[level] = NULL;
+    }
+}
+
+static void CPrep_AppendConditionContent(
+    CPrepFileCondition* condition, unsigned int depth, Boolean direct
+) {
+    CPrepConditionFrame* frame;
+
+    if (!depth) {
+        if (condition->stream.size == 1 && (*condition->stream.data)[0] == '$') {
+            return;
+        }
+        condition->stream.size = 0;
+        AppendGListByte(&condition->stream, '$');
+        return;
+    }
+    frame = &condition->frames[depth - 1];
+    if (!frame->content) {
+        AppendGListByte(&condition->stream, '$');
+        frame->content = TRUE;
+    }
+    if (direct) {
+        frame->directContent = TRUE;
+    }
+}
+
+void CPrep_RecordConditionContent(void) {
+    CPrepFileCondition* condition = filesp >= 0 ? file_conditions[filesp] : NULL;
+    unsigned int depth;
+
+    if (!condition) {
+        return;
+    }
+    for (depth = 0; depth < condition->depth; ++depth) {
+        CPrepConditionFrame* frame = &condition->frames[depth];
+        if (frame->ignored) {
+            return;
+        }
+        if (frame->insideSkippedBranch) {
+            // Stock records content under the outer guard when a nested arm was never evaluated.
+            condition->stream.size = frame->start;
+            frame->ignored = TRUE;
+            CPrep_AppendConditionContent(condition, depth, FALSE);
+            return;
+        }
+    }
+    CPrep_AppendConditionContent(condition, condition->depth, TRUE);
+}
+
+static const char* CPrep_ConditionSplice(const char* text) {
+    if (text < prep_file_end && *text == '\\' && prep_file_end - text >= 2) {
+        if (text[1] == '\r') {
+            return text + (prep_file_end - text >= 3 && text[2] == '\n' ? 3 : 2);
+        }
+        if (text[1] == '\n') {
+            return text + 2;
+        }
+    }
+    return text;
+}
+
+static const char* CPrep_ConditionSkipHorizontalSpace(const char* text, const char* end) {
+    while (text < end && (*text == ' ' || *text == '\t' || *text == '\f' || *text == '\v')) {
+        ++text;
+    }
+    return text;
+}
+
+static const char* CPrep_ConditionSkipSpace(const char* text) {
+    while (text < prep_file_end) {
+        const char* next = CPrep_ConditionSplice(text);
+        if (next != text) {
+            text = next;
+        } else if (*text == ' ' || *text == '\t' || *text == '\v' || *text == '\f') {
+            text = CPrep_ConditionSkipHorizontalSpace(text, prep_file_end);
+        } else if (prep_file_end - text >= 2 && text[0] == '/' && text[1] == '*') {
+            text += 2;
+            while (prep_file_end - text >= 2 && (text[0] != '*' || text[1] != '/')) {
+                ++text;
+            }
+            if (prep_file_end - text < 2) {
+                return prep_file_end;
+            }
+            text += 2;
+        } else {
+            break;
+        }
+    }
+    return text;
+}
+
+static const char* CPrep_ConditionIdentifier(const char* text, char* name, size_t capacity) {
+    size_t length = 0;
+
+    text = CPrep_ConditionSkipSpace(text);
+    if (text < prep_file_end && cprep_idarray[(UInt8)*text] == 1) {
+        while (text < prep_file_end && cprep_idarray[(UInt8)*text]) {
+            if (length == capacity - 1) {
+                length = 0;
+                break;
+            }
+            name[length++] = *text++;
+            text = CPrep_ConditionSplice(text);
+        }
+    }
+    name[length] = 0;
+    return text;
+}
+
+static void CPrep_AppendConditionExpression(GList* stream, const char* text) {
+    const char* run = text;
+    Boolean blockComment = FALSE;
+    Boolean lineComment = FALSE;
+    char quote = 0;
+
+    while (text < prep_file_end) {
+        const char* next = CPrep_ConditionSplice(text);
+        if (next != text) {
+            AppendGListData(stream, run, text - run);
+            AppendGListData(stream, "\\\r\n", 3);
+            run = text = next;
+        } else if (*text == '\r' || *text == '\n') {
+            if (!blockComment) {
+                break;
+            }
+            AppendGListData(stream, run, text - run);
+            AppendGListData(stream, "\r\n", 2);
+            if (*text++ == '\r' && text < prep_file_end && *text == '\n') {
+                ++text;
+            }
+            run = text;
+        } else if (blockComment) {
+            if (*text++ == '*' && text < prep_file_end && *text == '/') {
+                blockComment = FALSE;
+                ++text;
+            }
+        } else if (lineComment) {
+            ++text;
+        } else if (quote) {
+            if (*text == '\\' && prep_file_end - text >= 2) {
+                text += 2;
+            } else if (*text++ == quote) {
+                quote = 0;
+            }
+        } else if (*text == '\'' || *text == '"') {
+            quote = *text++;
+        } else if (*text == '/' && prep_file_end - text >= 2 && text[1] == '*') {
+            blockComment = TRUE;
+            text += 2;
+        } else if (*text == '/' && prep_file_end - text >= 2 && text[1] == '/') {
+            lineComment = !copts.ANSIstrict || copts.cplusplus || copts.c9x;
+            ++text;
+        } else {
+            ++text;
+        }
+    }
+    AppendGListData(stream, run, text - run);
+    AppendGListByte(stream, '\n');
+}
+
+static void CPrep_RecordConditionDirective(const char* name, const char* text, Boolean inactive) {
+    CPrepFileCondition* condition = filesp >= 0 ? file_conditions[filesp] : NULL;
+    CPrepConditionFrame* frame;
+    char op;
+
+    if (!condition) {
+        return;
+    }
+    if (!strcmp(name, "if")) {
+        op = 'i';
+    } else if (!strcmp(name, "ifdef")) {
+        op = 'd';
+    } else if (!strcmp(name, "ifndef")) {
+        op = 'n';
+    } else if (!strcmp(name, "elif")) {
+        op = 'l';
+    } else if (!strcmp(name, "else")) {
+        op = 'e';
+    } else if (!strcmp(name, "endif")) {
+        op = 'f';
+    } else {
+        if (!strcmp(name, "pragma")) {
+            char word[16];
+            text = CPrep_ConditionIdentifier(text, word, sizeof(word));
+            if (!strcmp(word, "mark")) {
+                return;
+            }
+            if (!strcmp(word, "once")) {
+                CPrep_ConditionIdentifier(text, word, sizeof(word));
+                if (!*word || !strcmp(word, "on")) {
+                    return;
+                }
+            }
+        }
+        if (*name && strcmp(name, "line")) {
+            CPrep_RecordConditionContent();
+        }
+        return;
+    }
+
+    frame = condition->depth ? &condition->frames[condition->depth - 1] : NULL;
+    if (op == 'i' || op == 'd' || op == 'n') {
+        Boolean ignored;
+        if (frame) {
+            ignored = frame->ignored || frame->content || frame->allArmsDirect;
+        } else {
+            ignored = condition->stream.size && ((*condition->stream.data)[0] == '$' ||
+                                                (*condition->stream.data)[0] == '?');
+        }
+        if (frame && !frame->ignored && frame->allArmsDirect) {
+            CPrep_AppendConditionContent(condition, condition->depth, FALSE);
+        }
+        if (condition->depth == sizeof(condition->frames) / sizeof(condition->frames[0])) {
+            return;
+        }
+        frame = &condition->frames[condition->depth++];
+        memset(frame, 0, sizeof(*frame));
+        frame->start = condition->stream.size;
+        frame->ignored = ignored;
+        frame->insideSkippedBranch = inactive;
+        if (ignored) {
+            return;
+        }
+    } else if (!frame) {
+        return;
+    } else if (op == 'f') {
+        --condition->depth;
+        if (frame->ignored) {
+            return;
+        }
+        // Fully covered alternatives can become one content marker at the parent depth.
+        if (frame->alternative && frame->allArms &&
+            ((frame->hasElse && frame->directContent) ||
+             (frame->firstArmActive && frame->content))) {
+            condition->stream.size = frame->start;
+            CPrep_AppendConditionContent(condition, condition->depth, TRUE);
+            return;
+        }
+    } else {
+        if (frame->ignored) {
+            return;
+        }
+        if (!frame->alternative) {
+            frame->allArms = TRUE;
+            frame->allArmsDirect = TRUE;
+            frame->firstArmActive = !inactive;
+        }
+        frame->allArms = frame->allArms && frame->content;
+        frame->allArmsDirect = frame->allArmsDirect && frame->directContent;
+        frame->alternative = TRUE;
+        frame->hasElse = op == 'e';
+        frame->content = frame->directContent = FALSE;
+    }
+
+    AppendGListByte(&condition->stream, '#');
+    AppendGListByte(&condition->stream, op);
+    if (op == 'i' || op == 'l') {
+        CPrep_AppendConditionExpression(&condition->stream, text);
+    } else if (op == 'd' || op == 'n') {
+        char identifier[256];
+        char size[4];
+        size_t length;
+        CPrep_ConditionIdentifier(text, identifier, sizeof(identifier));
+        length = strlen(identifier);
+        if (!length) {
+            condition->stream.size = 0;
+            AppendGListByte(&condition->stream, '?');
+            frame->ignored = TRUE;
+            return;
+        }
+        AppendGListData(&condition->stream, size, snprintf(size, sizeof(size), "%u", (unsigned int)length));
+        AppendGListData(&condition->stream, identifier, length);
+    }
+}
+
 int CPrep_RememberPrecompiledFile(const CPrecStockFile* file, void* context) {
     (void)context;
     CPrep_AddIncludedFile(file, TRUE);
@@ -2269,7 +2606,11 @@ int CPrep_RememberPrecompiledFile(const CPrecStockFile* file, void* context) {
 
 int CPrep_VisitIncludedFiles(int (*visit)(const CPrecStockFile*, void*), void* context) {
     const CPrepIncludedFile* record;
+    int level;
 
+    for (level = filesp; level >= 0; --level) {
+        CPrep_EndFileCondition(level);
+    }
     for (record = included_files; record; record = record->next) {
         if (!visit(&record->file, context)) {
             return 0;
@@ -2289,24 +2630,77 @@ static CPrepIncludedFile* CPrep_FindIncludedFile(const char* path) {
     return NULL;
 }
 
-static void CPrep_RecordIncludedFile(
+static CPrepIncludedFile* CPrep_RecordIncludedFile(
     const char* path, const char* name, Boolean system, Boolean once
 ) {
     CPrepIncludedFile* record = CPrep_FindIncludedFile(path);
 
     if (!record) {
         CPrecStockFile file = {path, name, NULL, once, system};
-        CPrep_AddIncludedFile(&file, FALSE);
+        record = CPrep_AddIncludedFile(&file, FALSE);
     } else if (once) {
         record->file.includeOnce = TRUE;
     }
+    return record;
+}
+
+static Boolean CPrep_EvaluateSavedCondition(const char* text, const char* end, Boolean* value) {
+    char name[256];
+    const char* start;
+    Boolean inverted = FALSE;
+    Boolean parenthesized;
+    size_t length;
+
+    text = CPrep_ConditionSkipHorizontalSpace(text, end);
+    if (text < end && *text == '!') {
+        inverted = TRUE;
+        text = CPrep_ConditionSkipHorizontalSpace(text + 1, end);
+    }
+    if (text == end) {
+        return FALSE;
+    }
+    if (*text == '0' || *text == '1') {
+        *value = (*text++ == '1') != inverted;
+    } else {
+        if (end - text < 8 || memcmp(text, "defined", 7) || cprep_idarray[(UInt8)text[7]]) {
+            return FALSE;
+        }
+        text = CPrep_ConditionSkipHorizontalSpace(text + 7, end);
+        parenthesized = text < end && *text == '(';
+        if (parenthesized) {
+            text = CPrep_ConditionSkipHorizontalSpace(text + 1, end);
+        }
+        if (text == end || cprep_idarray[(UInt8)*text] != 1) {
+            return FALSE;
+        }
+        start = text++;
+        while (text < end && cprep_idarray[(UInt8)*text]) {
+            ++text;
+        }
+        length = text - start;
+        if (length >= sizeof(name)) {
+            return FALSE;
+        }
+        memcpy(name, start, length);
+        name[length] = 0;
+        text = CPrep_ConditionSkipHorizontalSpace(text, end);
+        if (parenthesized && (text == end || *text++ != ')')) {
+            return FALSE;
+        }
+        if (ismacroname4(GetHashNameNodeExport("defined"))) {
+            return FALSE;
+        }
+        *value = (ismacroname4(GetHashNameNodeExport(name)) != NULL) != inverted;
+    }
+    return CPrep_ConditionSkipHorizontalSpace(text, end) == end;
 }
 
 static Boolean CPrep_PrecompiledConditionIsEmpty(const char* condition) {
     struct {
         Boolean parentActive;
+        Boolean matched;
         Boolean hasElse;
-    } levels[32];
+    } levels[64];
     const char* end;
     int depth = 0;
     Boolean active = TRUE;
@@ -2316,7 +2710,7 @@ static Boolean CPrep_PrecompiledConditionIsEmpty(const char* condition) {
     }
     end = condition + strlen(condition);
     while (*condition) {
-        if (*condition == '$') {
+        if (*condition == '$' || *condition == '?') {
             if (active) {
                 return FALSE;
             }
@@ -2324,6 +2718,9 @@ static Boolean CPrep_PrecompiledConditionIsEmpty(const char* condition) {
             continue;
         }
         if (*condition++ != '#') {
+            return FALSE;
+        }
+        if (!*condition) {
             return FALSE;
         }
         switch (*condition++) {
@@ -2349,11 +2746,41 @@ static Boolean CPrep_PrecompiledConditionIsEmpty(const char* condition) {
                 condition += length;
                 levels[depth].parentActive = active;
                 levels[depth].hasElse = FALSE;
-                ++depth;
                 if (active) {
                     Boolean defined = ismacroname4(GetHashNameNodeExport(name)) != NULL;
                     active = defined == ifDefined;
                 }
+                levels[depth++].matched = active;
+                break;
+            }
+            case 'i':
+            case 'l': {
+                const char* expression = condition;
+                if (condition[-1] == 'i') {
+                    if (depth == sizeof(levels) / sizeof(levels[0])) {
+                        return FALSE;
+                    }
+                    levels[depth].parentActive = active;
+                    levels[depth].matched = FALSE;
+                    levels[depth++].hasElse = FALSE;
+                } else if (!depth || levels[depth - 1].hasElse) {
+                    return FALSE;
+                }
+                while (condition < end && *condition != '\n') {
+                    // Embedded newlines retain CRLF. A lone LF ends the saved expression.
+                    if (*condition++ == '\r' && condition < end && *condition == '\n') {
+                        ++condition;
+                    }
+                }
+                if (condition == end) {
+                    return FALSE;
+                }
+                active = levels[depth - 1].parentActive && !levels[depth - 1].matched;
+                if (active && !CPrep_EvaluateSavedCondition(expression, condition, &active)) {
+                    return FALSE;
+                }
+                levels[depth - 1].matched |= active;
+                ++condition;
                 break;
             }
             case 'e':
@@ -2361,7 +2788,7 @@ static Boolean CPrep_PrecompiledConditionIsEmpty(const char* condition) {
                     return FALSE;
                 }
                 levels[depth - 1].hasElse = TRUE;
-                active = levels[depth - 1].parentActive && !active;
+                active = levels[depth - 1].parentActive && !levels[depth - 1].matched;
                 break;
             case 'f':
                 if (!depth) {
@@ -2370,7 +2797,6 @@ static Boolean CPrep_PrecompiledConditionIsEmpty(const char* condition) {
                 active = levels[--depth].parentActive;
                 break;
             default:
-                // Conditional expressions still run through the regular preprocessor.
                 return FALSE;
         }
     }
@@ -5401,9 +5827,15 @@ restart:
                         newline();
                         goto restart;
                     case '"':
+#if VERSION == VERSION_WII_1_0RC1
+                        CPrep_RecordConditionContent();
+#endif
                         skipendoflinematch((StringPtr)pos, '"');
                         goto restart;
                     case '\'':
+#if VERSION == VERSION_WII_1_0RC1
+                        CPrep_RecordConditionContent();
+#endif
                         skipendoflinematch((StringPtr)pos, '"');
                         goto restart;
                     case '#':
@@ -5416,6 +5848,9 @@ restart:
                                 CPrep_Error(ERR_UNEXPECTED_END_FILE);
                             default:
                                 pos = ReadIdentifier(pos - 1);
+#if VERSION == VERSION_WII_1_0RC1
+                                CPrep_RecordConditionDirective(tkidentifier->name, pos, TRUE);
+#endif
                                 if (!strcmp("if", tkidentifier->name)) {
                                     prepif();
                                 } else if (!strcmp("ifdef", tkidentifier->name)) {
@@ -5435,6 +5870,9 @@ restart:
                         }
                         break;
                     default:
+#if VERSION == VERSION_WII_1_0RC1
+                        CPrep_RecordConditionContent();
+#endif
                         skipendofline();
                         goto restart;
                 }
@@ -5467,6 +5905,7 @@ void preprocessor(void) {
 
     pos = ReadIdentifier(pos - 1);
 #if VERSION == VERSION_WII_1_0RC1
+    CPrep_RecordConditionDirective(tkidentifier->name, pos, FALSE);
     if (preprocessing_only && CPrep_PreprocessRecordsDirective(tkidentifier->name)) {
         CPrep_PreprocessDumpDirective(prep_file_start + gDirectiveStart, tkidentifier->name);
     }

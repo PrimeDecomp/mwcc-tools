@@ -2751,6 +2751,12 @@ short lex(void) {
         ts_current->tokenline = linenumber;
         pos = nextcharpos;
 
+#if VERSION == VERSION_WII_1_0RC1
+        if (cparamblkptr->precompile == 1 && !inMacro && t && t != 13 &&
+            (t != '#' || !at_linestart)) {
+            CPrep_RecordConditionContent();
+        }
+#endif
         t = cprep_tokenize[t](t);
 #if VERSION == VERSION_WII_1_0RC1
         if (!inMacro && tokenstacklevel > 0) {

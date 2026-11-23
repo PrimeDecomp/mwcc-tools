@@ -1007,8 +1007,15 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   record reader. Once-only replay resolves the requested path and records
   the dependency before skipping the file. A file already opened by
   physical path also takes precedence over the saved PCH basename.
-  Revisions 5146 and 5147 remain readable. The port still needs stock
-  condition generation and the rest of the stock writer's graph layout.
+  Revisions 5146 and 5147 remain readable.
+- Stock records directives and content from both taken and skipped arms.
+  Its condition stream uses `#d` and `#n` followed by the decimal
+  identifier length and spelling, `#i` and `#l` followed by the
+  original expression and a newline, `#e` and `#f` for branch boundaries,
+  and `$` for content. The source PCH writer now records these conditions.
+  Replay handles definedness guards and simple `#if` and `#elif` tests.
+  General preprocessor expressions still need the stock replay semantics,
+  and the source writer still uses its own enclosing graph layout.
 - The stock root namespace uses `0x400` buckets at header offset `0x40da`.
   The first four words of an entry are its next link, hash name, next object
   in the overload list, and first object. This agrees with the source

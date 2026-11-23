@@ -424,6 +424,35 @@ def check_pch_include_state(compiler, reference, objcopy, work, *, timeout=30):
         if results[0] != results[1]:
             raise ValueError(f"{compiler}: once-only PCH include replay differs from stock")
 
+    outer.write_text('#include "inner.h"\n', encoding="ascii")
+    for start, end in (
+        ("#ifndef GUARD\n", "#endif\n"),
+        ("#if !defined(GUARD)\n", "#endif\n"),
+        ("#if 0\n#elif !defined(GUARD)\n", "#endif\n"),
+        ("#ifdef ABSENT\n#else\n#ifndef GUARD\n", "#endif\n#endif\n"),
+    ):
+        inner.write_text(
+            start + "#define GUARD 1\n#define PCH_VALUE 23\n" + end,
+            encoding="ascii",
+        )
+        for first in (
+            '#import "inner.h"\n',
+            '#pragma once on\n#include "inner.h"\n#pragma once off\n',
+        ):
+            routes.write_text(
+                first + '#undef GUARD\n#undef PCH_VALUE\n#include "./inner.h"\nPCH_VALUE\n',
+                encoding="ascii",
+            )
+            outputs = []
+            for tool in ((reference,), compiler):
+                run(*tool, *flags, "-precompile", prefix, outer, cwd=directory, timeout=timeout)
+                outputs.append(
+                    run(*tool, *flags, "-E", "-prefix", prefix.name, routes.name, cwd=directory,
+                        timeout=timeout)
+                )
+            if outputs[0] != outputs[1] or outputs[1].splitlines()[-1:] != ["23"]:
+                raise ValueError(f"{compiler}: guarded PCH include replay differs from stock")
+
     inner.write_text("ordinary_header\n", encoding="ascii")
     routes.write_text(
         '#include "inner.h"\n'
