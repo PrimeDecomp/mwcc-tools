@@ -188,6 +188,9 @@ static Boolean is_root(const CallGraphNode* node) {
     if ((object->qual & (Q_INLINE | Q_IMPLICIT_WEAK)) || object->sclass == TK_STATIC) {
         return FALSE;
     }
+    if (node->kind == CGFunction && (object->qual & Q_WEAK) && object->u.func.inst) {
+        return FALSE;
+    }
     for (scope = object->nspace; scope; scope = scope->parent) {
         if (scope->is_unnamed) {
             return FALSE;

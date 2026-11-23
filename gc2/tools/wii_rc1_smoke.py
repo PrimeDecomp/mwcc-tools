@@ -1635,6 +1635,71 @@ def check_void_delete_diagnostics(compiler, work):
     return results
 
 
+def check_template_actions(compiler, objcopy, nm, work):
+    cases = {
+        "template_action_order.cpp": (
+            "template<class T> void A(T* p) { delete p; }\n"
+            "template<class T> void B(T* p) { delete[] p; }\n"
+            "void caller(void* p) {\n"
+            "    A(p);\n"
+            "    B(p);\n"
+            "    A(p);\n"
+            "}\n"
+            "void ordinary(void* p) { delete p; }\n"
+        ),
+        "template_action_forward.cpp": (
+            "template<class T> void forward(T* p);\n"
+            "void early(void* p) { forward(p); }\n"
+            "void intervening(void* p) { delete[] p; }\n"
+            "template<class T> void forward(T* p) { delete p; }\n"
+            "void again(void* p) { forward(p); }\n"
+            "void last(void* p) { delete[] p; }\n"
+        ),
+        "template_action_address.cpp": (
+            "template<class T> void target(T* p) { delete p; }\n"
+            "void (*callback)(void*) = target;\n"
+            "void last(void* p) { delete[] p; }\n"
+        ),
+    }
+    results = {}
+    for name, contents in cases.items():
+        source = work / name
+        source.write_text(contents, encoding="ascii")
+        obj = source.with_suffix(".o")
+        normalized = source.with_suffix(".normalized")
+        for ipa in ("off", "file"):
+            output = run(compiler, *FLAGS, "-O4,p", "-inline", "off", "-ipa", ipa,
+                         "-msgstyle", "parseable", "-c", source.name, "-o", obj, cwd=work)
+            run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
+            results[f"{name} -ipa {ipa}"] = (output, normalized.read_bytes())
+
+    source = work / "template_action_liveness.cpp"
+    source.write_text(
+        "template<class T> void unused_target(T* p) { delete p; }\n"
+        "template<class T> void target(T* p) { delete p; }\n"
+        "inline void unused(void* p) { unused_target(p); }\n"
+        "inline void delayed(void* p) { target(p); }\n"
+        "void before(void* p) { delete[] p; }\n"
+        "void root(void* p) { delayed(p); }\n"
+        "void last(void* p) { delete[] p; }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for ipa in ("off", "file"):
+        output = run(compiler, *FLAGS, "-O4,p", "-inline", "off", "-ipa", ipa,
+                     "-msgstyle", "parseable", "-c", source.name, "-o", obj, cwd=work)
+        symbols = run(nm, "--defined-only", obj, cwd=work)
+        if "target<v>__FPv_v" not in symbols or "unused_target" in symbols:
+            raise ValueError(f"{compiler}: unexpected template liveness\n{symbols}")
+        if ipa == "file":
+            normalized = source.with_suffix(".normalized")
+            run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
+            results[f"{source.name} -ipa {ipa}"] = (output, normalized.read_bytes())
+        else:
+            results[f"{source.name} -ipa {ipa}"] = output
+    return results
+
+
 def check(compiler, objcopy, nm, objdump, work):
     if "Version 4.2 build 140" not in run(compiler, "-version", cwd=work):
         raise ValueError(f"{compiler}: incorrect version banner")
@@ -3355,6 +3420,7 @@ void member_call(V* v) { Guard guard; v->g(); }
         raise ValueError(f"{compiler}: unexpected strict-mode diagnostic\n{output}")
     results[source.name] = (process.stdout, process.stderr)
     results.update(check_void_delete_diagnostics(compiler, work))
+    results.update(check_template_actions(compiler, objcopy, nm, work))
 
     source = work / "jump_warnings.cpp"
     jump_warnings = (

@@ -7179,9 +7179,7 @@ static Boolean CPrec_ReadStockFunctionInstances(
         if (!instance->is_specialized &&
             !instance->is_instantiated &&
             !instance->is_extern &&
-            (object->qual & Q_INLINE) &&
-            !(TYPE_FUNC(object->type)->flags & FUNC_DEFINED) &&
-            templ->stream.tokens) {
+            !(TYPE_FUNC(object->type)->flags & FUNC_DEFINED)) {
             CInline_AddTemplateFunctionAction(object, templ, instance);
         }
         offset = CIRStream_ReadWord(record + 0x10);

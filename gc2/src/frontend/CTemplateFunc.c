@@ -184,9 +184,13 @@ static TemplFuncInstance* CTempl_GetCreateFuncInstance(
             }
         }
 
+#if VERSION == VERSION_WII_1_0RC1
+        CInline_AddTemplateFunctionAction(instobj, templ, inst);
+#else
         if ((instobj->qual & Q_INLINE) && templ->stream.tokens) {
             CInline_AddTemplateFunctionAction(instobj, templ, inst);
         }
+#endif
 
     } else {
         inst->object = object2;

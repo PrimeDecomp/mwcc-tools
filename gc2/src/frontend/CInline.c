@@ -83,6 +83,9 @@ typedef struct CI_Export {
     Object* object;
     CI_FuncData* funcdata;
     Boolean oldStyleParameters;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean fromDefinition;
+#endif
 } CI_Export;
 
 typedef struct AObject {
@@ -115,6 +118,9 @@ static short cinline_stmtlevelexprs;
 static Boolean cinline_unconditionalpart;
 static Boolean cinline_serialize_stmt;
 static CI_Export* cinline_exportlist;
+#if VERSION == VERSION_WII_1_0RC1
+static CI_Export* cinline_templateexports;
+#endif
 static CI_Action* cinline_actionlist;
 CI_Action* cinline_tactionlist;
 static ObjectList* cinline_freflist;
@@ -137,9 +143,13 @@ static ENode* CInline_CopyNodes(ENode* node);
 static SInt32 CInline_EstimateSizeOfFunc(CI_FuncData* funcdata, SInt32 size, SInt32 level);
 static ENode* CInline_SerializeExpr(ENode* expr);
 static void CInline_AddFRefList_InlineFunc(CI_FuncData* data);
+static void CInline_GenerateTemplateInline(Object* object);
 
 void CInline_Init(void) {
     cinline_exportlist = NULL;
+#if VERSION == VERSION_WII_1_0RC1
+    cinline_templateexports = NULL;
+#endif
     cinline_actionlist = NULL;
     cinline_tactionlist = NULL;
     cinline_gendeps = FALSE;
@@ -4441,6 +4451,33 @@ void CInline_AddTemplateFunctionAction(Object* object, void* func, void* inst) {
     TYPE_FUNC(object->type)->flags |= FUNC_TEMPLATE_ACTION;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void CInline_ReferenceTemplateFunction(Object* object) {
+    CI_Action** link;
+    CI_Action* action;
+
+    if (!object->u.func.inst || (object->qual & Q_INLINE) ||
+        (TYPE_FUNC(object->type)->flags & FUNC_DEFINED)) {
+        return;
+    }
+    if (TYPE_FUNC(object->type)->flags & FUNC_TEMPLATE_ACTION) {
+        CInline_GenerateTemplateInline(object);
+        return;
+    }
+    // The IPA reference walk visits each object once. The direct walk can queue it again.
+    if (!CMid_InIPA()) {
+        for (link = &cinline_actionlist; (action = *link); link = &action->next) {
+            if (action->obj == object && action->actiontype == CI_ActionTemplateFunc) {
+                *link = action->next;
+                action->next = cinline_actionlist;
+                cinline_actionlist = action;
+                return;
+            }
+        }
+    }
+}
+#endif
+
 static void CInline_AddFRefList_Object(Object* object) {
     ObjectList* list;
 
@@ -4454,11 +4491,26 @@ static void CInline_AddFRefList_Object(Object* object) {
     }
 #endif
     if (!(object->datatype == DFUNC || object->datatype == DVFUNC) ||
-        (object->flags & OBJECT_DEFINED) ||
         IS_TEMPL_FUNC(object->type)) {
         return;
     }
+    if ((object->flags & OBJECT_DEFINED)
+#if VERSION == VERSION_WII_1_0RC1
+        && !(CMid_InIPA() && (object->qual & Q_INLINE) && object->u.func.u.ifuncdata)
+#endif
+    ) {
+        return;
+    }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (CMid_InIPA() && (object->qual & Q_INLINE)) {
+        object->flags |= OBJECT_REFERENCED;
+        if (object->u.func.u.ifuncdata && !(object->flags & OBJECT_DEFINED)) {
+            CInline_ObjectAddrRef(object);
+        }
+    }
+    CInline_ReferenceTemplateFunction(object);
+#endif
     for (list = cinline_freflist; list; list = list->next) {
         if (list->object == object) {
             return;
@@ -4742,6 +4794,9 @@ void CInline_ObjectAddrRef(Object* object) {
     switch (object->datatype) {
         case DFUNC:
         case DVFUNC:
+#if VERSION == VERSION_WII_1_0RC1
+            CInline_ReferenceTemplateFunction(object);
+#endif
             if ((object->qual & Q_INLINE) &&
                 (funcdata = object->u.func.u.ifuncdata) &&
                 !(object->flags & OBJECT_DEFINED) &&
@@ -4758,6 +4813,9 @@ void CInline_ObjectAddrRef(Object* object) {
                 export->object = object;
                 export->funcdata = funcdata;
                 export->oldStyleParameters = FALSE;
+#if VERSION == VERSION_WII_1_0RC1
+                export->fromDefinition = FALSE;
+#endif
 
                 export->next = cinline_exportlist;
                 cinline_exportlist = export;
@@ -4810,7 +4868,13 @@ static Boolean CInline_CheckDependencies(ObjectList* list) {
             CI_Action* action;
             for (action = cinline_actionlist; action; action = action->next) {
                 if (object == action->obj) {
+#if VERSION == VERSION_WII_1_0RC1
+                    if (action->actiontype != CI_ActionTemplateFunc || (object->qual & Q_INLINE)) {
+                        result = TRUE;
+                    }
+#else
                     result = TRUE;
+#endif
                     break;
                 }
             }
@@ -4932,7 +4996,7 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) 
 
         if (!isAutoInline && !(object->flags & OBJECT_REFERENCED)
 #if VERSION == VERSION_WII_1_0RC1
-            && !CMid_InIPA()
+            && (!CMid_InIPA() || (!copts.force_active && !(object->flags & OBJECT_EXPORT)))
 #endif
         ) {
             if (cinline_gendeps) {
@@ -4946,12 +5010,8 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) 
 
     object->flags |= OBJECT_DEFINED;
 
-    cinline_freflist = NULL;
-    CInline_AddFRefList_Statement(stmt);
-
 #if VERSION == VERSION_WII_1_0RC1
     if (CMid_InIPA()) {
-        CInline_CheckDependencies(cinline_freflist);
         if (isInline) {
             funcdata = object->u.func.u.ifuncdata;
         } else {
@@ -4959,10 +5019,19 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) 
             CInline_PackIFunctionData(funcdata, stmt, object);
         }
         CMid_DefineFunction(object, funcdata, oldStyleParameters);
+        cinline_freflist = NULL;
+        CInline_AddFRefList_Statement(stmt);
+        CInline_CheckDependencies(cinline_freflist);
         return;
     }
 #endif
-    if (CInline_CheckDependencies(cinline_freflist) || copts.defer_codegen) {
+    cinline_freflist = NULL;
+    CInline_AddFRefList_Statement(stmt);
+    if (CInline_CheckDependencies(cinline_freflist) || copts.defer_codegen
+#if VERSION == VERSION_WII_1_0RC1
+        || (cinline_gendeps && object->u.func.inst && !(object->qual & Q_INLINE))
+#endif
+    ) {
         if (!isInline) {
             funcdata = galloc(sizeof(CI_FuncData));
             CInline_PackIFunctionData(funcdata, stmt, object);
@@ -4975,6 +5044,14 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) 
         export->funcdata = funcdata;
         export->oldStyleParameters = oldStyleParameters;
 
+#if VERSION == VERSION_WII_1_0RC1
+        export->fromDefinition = TRUE;
+        if (cinline_gendeps && object->u.func.inst && !(object->qual & Q_INLINE)) {
+            export->next = cinline_templateexports;
+            cinline_templateexports = export;
+            return;
+        }
+#endif
         export->next = cinline_exportlist;
         cinline_exportlist = export;
     } else {
@@ -5152,9 +5229,20 @@ Boolean CInline_GenerateDeferredFuncs(void) {
                 case CI_ActionTemplateFunc:
                     if (!(TYPE_FUNC(action->obj->type)->flags & FUNC_DEFINED) &&
                         !action->u.templatefunc.inst->is_specialized) {
+#if VERSION == VERSION_WII_1_0RC1
+                        if (!CTempl_GenFuncInstance(
+                                action->u.templatefunc.func, action->u.templatefunc.inst, FALSE
+                            ) && !action->u.templatefunc.inst->is_extern) {
+                            // A later declaration can provide the body for the next reference.
+                            action->next = cinline_tactionlist;
+                            cinline_tactionlist = action;
+                            TYPE_FUNC(action->obj->type)->flags |= FUNC_TEMPLATE_ACTION;
+                        }
+#else
                         CTempl_GenFuncInstance(
                             action->u.templatefunc.func, action->u.templatefunc.inst, FALSE
                         );
+#endif
                     }
                     break;
                 default:
@@ -5164,9 +5252,16 @@ Boolean CInline_GenerateDeferredFuncs(void) {
             cinline_gendeps = FALSE;
             return TRUE;
         } else {
-            if (cinline_exportlist && !copts.defer_codegen) {
-                export = cinline_exportlist;
-                cinline_exportlist = export->next;
+            CI_Export** exports = &cinline_exportlist;
+#if VERSION == VERSION_WII_1_0RC1
+            // Finish waiting definitions before exporting instances materialized by their references.
+            if (cinline_templateexports && (!*exports || !(*exports)->fromDefinition)) {
+                exports = &cinline_templateexports;
+            }
+#endif
+            if (*exports && !copts.defer_codegen) {
+                export = *exports;
+                *exports = export->next;
                 CMach_GetBackEndOptions(&saveOptions);
 #if VERSION == VERSION_WII_1_0RC1
                 set_packed_function_options(export->funcdata);
