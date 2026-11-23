@@ -3126,6 +3126,40 @@ Outer::~Outer() {
                 "-Cpp_exceptions", "on", "-c", source, "-o", obj, cwd=work)
             results[f"{source.name} size without inlining"] = obj.read_bytes()
 
+    source = work / "jump_warnings.cpp"
+    jump_warnings = (
+        "#define GO(label) goto label\n"
+        "struct Local { Local(); ~Local(); };\n"
+        "extern void may_throw();\n"
+        "void jump() {\n"
+        "    int first = 1;\n"
+        "\t  GO(out);\n"
+        "    int second = 2; Local local;\n"
+        "out:;\n"
+        "}\n"
+        "void no_warning() { goto out; int skipped; out:; }\n"
+        "void branch(int n) { " + " " * 72 +
+        "switch (n) { default: int value = 0; case 2: break; } }\n"
+        "void handler() {\n"
+        "    goto inside;\n"
+        "    try { may_throw(); } catch (int) { inside: may_throw(); }\n"
+        "}\n"
+    )
+    expected = [
+        f">(10211) illegal jump past '{name}' declaration/initializer"
+        for name in ("local", "local", "second", "first", "value")
+    ] + [">(10577) illegal jump into try/catch block"]
+    for eol in ("\n", "\r\n"):
+        source.write_bytes(jump_warnings.replace("\n", eol).encode("ascii"))
+        output = run(compiler, *FLAGS, "-O4,p", "-Cpp_exceptions", "on", "-msgstyle", "parseable",
+                     "-c", source.name, "-o", source.with_suffix(".o"), cwd=work)
+        lines = output.splitlines()
+        if [line for line in lines if line.startswith(">")] != expected:
+            raise ValueError(f"{compiler}: unexpected jump diagnostics\n{output}")
+        results[f"{source.name} {eol!r}"] = [
+            "Compiler|Warning" if line.endswith("|Compiler|Warning") else line for line in lines
+        ]
+
     source = work / "immediate_reuse.c"
     source.write_text(
         """
@@ -3252,7 +3286,7 @@ def main():
                 reference = check(stock, args.objcopy, args.nm, args.objdump, work)
                 for name in results:
                     if results[name] != reference[name]:
-                        raise ValueError(f"{name}: code or relocations differ from stock RC1")
+                        raise ValueError(f"{name}: output differs from stock RC1")
                 check_stock_pch_macros(compiler, stock, work)
                 check_stock_pch_declarations(compiler, stock, args.objcopy, args.nm, work)
                 check_stock_pch_static_data(compiler, stock, args.objcopy, args.nm, args.objdump, work)

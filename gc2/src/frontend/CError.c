@@ -1095,6 +1095,43 @@ void CError_Warning(int code, ...) {
     va_end(va);
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+void CError_ANSIErrorWarning(int code, const FileOffsetInfo* source, ...) {
+    char resource[256];
+    char format[288];
+    const char* message;
+    static TStreamElement token;
+    va_list args;
+
+    if (trychain || copts.supress_warnings) {
+        return;
+    }
+
+    switch (code) {
+        case ERR_ILLEGAL_JUMP_PAST_INITIALIZER:
+            message = "illegal jump past '%u' declaration/initializer";
+            break;
+        case ERR_ILLEGAL_JUMP_INTO_TRY_CATCH:
+            message = "illegal jump into try/catch block";
+            break;
+        default:
+            CError_GetErrorString(resource, code);
+            message = resource;
+            break;
+    }
+    if (source->file) {
+        token.tokenfile = source->file;
+        token.tokenline = source->tokenline;
+        token.tokenoffset = source->tokenoffset;
+        CError_SetErrorToken(&token);
+    }
+    snprintf(format, sizeof(format), "(%d) %s", code + 10000, message);
+    va_start(args, source);
+    CError_ErrorMessageVA(code + 10000, format, args, FALSE, TRUE);
+    va_end(args);
+}
+#endif
+
 void CError_BreakPoint(const char* a, const char* b) {
     if (!a || !strcmp(a, b)) {
         CError_BreakPointcount++;

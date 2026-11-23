@@ -412,6 +412,13 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   precedes destructor registration at `0x5489e3` and `0x5489f8`. RC1
   removes the temporary actions at `0x49fac7` after the destructor body
   has used their stack transitions to attach subobject actions.
+  The jump check at `0x50f160` reports the destination's actions in stack
+  order, including initializer-only entries and any shared tail if the
+  destination starts outside the source scope. It reports the name of
+  the skipped declaration under warning 10211 and entering a handler
+  under warning 10577. The source reference points at the branch token
+  or the macro invocation that produced it. The smoke test compares the
+  warnings, token ranges, and source excerpts for both LF and CRLF.
   The unwind-variable walk at `0x5d35b0` keeps member and base pointers,
   condition flags, and delete operands eligible for registers. Destructible
   local objects and exception bookkeeping storage require an address.

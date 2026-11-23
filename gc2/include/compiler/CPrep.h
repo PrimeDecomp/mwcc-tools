@@ -82,6 +82,9 @@ struct TokenStack {
     char* macrostart;
     struct Macro* macro;
     Boolean macrocheck;
+#if VERSION == VERSION_WII_1_0RC1
+    SInt32 sourceOffset;
+#endif
 };
 struct CPrepFileInfo {
     CWFileSpec textfile;

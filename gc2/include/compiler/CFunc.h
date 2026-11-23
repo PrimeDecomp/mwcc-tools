@@ -3,6 +3,9 @@
 
 #include "compiler/common.h"
 #include "compiler/OracleProbes.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/tokens.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -66,6 +69,9 @@ struct Statement {
     struct ExceptionAction* dobjstack;
     SInt32 sourceoffset;
     HashNameNode* sourcefilepath;
+#if VERSION == VERSION_WII_1_0RC1
+    FileOffsetInfo sourceRef;
+#endif
 };
 #pragma pack(pop)
 struct InitExpr {

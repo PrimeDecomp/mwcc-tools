@@ -1326,13 +1326,22 @@ void CPrep_GetTokenContext(
         cursor = end;
     }
     *textpos = 0;
+#if VERSION == VERSION_WII_1_0RC1
+    for (i = 1; i <= 64 && i <= cursor - start && cursor[-i] != '\r' && cursor[-i] != '\n'; i++) {}
+    --i;
+#else
     for (i = 1; i < 80 && cursor - i >= start && cursor[-i] != 13; i++) {}
     --i;
     while ((c = cursor[-i]) && (c == 32 || c == 9 || c == TK_MACRO_NOEXPAND)) {
         --i;
     }
+#endif
     j = 0;
-    while ((c = cursor[-i]) != 13 && c && j < 126) {
+#if VERSION == VERSION_WII_1_0RC1
+    while ((c = cursor[-i]) != '\r' && c != '\n' && c && j < 127) {
+#else
+    while ((c = cursor[-i]) != '\r' && c && j < 126) {
+#endif
         if (!i) {
             *textpos = j;
         }
@@ -1342,6 +1351,14 @@ void CPrep_GetTokenContext(
         }
         --i;
     }
+#if VERSION == VERSION_WII_1_0RC1
+    if ((c == '\r' || c == '\n') && j < 127) {
+        text[j++] = ' ';
+        if (c == '\r' && cursor[1 - i] == '\n' && j < 127) {
+            text[j++] = ' ';
+        }
+    }
+#endif
     if (!i) {
         text[j] = 32;
         *textpos = j;
@@ -1944,6 +1961,11 @@ static void pushtokenseq(Macro* macro) {
             CPrep_SetMacroExpanding(macro, TRUE);
         }
         tokenstack[tokenstacklevel].macrocheck = macrocheck;
+#if VERSION == VERSION_WII_1_0RC1
+        if (!tokenstacklevel) {
+            tokenstack[0].sourceOffset = -1;
+        }
+#endif
         tokenstacklevel++;
     }
 }

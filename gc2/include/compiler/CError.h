@@ -342,6 +342,10 @@ extern void CError_ErrorFuncCall(short code, NameSpaceObjectList* args, ENodeLis
 extern void CError_OverloadedFunctionError(Object* obj, ObjectList* olst);
 extern void CError_AbstractClassError(TypeClass* tclass);
 extern void CError_Warning(int code, ...);
+#if VERSION == VERSION_WII_1_0RC1
+enum { ERR_ILLEGAL_JUMP_INTO_TRY_CATCH = 577 };
+extern void CError_ANSIErrorWarning(int code, const FileOffsetInfo* source, ...);
+#endif
 extern void CError_Internal(char* filename, int line);
 extern void CError_NoMem(void);
 extern void CError_UserBreak(void);

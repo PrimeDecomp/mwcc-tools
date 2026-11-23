@@ -2674,18 +2674,42 @@ short lex(void) {
 
     while (1) {
         t = prepskipnextchar();
+#if VERSION == VERSION_WII_1_0RC1
+        const Boolean inMacro = tokenstacklevel > 0;
+        SInt32 sourceOffset;
+        if (inMacro) {
+            sourceOffset = tokenstack[0].sourceOffset;
+            if (sourceOffset < 0) {
+                sourceOffset = tokenstack[0].pos - prep_file_start;
+            }
+        } else {
+            sourceOffset = pos - prep_file_start;
+        }
+#endif
 
         ts_current->tokenfile = prep_file;
+#if VERSION == VERSION_WII_1_0RC1
+        ts_current->tokenoffset = sourceOffset;
+        if (inMacro) {
+            macropos = pos;
+        }
+#else
         if (tokenstacklevel > 0) {
             ts_current->tokenoffset = tokenstack[0].pos - prep_file_start;
             macropos = pos;
         } else {
             ts_current->tokenoffset = pos - prep_file_start;
         }
+#endif
         ts_current->tokenline = linenumber;
         pos = nextcharpos;
 
         t = cprep_tokenize[t](t);
+#if VERSION == VERSION_WII_1_0RC1
+        if (!inMacro && tokenstacklevel > 0) {
+            tokenstack[0].sourceOffset = sourceOffset;
+        }
+#endif
         if (t != 0) {
             if (ts_current >= ts_last) {
                 CPrep_TSBufferGrow(1024);

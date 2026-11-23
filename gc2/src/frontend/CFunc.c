@@ -580,6 +580,9 @@ Statement* CFunc_AppendStatement(StatementType sttype) {
     stmt->flags = 0;
     stmt->sourceoffset = sourceoffset;
     stmt->sourcefilepath = sourcefilepath;
+#if VERSION == VERSION_WII_1_0RC1
+    stmt->sourceRef = cparser_fileoffset;
+#endif
     stmt->dobjstack = cexcept_dobjstack;
 
     curstmt->next = stmt;
@@ -597,6 +600,9 @@ Statement* CFunc_InsertStatement(StatementType sttype, Statement* after) {
     stmt->flags = 0;
     stmt->sourceoffset = after->sourceoffset;
     stmt->sourcefilepath = after->sourcefilepath;
+#if VERSION == VERSION_WII_1_0RC1
+    stmt->sourceRef = after->sourceRef;
+#endif
     stmt->dobjstack = after->dobjstack;
 
     return stmt;
@@ -858,15 +864,46 @@ static inline Boolean CFunc_ScopeContains(ExceptionAction* from, ExceptionAction
     return FALSE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Object* CFunc_JumpPastObject(const ExceptionAction* action) {
+    switch (action->type) {
+        case EAT_DESTROYLOCAL:
+            return action->data.destroy_local.local;
+        case EAT_DESTROYLOCALOFFSET:
+            return action->data.destroy_local_offset.local;
+        case EAT_DESTROYLOCALARRAY:
+            return action->data.destroy_local_array.localarray;
+        case EAT_DELETELOCALPOINTER:
+            return action->data.delete_pointer.pointerobject;
+        case EAT_LOCALOBJECT:
+            return action->data.local_object.local;
+        default:
+            return NULL;
+    }
+}
+#endif
+
 static inline void CFunc_CheckJump(Statement* stmt, Statement* dest) {
     ExceptionAction* to = dest->dobjstack;
 
     if (stmt->dobjstack != to && !CFunc_ScopeContains(stmt->dobjstack, to)) {
         while (to) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (to->type == EAT_CATCHBLOCK || to->type == EAT_ACTIVECATCHBLOCK) {
+                CError_ANSIErrorWarning(ERR_ILLEGAL_JUMP_INTO_TRY_CATCH, &stmt->sourceRef);
+            } else if (to->type == EAT_LOCALOBJECT || CExcept_ActionNeedsDestruction(to)) {
+                Object* local = CFunc_JumpPastObject(to);
+                CError_ANSIErrorWarning(
+                    ERR_ILLEGAL_JUMP_PAST_INITIALIZER, &stmt->sourceRef,
+                    local ? local->name->name : "<unknown>"
+                );
+            }
+#else
             if (CExcept_ActionNeedsDestruction(to) && to->type != EAT_ACTIVECATCHBLOCK) {
                 CError_Warning(ERR_ILLEGAL_JUMP_PAST_INITIALIZER);
                 break;
             }
+#endif
             to = to->prev;
         }
     }
@@ -3378,6 +3415,9 @@ void CFunc_ParseFuncDef(
     CPrep_GetFileOffsetInfo2(&cparser_fileoffset, &sourceoffset, &sourcefilepath);
     firstStmt.sourceoffset = functionbodyoffset = sourceoffset;
     firstStmt.sourcefilepath = functionbodypath = sourcefilepath;
+#if VERSION == VERSION_WII_1_0RC1
+    firstStmt.sourceRef = cparser_fileoffset;
+#endif
 
     if (di->oldStyleParameters) {
         CFunc_AdjustOldStyleArgs();
