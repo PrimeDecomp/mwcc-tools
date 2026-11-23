@@ -50,23 +50,33 @@ static Boolean memory_definition_reaches(PCode* def, int defID, PCode* use) {
 }
 
 static Boolean remove_unread_local_stores(ObjectUseDef* entry) {
-    RegUseOrDef* use;
     RegUseOrDef* def;
     Boolean changed = FALSE;
 
     if (entry->object->datatype != DLOCAL || is_volatile_object(entry->object)) {
         return FALSE;
     }
-    for (use = entry->uses; use; use = use->next) {
-        if (Uses[use->id].pcode->block) {
-            return FALSE;
-        }
-    }
     for (def = entry->defs; def; def = def->next) {
         PCode* store = Defs[def->id].pcode;
-        if (store->block &&
-            (store->flags & (fIsWrite | fIsVolatile | fSideEffects | fUpdatesPtr)) == fIsWrite &&
-            must_alias_object(store, entry->object) && !may_alias_worst_case(store)) {
+        RegUseOrDef* use;
+
+        if (!store->block ||
+            (store->flags & (fIsWrite | fIsVolatile | fSideEffects | fUpdatesPtr)) != fIsWrite ||
+            !must_alias_object(store, entry->object) ||
+            (pclastblock != epilogue && may_alias_worst_case(store))) {
+            continue;
+        }
+        for (use = entry->uses; use; use = use->next) {
+            PCode* read = Uses[use->id].pcode;
+            // With a normal epilogue, only uses reached by this store keep it live.
+            if (read->block &&
+                (pclastblock != epilogue ||
+                 (read->block == store->block && precedes(store, read)) ||
+                 bitvectorgetbit(def->id, usedefinfo[read->block->blockIndex].defin))) {
+                break;
+            }
+        }
+        if (!use) {
             deletepcode(store);
             changed = TRUE;
         }

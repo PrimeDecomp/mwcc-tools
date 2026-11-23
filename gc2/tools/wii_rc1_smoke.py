@@ -1806,6 +1806,11 @@ struct Value { Value(); Value(const Value&); ~Value(); int data; };
 extern Value make();
 const Value& value = make();
 """,
+        "global_reference_register_result.cpp": """\
+struct Value { int data; };
+extern Value make();
+const Value& value = make();
+""",
         "static_reference_lifetime.cpp": """\
 struct Value { Value(); Value(const Value&); ~Value(); int data; };
 extern void use(const Value&);

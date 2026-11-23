@@ -506,7 +506,12 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   At `-O3` and above, the memory-reference pass at `0x64f030` can remove
   the store into the cast's original temporary after forwarding its
   only read. The deletion at `0x64f708` follows checks for aliasing and
-  remaining uses. Argument setup at `0x5fe975` sets the extension flag
+  remaining uses. When the final block is the epilogue, the local-store
+  path at `0x64f779` accepts worst-case aliasing if no use is reachable from
+  the store. At `0x64fb60` it checks instruction order and reaching
+  definitions, so an earlier call can count as an indirect use of the
+  object without keeping the later store live.
+  Argument setup at `0x5fe975` sets the extension flag
   for narrow integer arguments, including prototyped destructor calls.
 - Static reference initialization records relocatable non-class lvalue
   addresses at `0x542640` and appends runtime assignments at `0x542779`.
