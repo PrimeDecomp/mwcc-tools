@@ -1365,11 +1365,22 @@ int is_location_independent(PCode* pcode) {
         case PC_VSPLTISB:
         case PC_VSPLTISH:
         case PC_VSPLTISW:
+#if VERSION == VERSION_WII_1_0RC1
+        case PC_EVSPLATI:
+        case PC_EVSPLATFI:
+#endif
             return TRUE;
         case PC_ADDI:
         case PC_ADDIS:
         case PC_ORI:
         case PC_ORIS:
+#if VERSION == VERSION_WII_1_0RC1
+            if (pcode->args[2].kind == PCOp_MEMORY &&
+                (pcode->op == PC_ADDI ||
+                 (pcode->op == PC_ADDIS && (RefType)pcode->args[2].arg == RefType_Ha))) {
+                return TRUE;
+            }
+#endif
             reg = pcode->args[1].data.reg.reg;
             if (reg == 13 || reg == 2) {
                 return TRUE;

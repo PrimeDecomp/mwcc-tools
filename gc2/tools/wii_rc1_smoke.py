@@ -2380,6 +2380,37 @@ int call_scope(int x) { return with_scope(x); }
         run(objcopy, f"--dump-section=.text={section}", f"--dump-section=.rela.text={relocations}", obj, cwd=work)
         results[f"{source.name} {opt}"] = (section.read_bytes(), relocations.read_bytes())
 
+    source = work / "addresses_across_calls.c"
+    source.write_text(
+        "struct Queue { int count, next, values[6]; };\n"
+        "extern struct Queue queue;\n"
+        "extern volatile int status;\n"
+        "extern void visit(int*);\n"
+        "int next_value(void) {\n"
+        "    int count = queue.count;\n"
+        "    visit(queue.values);\n"
+        "    return count + queue.next;\n"
+        "}\n"
+        "int read_status(void) {\n"
+        "    int before = status;\n"
+        "    visit(queue.values);\n"
+        "    return before + status;\n"
+        "}\n"
+        "int read_pointer(int* p) {\n"
+        "    int before = *p;\n"
+        "    visit(p);\n"
+        "    return before + *p;\n"
+        "}\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O0", "-O2,p", "-O4,p", "-O4,s"):
+        run(
+            compiler, *FLAGS, opt, "-ipa", "off", "-sdata", "0", "-sdata2", "0",
+            "-Cpp_exceptions", "off", "-c", source, "-o", obj, cwd=work,
+        )
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     source = work / "counted_loop.c"
     source.write_text(
         "int count_loop(volatile int* p) {\n"

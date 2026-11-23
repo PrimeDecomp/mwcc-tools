@@ -200,14 +200,40 @@ static void killspecificCSEs(short op) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static int cse_survives_call(PCode* pcode) {
+    PCodeArg* op;
+    int i;
+
+    if (!is_location_independent(pcode)) {
+        return FALSE;
+    }
+    /* The call's register operands account for clobbered physical registers. */
+    for (i = 0, op = pcode->args; i < pcode->argCount; i++, op++) {
+        if (op->kind == PCOp_REGISTER && (op->data.reg.effect & EffectWrite) &&
+            op->data.reg.reg < n_real_registers[op->arg]) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+#endif
+
 static void killallCSEs(void) {
     AvailableValue* av;
     ValueLabel* labelled;
     int i;
 
+#if VERSION != VERSION_WII_1_0RC1
     ORACLE_PROBE(OracleProbe_VnKillAll(oracle_current));
+#endif
     for (i = 0; i < OPCODE_MAX; i++) {
         for (av = opvalue[i]; av; av = av->next) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (cse_survives_call(av->pcode)) {
+                continue;
+            }
+#endif
             for (labelled = av->labelled; labelled; labelled = labelled->next) {
                 killregister(&labelled->op);
             }

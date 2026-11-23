@@ -93,6 +93,16 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   helper (`0x5af430`) can reuse a second register. The repeated-load, symbol
   displacement, and absolute-address smoke fixtures match stock code and
   relocations at `-O0` and `-O4,p`.
+- The value-numbering call handler (`0x5b5330`) kills written register
+  values and invalidates memory aliases. Before register coloring, its table
+  sweep (`0x5b6540`) keeps entries classified by `is_location_independent`
+  (`0x5a8450`) whose instructions write only virtual registers. The predicate
+  recognizes relocatable `addi`, high-adjusted `addis`, and SPE immediate
+  splats in addition to the existing cases. At `0x5b34bd` the stock pass has
+  replaced the high and low portions of a global address after a call with
+  copies of the pre-call values, while the load after the call remains.
+  The address, volatile-load and indirect-load smoke controls compare full
+  objects against stock RC1.
 - The soft-float immediate loader is `load_immediate_SFPE` (`0x5afb90`).
   Native single- and double-precision fixtures both reached its temporary
   GPR allocation at `0x5afbba`.
