@@ -486,8 +486,16 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   referenced by its body. A live reference to that inline function scans
   the saved body and registers the referenced inline function at
   `0x47da51`, after the caller enters the call graph at `0x47e839`.
+  In direct mode, a free non-inline template referenced by a saved inline
+  body is queued when code generation visits the body.
   An ordinary static definition can instantiate a template before IPA
   removes both definitions from the object.
+- `CRTTI_StaticCast` uses explicit reference conversion for the same type
+  at `0x5ff197` and for related classes at `0x5ff122`. The explicit
+  reference branch of `CExpr_Convert` calls `CExpr_IsLValue` and emits
+  warning 10142 at `0x5f80fc` when the operand is an rvalue. Stock
+  suppresses a second error in the same expression when `-w error`
+  promotes the warning and the conversion also rejects the operand.
 - The `AND` case of constant propagation (`0x6462f1`) follows `LI` and
   `LIS` definitions. Contiguous masks become `RLWINM` with a zero shift.
   Disjoint masks use `ANDI` or `ANDIS` and define CR0. The stock formatter

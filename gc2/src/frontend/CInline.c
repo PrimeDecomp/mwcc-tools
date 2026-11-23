@@ -120,6 +120,7 @@ static Boolean cinline_serialize_stmt;
 static CI_Export* cinline_exportlist;
 #if VERSION == VERSION_WII_1_0RC1
 static CI_Export* cinline_templateexports;
+static Boolean cinline_scanning_saved_body;
 #endif
 static CI_Action* cinline_actionlist;
 CI_Action* cinline_tactionlist;
@@ -149,6 +150,7 @@ void CInline_Init(void) {
     cinline_exportlist = NULL;
 #if VERSION == VERSION_WII_1_0RC1
     cinline_templateexports = NULL;
+    cinline_scanning_saved_body = FALSE;
 #endif
     cinline_actionlist = NULL;
     cinline_tactionlist = NULL;
@@ -4509,7 +4511,10 @@ static void CInline_AddFRefList_Object(Object* object) {
             CInline_ObjectAddrRef(object);
         }
     }
-    CInline_ReferenceTemplateFunction(object);
+    // Direct code generation registers these references when it emits the saved body.
+    if (!cinline_scanning_saved_body || CMid_InIPA()) {
+        CInline_ReferenceTemplateFunction(object);
+    }
 #endif
     for (list = cinline_freflist; list; list = list->next) {
         if (list->object == object) {
@@ -4637,6 +4642,10 @@ static void CInline_AddFRefList_Statement(Statement* stmt) {
 static void CInline_AddFRefList_InlineFunc(CI_FuncData* data) {
     short i;
     ExceptionAction* exc;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean saved = cinline_scanning_saved_body;
+    cinline_scanning_saved_body = TRUE;
+#endif
 
     for (i = 0; i < data->numstatements; i++) {
         switch (data->statements[i].type) {
@@ -4748,6 +4757,9 @@ static void CInline_AddFRefList_InlineFunc(CI_FuncData* data) {
             }
         }
     }
+#if VERSION == VERSION_WII_1_0RC1
+    cinline_scanning_saved_body = saved;
+#endif
 }
 
 #if VERSION == VERSION_WII_1_0RC1
@@ -4879,7 +4891,11 @@ static Boolean CInline_CheckDependencies(ObjectList* list) {
                 }
             }
 
-            if (TYPE_FUNC(object->type)->flags & FUNC_TEMPLATE_ACTION) {
+            if ((TYPE_FUNC(object->type)->flags & FUNC_TEMPLATE_ACTION)
+#if VERSION == VERSION_WII_1_0RC1
+                && ((object->qual & Q_INLINE) || !object->u.func.inst)
+#endif
+            ) {
                 CInline_GenerateTemplateInline(object);
                 result = TRUE;
             }

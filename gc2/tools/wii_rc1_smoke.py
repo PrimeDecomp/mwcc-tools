@@ -1691,12 +1691,64 @@ def check_template_actions(compiler, objcopy, nm, work):
         symbols = run(nm, "--defined-only", obj, cwd=work)
         if "target<v>__FPv_v" not in symbols or "unused_target" in symbols:
             raise ValueError(f"{compiler}: unexpected template liveness\n{symbols}")
-        if ipa == "file":
-            normalized = source.with_suffix(".normalized")
+        normalized = source.with_suffix(".normalized")
+        run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
+        results[f"{source.name} -ipa {ipa}"] = (output, normalized.read_bytes())
+    return results
+
+
+def check_reference_cast_diagnostics(compiler, objcopy, work):
+    source = work / "reference_cast.cpp"
+    source.write_text(
+        "struct Base { int value; };\n"
+        "struct Derived : Base { int extra; };\n"
+        "extern Derived make();\n"
+        "extern const Derived empty;\n"
+        "extern void use(const Base&);\n"
+        "void conditional(bool choose) { use(static_cast<const Derived&>(choose ? make() : empty)); }\n"
+        "void temporary() { use(static_cast<const Base&>(make())); }\n"
+        "void lvalue(Derived& value) { use(static_cast<const Base&>(value)); }\n"
+        "void implicit() { use(make()); }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    normalized = source.with_suffix(".normalized")
+    results = {}
+    for args, severity in (
+        ((), "Warning"),
+        (("-pragma", "ANSI_strict on"), "Warning"),
+        (("-w", "off"), None),
+        (("-w", "error"), "Error"),
+    ):
+        obj.unlink(missing_ok=True)
+        proc = subprocess.run(
+            (compiler, *FLAGS, *args, "-msgstyle", "parseable", "-c", source.name, "-o", obj),
+            cwd=work, capture_output=True, text=True, timeout=30,
+        )
+        count = proc.stdout.count("(10142)")
+        if count != (0 if severity is None else 2) or bool(proc.returncode) != (severity == "Error"):
+            raise ValueError(f"{compiler}: unexpected reference-cast diagnostics\n{proc.stdout}{proc.stderr}")
+        contents = None
+        if not proc.returncode:
             run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
-            results[f"{source.name} -ipa {ipa}"] = (output, normalized.read_bytes())
-        else:
-            results[f"{source.name} -ipa {ipa}"] = output
+            contents = normalized.read_bytes()
+        results[f"{source.name} {' '.join(args)}"] = (proc.stdout, proc.stderr, contents)
+
+    source = work / "scalar_reference_cast.cpp"
+    source.write_text(
+        "extern int make_int();\n"
+        "extern void use_int(const int&);\n"
+        "void temporary() { use_int(static_cast<const int&>(make_int())); }\n"
+        "void literal() { use_int(static_cast<const int&>(42)); }\n",
+        encoding="ascii",
+    )
+    proc = subprocess.run(
+        (compiler, *FLAGS, "-w", "error", "-msgstyle", "parseable", "-c", source.name),
+        cwd=work, capture_output=True, text=True, timeout=30,
+    )
+    if proc.returncode == 0 or proc.stdout.count("(10142)") != 2:
+        raise ValueError(f"{compiler}: unexpected promoted cast diagnostics\n{proc.stdout}{proc.stderr}")
+    results[source.name] = (proc.stdout, proc.stderr)
     return results
 
 
@@ -3421,6 +3473,7 @@ void member_call(V* v) { Guard guard; v->g(); }
     results[source.name] = (process.stdout, process.stderr)
     results.update(check_void_delete_diagnostics(compiler, work))
     results.update(check_template_actions(compiler, objcopy, nm, work))
+    results.update(check_reference_cast_diagnostics(compiler, objcopy, work))
 
     source = work / "jump_warnings.cpp"
     jump_warnings = (

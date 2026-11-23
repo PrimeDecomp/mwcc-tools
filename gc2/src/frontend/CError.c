@@ -748,6 +748,11 @@ void CError_ErrorMessage(int errTable, char* str, Boolean isTerminal, Boolean is
         CError_UserBreak();
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (copts.warningerrors) {
+        isWarning = FALSE;
+    }
+#endif
     if (!in_assembler && !isTerminal && cerror_lasterrorline == lines) {
         if (cerror_errorcount++ >= 50) {
             if (cerror_errorcount > 60) {
@@ -766,9 +771,11 @@ void CError_ErrorMessage(int errTable, char* str, Boolean isTerminal, Boolean is
             cerror_lasterrorline = lines;
             cerror_errorcount = 0;
         }
+#if VERSION != VERSION_WII_1_0RC1
         if (copts.warningerrors) {
             isWarning = FALSE;
         }
+#endif
 
         if (cerror_token) {
             token = cerror_token;

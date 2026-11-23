@@ -1575,6 +1575,11 @@ ENode* CExpr_Convert(
 
     if (IS_TYPE_REFERENCE(type)) {
         if (isExplicit) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (!CExpr_IsLValue(expr)) {
+                CError_Warning(ERR_NOT_LVALUE);
+            }
+#endif
             refExpr = CExpr_ClassReferenceConversion(expr, TPTR_TARGET(type), qual, checkAccess);
             if (refExpr) {
                 return refExpr;

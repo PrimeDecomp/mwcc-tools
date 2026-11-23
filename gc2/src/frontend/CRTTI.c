@@ -608,6 +608,13 @@ static inline Boolean CRTTI_IsSameType(Type* a, Type* b) {
     }
 }
 
+static Boolean CRTTI_IsReferenceCastCompatible(Type* target, Type* source) {
+    return CRTTI_IsSameType(target, source) ||
+        (IS_TYPE_CLASS(target) && IS_TYPE_CLASS(source) &&
+         (CClass_IsBaseClass(TYPE_CLASS(target), TYPE_CLASS(source), NULL, FALSE, TRUE) ||
+          CClass_IsBaseClass(TYPE_CLASS(source), TYPE_CLASS(target), NULL, FALSE, TRUE)));
+}
+
 static ENode* CRTTI_UniversalCast(ENode* expr, Type* type, UInt32 qual, UInt8 mode) {
     Boolean isSimpleCast;
     Boolean needsTypcon;
@@ -629,16 +636,7 @@ static ENode* CRTTI_UniversalCast(ENode* expr, Type* type, UInt32 qual, UInt8 mo
 
         case TYPEPOINTER:
             if (TPTR_QUAL(type) & Q_REFERENCE) {
-                if (!CRTTI_IsSameType(TPTR_TARGET(type), expr->rtype) &&
-                    mode == 2 &&
-                    !(IS_TYPE_CLASS(TPTR_TARGET(type)) &&
-                      IS_TYPE_CLASS(expr->rtype) &&
-                      (CClass_IsBaseClass(
-                           TYPE_CLASS(TPTR_TARGET(type)), TYPE_CLASS(expr->rtype), NULL, FALSE, TRUE
-                       ) ||
-                       CClass_IsBaseClass(
-                           TYPE_CLASS(expr->rtype), TYPE_CLASS(TPTR_TARGET(type)), NULL, FALSE, TRUE
-                       )))) {
+                if (mode == 2 && !CRTTI_IsReferenceCastCompatible(TPTR_TARGET(type), expr->rtype)) {
                     failed = TRUE;
                 }
             } else if (IS_TYPE_POINTER_ONLY(expr->rtype)) {
@@ -851,6 +849,11 @@ ENode* CRTTI_Parse_static_cast(void) {
     CRTTI_ConstCastCheck(expr->rtype, expr->flags, di.thetype, di.qual);
 
     if (IS_TYPE_REFERENCE(di.thetype)) {
+#if VERSION == VERSION_WII_1_0RC1
+        if (CRTTI_IsReferenceCastCompatible(TPTR_TARGET(di.thetype), expr->rtype)) {
+            return CExpr_Convert(expr, di.thetype, di.qual, TRUE, TRUE);
+        }
+#endif
         if (IS_TYPE_CLASS(expr->rtype) && CExpr_CanImplicitlyConvert(expr, di.thetype, di.qual)) {
             expr = CExpr_Convert(expr, di.thetype, di.qual, FALSE, TRUE);
             CError_ASSERT(959, IS_TYPE_POINTER_ONLY(expr->rtype));
