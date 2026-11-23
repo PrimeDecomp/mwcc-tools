@@ -3,6 +3,7 @@
 #include "compiler/BE_elf.h"
 #include "compiler/CMachine.h"
 #include "compiler/CError.h"
+#include "compiler/CException.h"
 #include "compiler/CExpr.h"
 #include "compiler/CIRStreamCode.h"
 #include "compiler/CInit.h"
@@ -658,6 +659,7 @@ void CMid_Finish(void) {
             CCallGraph_ResolveReferences();
             CCallGraph_RemoveDeadNodes();
             CInit_RemoveDeadStrings();
+            CExcept_CallGraphExceptionOptimizer();
         }
     }
 

@@ -1119,9 +1119,21 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   them against live macro definitions. Other conditional expressions run
   through the regular preprocessor when the header is opened.
 - For file IPA, `CMid_DefineFunction` at `0x47E4E0` queues definitions and
-  `CCallGraph_Compute` at `0x5C0720` builds reference edges. The final pass at `0x47CE20`
-  calls `CInline_CallGraphInlining` at `0x558900` and emits surviving definitions through
-  `CMid_GenerateCGNode` at `0x47CFF0`. RC1's `CIRStream_PackCode` at `0x52ABA0`
+  applies `COpt_SimpleOptimizer` before packing, including the non-inline
+  branch at `0x47E7E0`. `CCallGraph_Compute` at `0x5C0720` builds reference
+  edges. The inlining pass at `0x558900` skips the graph with inlining
+  disabled. Its visitor at `0x5589A0` processes callees first and loads a
+  body only when it references an inline candidate. It simplifies and
+  repacks the body when expansion changes it.
+- The final pass at `0x47CE20` runs `CExcept_CallGraphExceptionOptimizer`
+  at `0x49EFA0` after inlining, before emitting surviving definitions
+  through `CMid_GenerateCGNode` at `0x47CFF0`. With `optEH` enabled, the
+  exception pass loads potentially throwing bodies and propagates explicit
+  throws, rethrows, and unknown throws through direct calls. It repeats
+  when it proves a function cannot throw and removes exception actions from
+  bodies proven safe to simplify. Both the exception pass and code
+  generation allocate fresh labels when unpacking a body.
+- RC1's `CIRStream_PackCode` at `0x52ABA0`
   builds a reference table while encoding the body. `CCallGraph_Compute` consumes kind-1
   object entries, with a 16-bit saturating direct-call count and an address flag in bit 0.
   The source port builds those object entries from its shared `CI_FuncData` bodies.

@@ -20,6 +20,11 @@
 #include "compiler/scopes.h"
 #include "compiler/tokens.h"
 #include "compiler/types.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CCallGraph.h"
+#include "compiler/CMiddleLayer.h"
+#include "compiler/COptimizer.h"
+#endif
 #include <stdio.h>
 #include <string.h>
 
@@ -34,6 +39,15 @@ Boolean cexcept_hasdobjects;
 Boolean cexcept_magic;
 static UniqueObj* cexcept_uniqueobjs;
 static Boolean cexcept_canthrow;
+#if VERSION == VERSION_WII_1_0RC1
+enum GraphExceptionFlags {
+    GraphThrows = 1,
+    GraphRethrows = 2,
+    GraphUnknownThrow = 4
+};
+
+static UInt8 cexcept_graph_throw_flags;
+#endif
 static DtorTemp* cexcept_dtortemps;
 static Statement* cexcept_prevstmt;
 static ExceptionAction* cexcept_eabefore;
@@ -2309,9 +2323,7 @@ static void CExcept_HasFuncCallCallBack(ENode* expr) {
     }
 }
 
-static Boolean CExcept_CanThrowCheck(Object* func, Statement* stmt) {
-    cexcept_canthrow = FALSE;
-
+static void CExcept_ScanCalls(Statement* stmt, void (*callback)(ENode*)) {
     for (; stmt; stmt = stmt->next) {
         switch (stmt->type) {
             case ST_NOP:
@@ -2332,16 +2344,18 @@ static Boolean CExcept_CanThrowCheck(Object* func, Statement* stmt) {
             case ST_ENDCATCHDTOR:
             case ST_GOTOEXPR:
                 CExpr_SearchExprTree(
-                    stmt->expr, CExcept_HasFuncCallCallBack, 2, EFUNCCALL, EFUNCCALLP
+                    stmt->expr, callback, 2, EFUNCCALL, EFUNCCALLP
                 );
-                if (cexcept_canthrow) {
-                    continue;
-                }
                 break;
             default:
                 CError_FATAL(2698);
         }
     }
+}
+
+static Boolean CExcept_CanThrowCheck(Object* func, Statement* stmt) {
+    cexcept_canthrow = FALSE;
+    CExcept_ScanCalls(stmt, CExcept_HasFuncCallCallBack);
 
     if (!cexcept_canthrow) {
         TYPE_FUNC(cscope_currentfunc->type)->flags |= FUNC_NOTHROW;
@@ -2350,6 +2364,193 @@ static Boolean CExcept_CanThrowCheck(Object* func, Statement* stmt) {
         return TRUE;
     }
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static void CExcept_CheckGraphCall(ENode* call) {
+    ENode* reference = call->data.funccall.funcref;
+    if (!ENODE_IS(reference, EOBJREF)) {
+        cexcept_canthrow = TRUE;
+        cexcept_graph_throw_flags |= GraphUnknownThrow;
+        return;
+    }
+
+    Object* callee = reference->data.objref;
+    while (callee->datatype == DALIAS) {
+        callee = callee->u.alias.object;
+    }
+    if (callee->datatype == DVFUNC && !(call->flags & ENODE_FLAG_NONVIRTUAL)) {
+        cexcept_canthrow = TRUE;
+        cexcept_graph_throw_flags |= GraphUnknownThrow;
+        return;
+    }
+    Boolean canThrow = CExcept_CanThrowException(callee, FALSE);
+    cexcept_canthrow |= canThrow;
+    if (callee == Xthrw_func) {
+        ENodeList* args = call->data.funccall.args;
+        if (args && args->next && ENODE_IS(args->node, EINTCONST) &&
+            ENODE_IS(args->next->node, EINTCONST)) {
+            cexcept_graph_throw_flags |= GraphRethrows;
+        } else {
+            cexcept_graph_throw_flags |= GraphThrows;
+        }
+    } else if (canThrow && callee != Xunex_func && !CCallGraph_IsDefined(callee)) {
+        cexcept_graph_throw_flags |= GraphUnknownThrow;
+    }
+}
+
+static void CExcept_StripGraphActions(CallGraphNode* node, Statement* first) {
+    Boolean changed = FALSE;
+    for (Statement* stmt = first->next; stmt; stmt = stmt->next) {
+        if (stmt->dobjstack) {
+            stmt->dobjstack = NULL;
+            changed = TRUE;
+        }
+        if (stmt->type == ST_BEGINCATCH || stmt->type == ST_ENDCATCH ||
+            stmt->type == ST_ENDCATCHDTOR) {
+            stmt->type = ST_NOP;
+            changed = TRUE;
+        }
+    }
+    if (changed) {
+        CI_FuncData* body = node->definition.function.body;
+        CI_FuncData* replacement = galloc(sizeof(*replacement));
+        Boolean saveDebugInfo = copts.filesyminfo;
+        copts.filesyminfo = body->fileoffset.file != NULL;
+        COpt_SimpleOptimizer(node->object, first);
+        CInline_PackIFunctionData(replacement, first, node->object);
+        copts.filesyminfo = saveDebugInfo;
+        replacement->options = body->options;
+        CMid_DefineFunction(node->object, replacement, node->definition.function.oldStyleParameters);
+    }
+}
+
+static Boolean CExcept_CheckGraphBody(CallGraphNode* node, Boolean provenNothrow) {
+    Object* object = node->object;
+    CScopeSave scope;
+    Statement first;
+
+    CScope_SetFunctionScope(object, &scope);
+    CFunc_FuncGenSetup(&first, object);
+    CInline_UnpackIFunctionData(object, node->definition.function.body, &first);
+
+    if (!provenNothrow) {
+        cexcept_canthrow = FALSE;
+        cexcept_graph_throw_flags = 0;
+        CExcept_ScanCalls(first.next, CExcept_CheckGraphCall);
+        node->exceptionFlags |= cexcept_graph_throw_flags;
+        provenNothrow = !cexcept_canthrow;
+    }
+    if (provenNothrow) {
+        TYPE_FUNC(object->type)->flags |= FUNC_NOTHROW;
+        CExcept_StripGraphActions(node, &first);
+    }
+    CScope_RestoreScope(&scope);
+    if (CInline_CanFreeLHeap()) {
+        freelheap();
+    }
+    return provenNothrow;
+}
+
+static Boolean CExcept_CheckGraphUses(CallGraphNode* node) {
+    Boolean changed = FALSE;
+    node->marked = TRUE;
+    if (node->kind != CGFunction) {
+        return FALSE;
+    }
+    for (CallGraphEdge* edge = node->uses; edge; edge = edge->next) {
+        if (edge->node->kind == CGFunction && !edge->node->marked) {
+            changed |= CExcept_CheckGraphUses(edge->node);
+        }
+    }
+    if (node->object && IS_TYPE_FUNC(node->object->type) &&
+        !(TYPE_FUNC(node->object->type)->flags & FUNC_NOTHROW)) {
+        if (node->definition.function.body) {
+            changed |= CExcept_CheckGraphBody(node, FALSE);
+        } else if (node->object != Xthrw_func && node->object != Xunex_func) {
+            node->exceptionFlags |= GraphUnknownThrow;
+        }
+    }
+    return changed;
+}
+
+static Boolean CExcept_PropagateGraphUses(CallGraphNode* node) {
+    CallGraphEdge* edge;
+    Boolean changed = FALSE;
+    node->marked = TRUE;
+    if (node->kind != CGFunction) {
+        return FALSE;
+    }
+    for (edge = node->uses; edge; edge = edge->next) {
+        CallGraphNode* callee = edge->node;
+        if (callee->kind == CGFunction && !callee->marked) {
+            changed |= CExcept_PropagateGraphUses(callee);
+        }
+    }
+    UInt8 flags = node->exceptionFlags;
+    for (edge = node->uses; edge; edge = edge->next) {
+        CallGraphNode* callee = edge->node;
+        if (edge->callCount && callee->kind == CGFunction && callee->object &&
+            IS_TYPE_FUNC(callee->object->type) &&
+            !(TYPE_FUNC(callee->object->type)->flags & FUNC_NOTHROW)) {
+            node->exceptionFlags |= callee->exceptionFlags;
+        }
+    }
+    return changed || flags != node->exceptionFlags;
+}
+
+static Boolean CExcept_PropagateGraphExceptions(void) {
+    Boolean changed;
+    do {
+        changed = FALSE;
+        CCallGraph_Unmark();
+        for (CallGraphNode* node = ccallgraph; node; node = node->next) {
+            if (!node->marked) {
+                changed |= CExcept_PropagateGraphUses(node);
+            }
+        }
+    } while (changed);
+
+    for (CallGraphNode* node = ccallgraph; node; node = node->next) {
+        if (node->kind != CGFunction || !node->definition.function.body || !node->object ||
+            !IS_TYPE_FUNC(node->object->type) ||
+            (TYPE_FUNC(node->object->type)->flags & FUNC_NOTHROW)) {
+            continue;
+        }
+        ExceptSpecList* specification = TYPE_FUNC(node->object->type)->exspecs;
+        if (!node->exceptionFlags) {
+            changed |= CExcept_CheckGraphBody(node, TRUE);
+        } else if (!(node->exceptionFlags & (GraphRethrows | GraphUnknownThrow)) &&
+                   specification && !specification->type) {
+            TYPE_FUNC(node->object->type)->flags |= FUNC_NOTHROW;
+            changed = TRUE;
+        }
+    }
+    return changed;
+}
+
+void CExcept_CallGraphExceptionOptimizer(void) {
+    CallGraphNode* node;
+    Boolean changed;
+    if (!copts.optEH) {
+        return;
+    }
+    do {
+        changed = FALSE;
+        for (node = ccallgraph; node; node = node->next) {
+            node->marked = FALSE;
+            node->exceptionFlags = 0;
+        }
+        for (node = ccallgraph; node && !anyerrors; node = node->next) {
+            if (!node->marked) {
+                changed |= CExcept_CheckGraphUses(node);
+            }
+        }
+        if (!anyerrors) {
+            changed |= CExcept_PropagateGraphExceptions();
+        }
+    } while (changed && !anyerrors);
+}
+#endif
 
 void CExcept_ExceptionTansform(Statement* stmt) {
     cexcept_uniqueobjs = NULL;

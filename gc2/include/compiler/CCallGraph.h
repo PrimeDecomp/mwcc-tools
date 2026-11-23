@@ -29,6 +29,7 @@ struct CallGraphNode {
     UInt32 id;
     CallGraphNodeKind kind;
     Boolean marked;
+    UInt8 exceptionFlags;
     Boolean root;
     Boolean forceActive;
     Boolean initializer;

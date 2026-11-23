@@ -3547,8 +3547,9 @@ static void CInline_ExportCheck(ENode* expr) {
     }
 }
 
-static void CInline_Expand(Statement* stmt) {
+static Boolean CInline_Expand(Statement* stmt) {
     Statement* scan;
+    Boolean expanded = FALSE;
 
     ORACLE_PROBE(OracleProbe_Expand(expanding_function));
     if (!copts.dontinline && copts.inlinelevel >= 0) {
@@ -3589,6 +3590,7 @@ static void CInline_Expand(Statement* stmt) {
                 }
             }
 
+            expanded |= any_inline_expanded;
             if (!copts.inline_bottom_up && !any_inline_expanded) {
                 break;
             }
@@ -3648,6 +3650,7 @@ static void CInline_Expand(Statement* stmt) {
                 CError_FATAL(3501);
         }
     }
+    return expanded;
 }
 
 SInt16 CInline_GetStatementNumber(Statement* first, Statement* stmt) {
@@ -4295,7 +4298,6 @@ static void expand_graph_function(CallGraphNode* node) {
     struct CInlineBackendOptions options;
     CScopeSave scope;
     Statement firstStmt;
-    CI_FuncData* expanded;
 
     CMach_GetBackEndOptions(&options);
     set_packed_function_options(body);
@@ -4304,12 +4306,11 @@ static void expand_graph_function(CallGraphNode* node) {
     CInline_UnpackIFunctionData(object, body, &firstStmt);
     expanding_function = node->initializer ? NULL : object;
     recursive_inline = FALSE;
-    CInline_Expand(&firstStmt);
-
-    if (!anyerrors) {
+    if (CInline_Expand(&firstStmt) && !anyerrors) {
         Boolean saveDebugInfo = copts.filesyminfo;
         copts.filesyminfo = body->fileoffset.file != NULL;
-        expanded = galloc(sizeof(CI_FuncData));
+        CI_FuncData* expanded = galloc(sizeof(*expanded));
+        COpt_SimpleOptimizer(object, &firstStmt);
         CInline_PackIFunctionData(expanded, &firstStmt, object);
         CMid_DefineFunction(object, expanded, node->definition.function.oldStyleParameters);
         copts.filesyminfo = saveDebugInfo;
@@ -4323,14 +4324,27 @@ static void expand_graph_function(CallGraphNode* node) {
 
 static void inline_graph_uses(CallGraphNode* node) {
     CallGraphEdge* edge;
+    Boolean has_inline_callee = FALSE;
 
     node->marked = TRUE;
+    if (node->kind != CGFunction) {
+        return;
+    }
     for (edge = node->uses; edge && !anyerrors; edge = edge->next) {
-        if (!edge->node->marked) {
-            inline_graph_uses(edge->node);
+        CallGraphNode* callee = edge->node;
+        if (callee->kind != CGFunction) {
+            continue;
+        }
+        if (!callee->marked) {
+            inline_graph_uses(callee);
+        }
+        Object* object = callee->object;
+        if (IS_TYPE_FUNC(object->type) &&
+            ((object->qual & Q_INLINE) || (TYPE_FUNC(object->type)->flags & FUNC_AUTO_INLINE))) {
+            has_inline_callee = TRUE;
         }
     }
-    if (!anyerrors && node->kind == CGFunction) {
+    if (!anyerrors && has_inline_callee) {
         expand_graph_function(node);
     }
 }
@@ -4338,6 +4352,9 @@ static void inline_graph_uses(CallGraphNode* node) {
 void CInline_CallGraphInlining(void) {
     CallGraphNode* node;
 
+    if (copts.dontinline) {
+        return;
+    }
     CCallGraph_Unmark();
     for (node = ccallgraph; node && !anyerrors; node = node->next) {
         if (!node->marked) {
@@ -5037,6 +5054,7 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) 
         if (isInline) {
             funcdata = object->u.func.u.ifuncdata;
         } else {
+            COpt_SimpleOptimizer(object, stmt);
             funcdata = galloc(sizeof(CI_FuncData));
             CInline_PackIFunctionData(funcdata, stmt, object);
         }

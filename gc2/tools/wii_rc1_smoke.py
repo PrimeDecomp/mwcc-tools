@@ -1874,6 +1874,16 @@ inline int f() {
 }
 void test() { f(); use(10); }
 """,
+        "file_ipa_branch.cpp": """\
+extern bool ready();
+extern void use(int);
+static int increment(int value) { return value + 1; }
+void test(int value) {
+    if (ready())
+        use(increment(value));
+    use(2);
+}
+""",
     }
 
     results = {}
@@ -1882,16 +1892,16 @@ void test() { f(); use(10); }
         source.write_text(contents, encoding="ascii")
         obj = source.with_suffix(".o")
         normalized = source.with_suffix(".normalized")
-        modes = (
-            (("-O0", "off"), ("-O4,p", "off"))
-            if name == "inline_discarded_conditional_result.cpp"
-            else (("-O0", "off"), ("-O4,p", "file"))
-        )
-        for opt, ipa in modes:
-            output = run(compiler, *FLAGS, opt, "-ipa", ipa, "-msgstyle", "parseable",
+        modes = [("-O0", "off", ()), ("-O4,p", "file", ())]
+        if name == "inline_discarded_conditional_result.cpp":
+            modes.append(("-O4,p", "off", ()))
+        if name == "file_ipa_branch.cpp":
+            modes.append(("-O4,p", "file", ("-inline", "off")))
+        for opt, ipa, options in modes:
+            output = run(compiler, *FLAGS, opt, "-ipa", ipa, *options, "-msgstyle", "parseable",
                          "-c", source.name, "-o", obj, cwd=work)
             run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
-            results[f"{name} {opt} -ipa {ipa}"] = (output, normalized.read_bytes())
+            results[" ".join((name, opt, "-ipa", ipa, *options))] = (output, normalized.read_bytes())
     return results
 
 
