@@ -4756,7 +4756,7 @@ static void CInline_AddFRefList_InlineFunc(CI_FuncData* data) {
                     break;
                 case EAT_CATCHBLOCK:
 #if VERSION == VERSION_WII_1_0RC1
-                    if (visitGraphReference) {
+                    if (visitGraphReference && exc->data.catch_block.catch_typeid) {
                         CInline_AddFRefList_Object(exc->data.catch_block.catch_typeid);
                     }
 #endif

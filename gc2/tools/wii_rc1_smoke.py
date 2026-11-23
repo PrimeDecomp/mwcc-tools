@@ -3534,6 +3534,20 @@ void member_call(V* v) { Guard guard; v->g(); }
                 "-Cpp_exceptions", "on", *pragma, "-c", source, "-o", obj, cwd=work)
             results[f"{source.name} {' '.join((opt, *pragma))}"] = obj.read_bytes()
 
+    source = work / "file_ipa_catch_all.cpp"
+    source.write_text(
+        "extern void may_throw();\n"
+        "int test() {\n"
+        "    try { may_throw(); } catch (...) { return 1; }\n"
+        "    return 0;\n"
+        "}\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    run(compiler, *FLAGS, "-O4,p", "-ipa", "file", "-Cpp_exceptions", "on", "-c", source,
+        "-o", obj, cwd=work)
+    results[source.name] = obj.read_bytes()
+
     source = work / "unrecognized_pragma.cpp"
     source.write_text(
         "#pragma warn_illpragma on\n"
