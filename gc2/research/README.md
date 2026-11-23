@@ -1369,6 +1369,13 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   bit in the serialized class flags. Preserving this bit lets the reader recover the return
   convention without the class's constructor and destructor declarations. The source consumer
   replayed all 898 stock Echoes R3ME01 sidecars to PowerPC objects.
+- The conditional and unconditional branch ranges are little-endian words at offsets
+  `0xa8` and `0xac` of the function options block. Stock reads them in
+  `CMach_SetBackEndOptions` at `0x4F07F4` and `0x4F0800`. The defaults are
+  `0x10000` and `0x04000000`. The `bc_range` pragma doubles a numeric argument at
+  `0x466E87` before checking the limit. Stock populates the unconditional range even
+  when the conditional range is zero. Older source sidecars omitted both words.
+  The source reader preserves the active range when both words are zero.
 - `CTempl_Parse` at `0x511070` recognizes friend templates before parsing class
   declarations. Its friend-class handler at `0x5F0C10` resets template parameter
   nesting for new namespace-scope declarations and registers the class with

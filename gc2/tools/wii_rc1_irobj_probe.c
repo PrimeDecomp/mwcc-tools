@@ -683,6 +683,45 @@ static Boolean check_function_options(const CIRStreamFunctionHeader* function) {
         options.inlinelevel == 19;
 }
 
+Boolean CIRTest_CheckBranchRanges(const UInt8* bytes, UInt32 size, UInt32 entryRange) {
+    CIRStreamImportedGraph graph;
+    UInt32 index;
+    UInt32 definitions = 0;
+    CIRStreamNode* node;
+    CIRStreamFunctionHeader function;
+    struct CInlineBackendOptions options = {0};
+    UInt8 legacy[CIRStreamFunctionOptionsSize];
+    UInt32 range;
+
+    if (!CIRStream_ImportCallGraph(bytes, size, new_root(), TRUE, &graph)) {
+        return FALSE;
+    }
+    for (index = 0; index < graph.header.nodeCount; ++index) {
+        node = &graph.nodes[index];
+        if (node->kind != CIRStreamFunctionNode || !node->definition.function.header.code.size) {
+            continue;
+        }
+        function = node->definition.function.header;
+        range = equal_string(node->decl.name->name, "__start") ? entryRange : 0x10000;
+        if (!CIRStream_UnpackFunctionOptions(&function, &options) ||
+            options.bc_range != (range ? range : CInlineExplicitZeroBranchRange) ||
+            CIRStream_ReadWord(function.options.bytes + 0xa8) != range ||
+            CIRStream_ReadWord(function.options.bytes + 0xac) != 0x04000000) {
+            return FALSE;
+        }
+        memcpy(legacy, function.options.bytes, sizeof(legacy));
+        CIRStream_WriteWord(legacy + 0xa8, 0);
+        CIRStream_WriteWord(legacy + 0xac, 0);
+        function.options.bytes = legacy;
+        options.bc_range = 256;
+        if (!CIRStream_UnpackFunctionOptions(&function, &options) || options.bc_range != 256) {
+            return FALSE;
+        }
+        ++definitions;
+    }
+    return definitions == 2;
+}
+
 // The fixtures contain ordinary function nodes, including a forward reference to an external function.
 UInt32 CIRTest_CheckFunctions(const UInt8* bytes, UInt32 size, UInt8 fixture) {
     CIRStreamImportedGraph graph;

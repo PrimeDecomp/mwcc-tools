@@ -519,6 +519,7 @@ Boolean CIRStream_UnpackFunctionOptions(
     const CIRStreamFunctionHeader* header, struct CInlineBackendOptions* options
 ) {
     const UInt8* bytes = header->options.bytes;
+    UInt32 branchRange;
 
     if (header->options.size != CIRStreamFunctionOptionsSize || bytes[0x78] > 7) {
         return FALSE;
@@ -534,6 +535,11 @@ Boolean CIRStream_UnpackFunctionOptions(
 #undef READ_SHORT
 #undef READ_BYTE
     options->function_align = (UInt8)(1U << bytes[0x78]);
+    branchRange = CIRStream_ReadWord(bytes + 0xa8);
+    // Sidecars from older source builds omitted both range words.
+    if (branchRange || CIRStream_ReadWord(bytes + 0xac)) {
+        options->bc_range = branchRange ? branchRange : CInlineExplicitZeroBranchRange;
+    }
     return TRUE;
 }
 
@@ -545,6 +551,7 @@ Boolean CIRStream_PackFunctionOptions(
 ) {
     UInt8 bytes[CIRStreamFunctionOptionsSize];
     UInt8 alignment = options->function_align;
+    UInt32 branchRange = options->bc_range ? options->bc_range : 0x10000;
 
     if (!alignment || (alignment & (alignment - 1))) {
         return FALSE;
@@ -565,6 +572,8 @@ Boolean CIRStream_PackFunctionOptions(
 #undef WRITE_WORD
 #undef WRITE_SHORT
 #undef WRITE_BYTE
+    CIRStream_WriteWord(bytes + 0xa8, branchRange == CInlineExplicitZeroBranchRange ? 0 : branchRange);
+    CIRStream_WriteWord(bytes + 0xac, 0x04000000);
     bytes[0xb7] = CPU_IS_SPE(options->processor);
     bytes[0xce] = canInline;
     bytes[0xcf] = initializer;

@@ -11,6 +11,13 @@ extern "C" {
 
 #pragma pack(push, 2)
 
+#if VERSION == VERSION_WII_1_0RC1
+enum {
+    // Earlier source PCHs left bc_range at zero. Keep that value for missing options.
+    CInlineExplicitZeroBranchRange = 0x10001
+};
+#endif
+
 struct CInlineBackendOptions {
     SInt16 processor;
     UInt8 scheduling;

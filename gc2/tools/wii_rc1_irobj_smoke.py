@@ -91,6 +91,7 @@ def load_codec(work):
         "/nodefaultlib",
         f"/machine:{machine}",
         f"/out:{dll}",
+        "/export:CIRTest_CheckBranchRanges",
         "/export:CIRTest_CheckFunctions",
         "/export:CIRTest_RepackGraph",
         "/export:CIRTest_RepackBodies",
@@ -109,6 +110,8 @@ def load_codec(work):
         function.restype = result
         function.argtypes = args
         setattr(library, name, function)
+    library.CIRTest_CheckBranchRanges.restype = Byte
+    library.CIRTest_CheckBranchRanges.argtypes = [Pointer, U32, U32]
     library.CIRTest_CheckFunctions.restype = U32
     library.CIRTest_CheckFunctions.argtypes = [Pointer, U32, Byte]
     library.CIRTest_RepackGraph.restype = U32
@@ -478,6 +481,25 @@ def check_program_inline_strings(compiler, reference, work):
             assert data[24:] == b"bravo2\0\0bravo1\0\0", name
 
 
+def check_program_branch_ranges(codec, compiler, reference, work):
+    flags = ("-inline", "noauto", "-func_align", "4", "-Cpp_exceptions", "off")
+    for pragma, expected in (("default", 65536), ("0", 0), ("8", 16)):
+        (work / "branch_ranges.cpp").write_text(
+            "volatile int counter;\n"
+            "static int next_value() { return ++counter; }\n"
+            f"#pragma bc_range {pragma}\n"
+            'extern "C" int __start() { static int value = next_value(); return value; }\n',
+            "ascii",
+        )
+        for prefix, producer in (("stock", reference), ("source", compiler)):
+            name = f"{prefix}_range_{pragma}"
+            run(producer, *FLAGS, "-O4,p", *flags, "-ipa", "program", "-c",
+                "branch_ranges.cpp", "-o", f"{name}.o", cwd=work)
+            data = (work / f"{name}.irobj").read_bytes()
+            assert codec.CIRTest_CheckBranchRanges(data, len(data), expected), name
+            assert linked_program_text(reference, work, name, flags=(*flags, "-nostdlib")), name
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("reference", type=Path, help="path to stock Wii 1.0RC1")
@@ -615,6 +637,7 @@ def main():
                     compiler = args.compiler.resolve(strict=True)
                     check_live_program(codec, compiler, reference, work, compiler_flags)
                     check_program_inline_strings(compiler, reference, work)
+                    check_program_branch_ranges(codec, compiler, reference, work)
                     check_spe_program(compiler, reference, work)
         finally:
             # Windows keeps a loaded DLL open until its last reference is released.

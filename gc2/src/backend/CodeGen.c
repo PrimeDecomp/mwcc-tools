@@ -2858,10 +2858,17 @@ void CodeGen_ParsePragma(HashNameNode* name, const FileOffsetInfo* source) {
         t = plex();
         if (t == TK_INTCONST) {
             copts.bc_range = CInt64_GetULong(&tkintconst);
+#if VERSION == VERSION_WII_1_0RC1
+            copts.bc_range *= 2;
+#endif
             if (copts.bc_range > 0x10000) {
                 copts.bc_range = 0x10000;
                 CError_Error(ERR_ILLEGAL_PRAGMA);
             }
+#if VERSION == VERSION_WII_1_0RC1
+        } else if (t == TK_DEFAULT) {
+            copts.bc_range = copts.prepare_compress ? 0x1000 : 0x10000;
+#endif
         } else if (t == TK_IDENTIFIER) {
             if (!strcmp(tkidentifier->name, "off")) {
                 copts.bc_range = 0x10000;

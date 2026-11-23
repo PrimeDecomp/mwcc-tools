@@ -2683,6 +2683,7 @@ void CMach_GetBackEndOptions(struct CInlineBackendOptions* options) {
     options->inlinelevel = copts.inlinelevel;
     options->inlinemaxsize = copts.inlinemaxsize;
     options->inlinemaxtotalsize = copts.inlinemaxtotalsize;
+    options->bc_range = copts.bc_range ? copts.bc_range : CInlineExplicitZeroBranchRange;
     options->gprfloatcopy = copts.gprfloatcopy;
     options->switch_tables = copts.switch_tables;
 #endif
@@ -2765,6 +2766,9 @@ void CMach_SetBackEndOptions(struct CInlineBackendOptions* options) {
     copts.inlinelevel = options->inlinelevel;
     copts.inlinemaxsize = options->inlinemaxsize;
     copts.inlinemaxtotalsize = options->inlinemaxtotalsize;
+    if (options->bc_range) {
+        copts.bc_range = options->bc_range == CInlineExplicitZeroBranchRange ? 0 : options->bc_range;
+    }
     copts.gprfloatcopy = options->gprfloatcopy;
     copts.switch_tables = options->switch_tables;
 #endif
