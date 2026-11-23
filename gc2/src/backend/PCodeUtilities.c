@@ -60,7 +60,11 @@ void pcsetrecordbit(PCode* pc) {
         pc->flags |= fSetsCarry;
         pc->flags |= fRecordBit;
         change_num_operands(pc, 5);
+#if VERSION == VERSION_WII_1_0RC1
+        change_opcode(pc, PC_ADDICR);
+#else
         pc->op = PC_ADDICR;
+#endif
 
         arg = &pc->args[3];
         CError_ASSERT(76, arg->kind == PCOp_PLACEHOLDEROPERAND);

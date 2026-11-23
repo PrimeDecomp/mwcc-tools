@@ -3751,6 +3751,9 @@ void propagate_slot_offset(Word *base, Word offset, Word value) {
         base[2] = *slot;
     }
 }
+void decrement_and_release(Word *base) {
+    if (--base[4] == 0) use(&base[2]);
+}
 void run_indexed(char *base, Word offset) {
     char *p = base + offset;
     *(Word *)p &= ~4u;
