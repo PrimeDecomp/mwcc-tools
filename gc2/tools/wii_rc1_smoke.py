@@ -3865,6 +3865,34 @@ unsigned twice_writable(unsigned i) {
         run(compiler, *FLAGS, "-inline", "auto", opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    for name, array, params in (
+        (
+            "loop_indexed_load.c",
+            "static const int p[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};\n",
+            "",
+        ),
+        ("loop_indexed_parameter.c", "", ", const int* p"),
+    ):
+        source = work / name
+        source.write_text(
+            f"""\
+extern void sink(int);
+{array}int f(int i, unsigned count{params}) {{
+    const int* q = p + i;
+    int sum = 0;
+    while (count--) {{
+        sink(p[i]);
+        sum += *q;
+    }}
+    return sum;
+}}
+""",
+            encoding="ascii",
+        )
+        obj = source.with_suffix(".o")
+        run(compiler, *FLAGS, "-inline", "auto", "-O4,p", "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        results[f"{name} -O4,p"] = obj.read_bytes()
+
     source = work / "memory_references.c"
     source.write_text(
         """\

@@ -52,6 +52,10 @@ static Boolean is_virtual_object(Object* object) {
            object->type->size == VirtualObjectSize &&
            TYPE_POINTER(object->type)->qual == 0;
 }
+
+Boolean is_virtual_object_alias(const Alias* alias) {
+    return alias->type != AliasType_Set && is_virtual_object(alias->object);
+}
 #endif
 
 #if VERSION != VERSION_WII_1_0RC1

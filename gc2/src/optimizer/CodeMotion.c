@@ -22,6 +22,9 @@ static int isloopinvariant(PCode* pcode, Loop* loop, UInt32* vec, int allowSPR, 
     if (pcode->flags & (fIsRead | fIsWrite | fOpFromMemory | fOpToMemory)) {
         if (pcode->alias) {
             if (pcode->alias->type == AliasType_Set ||
+#if VERSION == VERSION_WII_1_0RC1
+                is_virtual_object_alias(pcode->alias) ||
+#endif
                 (pcode->flags & (fIsVolatile | fSideEffects))) {
                 return FALSE;
             }
@@ -965,6 +968,12 @@ static void simpleunswitchloops(Loop* loop) {
 }
 
 static void moveinvariantsfromloop(Loop* loop) {
+#if VERSION == VERSION_WII_1_0RC1
+    // Indexed accesses to known objects can move if the alias checks pass.
+    const UInt32 immovable = fIsCall | fIsVolatile | fSideEffects;
+#else
+    const UInt32 immovable = fIsCall | fIsPtrOp | fIsVolatile | fSideEffects;
+#endif
     RegUseOrDef* list;
     BlockList* blocklist;
     PCode* instr;
@@ -984,7 +993,7 @@ static void moveinvariantsfromloop(Loop* loop) {
             for (instr = block->firstPCode; instr; instr = nextInstr) {
                 nextInstr = instr->nextPCode;
                 if (!(instr->flags & fIsBranch) && instr->argCount) {
-                    if (!(instr->flags & (fIsCall | fIsPtrOp | fIsVolatile | fSideEffects)) &&
+                    if (!(instr->flags & immovable) &&
 #if VERSION == VERSION_GC_2_0P2
                         !((instr->flags & fIsRead) && is_direct_small_data_access(instr)) &&
 #endif
