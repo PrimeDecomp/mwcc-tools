@@ -940,7 +940,26 @@ fn guest_path(path: &str) -> String {
 }
 
 /// The host path of the compiler's PATH, relative ones from the run's directory, spelled as given.
+/// PATH as Win32 names it: each name without the spaces and dots it ends with, and one that was only those gone
+/// (`dir\ \` is `dir\`: mwcc asks for its output directory so). A verbatim path (`\\?\`) is taken as it is.
+fn win32_name(path: &str) -> std::borrow::Cow<'_, str> {
+    let ends = |name: &str| !matches!(name, "" | "." | "..") && name.ends_with([' ', '.']);
+    if path.starts_with(r"\\?\") || !path.split(['\\', '/']).any(ends) {
+        return path.into();
+    }
+    let mut names = vec![];
+    for name in path.split(['\\', '/']) {
+        if !ends(name) {
+            names.push(name);
+        } else if !name.trim_end_matches([' ', '.']).is_empty() {
+            names.push(name.trim_end_matches([' ', '.']));
+        }
+    }
+    names.join("\\").into()
+}
+
 fn native_path(state: &State, path: &str) -> PathBuf {
+    let path = &*win32_name(path);
     let native = if cfg!(windows) {
         path.to_owned()
     } else {
@@ -2281,6 +2300,15 @@ fn write_find_data(caller: &mut Caller<'_, State>, at: u32, entry: &Entry) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn win32_drops_the_spaces_and_dots_a_name_ends_with() {
+        assert_eq!(win32_name(r"F:\a\b\ \"), r"F:\a\b\");
+        assert_eq!(win32_name(r"F:\a \b.\c"), r"F:\a\b\c");
+        assert_eq!(win32_name(r"..\a\.\b"), r"..\a\.\b");
+        assert_eq!(win32_name(r"\\?\F:\a \"), r"\\?\F:\a \");
+        assert_eq!(win32_name("a/b "), r"a\b");
+    }
 
     #[test]
     fn command_lines_quote_as_windows_parses_them() {
