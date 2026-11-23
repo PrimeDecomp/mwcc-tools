@@ -2751,23 +2751,161 @@ static void CInit_RefTempTransform(Type* type, ENode* expr) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean CInit_CanBindClassRValue(ENode* expr) {
+    while (ENODE_IS(expr, ECOMMA)) {
+        expr = expr->data.diadic.right;
+    }
+    if (ENODE_IS(expr, EINDIRECT)) {
+        expr = expr->data.monadic;
+    }
+    while (ENODE_IS(expr, ECOMMA)) {
+        expr = expr->data.diadic.right;
+    }
+
+    switch (expr->type) {
+        case ETEMP:
+            return FALSE;
+        case ECOND:
+            return CInit_CanBindClassRValue(expr->data.cond.expr1) &&
+                CInit_CanBindClassRValue(expr->data.cond.expr2);
+        case EFUNCCALL:
+            if (expr->data.funccall.args) {
+                ENode* callee = expr->data.funccall.funcref;
+                return !(ENODE_IS(callee, EOBJREF) && CClass_IsConstructor(callee->data.objref)) &&
+                    !IS_TYPE_CLASS(expr->data.funccall.functype->functype);
+            }
+            break;
+        default:
+            break;
+    }
+    return TRUE;
+}
+
+static ENode* CInit_MaterializeAutoReferenceTemp(Type* type, UInt32 qual, ENode* value) {
+    ENode* result;
+    ENode* call;
+    ENode* address;
+    Object* dtor = NULL;
+    Object* temp = create_temp_object(type);
+    temp->qual = qual;
+
+    address = create_objectrefnode(temp);
+    if (!IS_TYPE_CLASS(type)) {
+        value = CExpr_AssignmentPromotion(value, type, qual, TRUE);
+        return makecommaexpression(makediadicnode(create_objectnode2(temp), value, EASS), address);
+    }
+
+    dtor = CClass_Destructor(TYPE_CLASS(type));
+    if (dtor) {
+        CClass_CheckStaticAccess(NULL, TYPE_CLASS(type), dtor->access);
+    }
+
+    call = CExpr_IsTempConstruction(value, type, &result);
+    if (call && ENODE_IS(result, ETEMP)) {
+        ENodeList* arg = call->data.funccall.args;
+        while (arg->node != result) {
+            arg = arg->next;
+        }
+        arg->node = address;
+        value = call;
+    } else if (CClass_Constructor(TYPE_CLASS(type))) {
+        ENodeList* args = lalloc(sizeof(ENodeList));
+        args->next = NULL;
+        args->node = value;
+        value = CExpr_ConstructObject(
+            TYPE_CLASS(type), address, args, FALSE, TRUE, FALSE, TRUE, FALSE
+        );
+    } else {
+        value = CExpr_AssignmentPromotion(value, type, qual, TRUE);
+        value = makediadicnode(create_objectnode2(temp), value, EASS);
+    }
+
+    cinit_initinfo->insert_expr_cb(value);
+    if (dtor) {
+        cinit_initinfo->register_object_cb(type, temp, 0, FALSE);
+    }
+    return address;
+}
+
+static ENode* CInit_BindAutoReference(Object* obj, ENode* value) {
+    Type* target = TPTR_TARGET(obj->type);
+    UInt32 qual = obj->qual & Q_CV;
+    UInt32 cv = CParser_GetCVTypeQualifiers(target, qual);
+
+    if (!CExpr_IsLValue(value) && (cv & Q_CONST)) {
+        if (IS_TYPE_CLASS(target) && IS_TYPE_CLASS(value->rtype) &&
+            CExpr_IsReferenceCompatible(target, qual, value->rtype, ENODE_QUALS(value))) {
+            if (cv & Q_VOLATILE) {
+                CError_Error(ERR_ILLEGAL_CONST_VOLATILE_AMPERSAND_REFERENCE_INITIALIZATION);
+                CError_ResetErrorSkip();
+            }
+            if (!CInit_CanBindClassRValue(value)) {
+                Type* actual = value->rtype;
+                ENode* address = CInit_MaterializeAutoReferenceTemp(actual, qual, value);
+                return CClass_ClassPointerCast(
+                    address, TYPE_CLASS(actual), TYPE_CLASS(target), TRUE, TRUE, TRUE
+                );
+            }
+        } else if (!(cv & Q_VOLATILE) && !IS_TYPE_CLASS(value->rtype) &&
+                   !IS_TYPE_CLASS(target) && !IS_TYPE_ARRAY(target) && !IS_TYPE_FUNC(target)) {
+            return CInit_MaterializeAutoReferenceTemp(target, qual, value);
+        }
+    }
+
+    value = CExpr_AssignmentPromotion(value, obj->type, qual, TRUE);
+    CInit_RefTempTransform(obj->type, value);
+    return value;
+}
+#endif
+
 static Boolean CInit_InitReference(Object* obj, Boolean isLocal) {
     ENode* expr;
     SInt32 size;
 
-    if (tk == '=') {
+    if (tk == '='
+#if VERSION == VERSION_WII_1_0RC1
+        || (isLocal && tk == '(' && copts.cplusplus)
+#endif
+    ) {
+#if VERSION == VERSION_WII_1_0RC1
+        Boolean parenthesized = tk == '(';
+#endif
         if (isLocal) {
             cinit_tempnodefunc = CInit_AutoTempNode;
         } else {
             cinit_tempnodefunc = CInit_GlobalTempNode;
         }
         tk = lex();
-        expr = assignment_expression();
-        expr = CExpr_AssignmentPromotion(expr, obj->type, obj->qual & (Q_CONST | Q_VOLATILE), TRUE);
+#if VERSION == VERSION_WII_1_0RC1
+        if (parenthesized) {
+            ENodeList* args = CExpr_ScanExpressionList(TRUE);
+            if (tk == ')') {
+                tk = lex();
+            }
+            if (!args || args->next) {
+                CError_Error(args ? ERR_TOO_MANY_INITIALIZERS : ERR_ILLEGAL_INITIALIZATION);
+            }
+            expr = args ? args->node : nullnode();
+        } else
+#endif
+        {
+            expr = assignment_expression();
+        }
+#if VERSION == VERSION_WII_1_0RC1
+        if (isLocal) {
+            expr = CInit_BindAutoReference(obj, expr);
+        } else
+#endif
+        {
+            expr = CExpr_AssignmentPromotion(expr, obj->type, obj->qual & Q_CV, TRUE);
+        }
         cinit_tempnodefunc = NULL;
 
         if (isLocal) {
+#if VERSION != VERSION_WII_1_0RC1
             CInit_RefTempTransform(obj->type, expr);
+#endif
             expr = makediadicnode(create_objectnode2(obj), expr, EASS);
             cinit_initinfo->insert_expr_cb(expr);
         } else {

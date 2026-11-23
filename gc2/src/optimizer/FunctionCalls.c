@@ -216,7 +216,11 @@ static ArgInfo* analyze_arguments(
             arg_size = 8;
             gpr_counter += 2;
         } else if (TYPE_FITS_IN_REGISTER(type) || IS_TYPE_SPE(type)) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (type->size < 4) {
+#else
             if ((!arg || arg == &elipsis || arg == &oldstyle) && type->size < 4) {
+#endif
                 info->flags |= AIF_ExtendTo32Bits;
             }
 

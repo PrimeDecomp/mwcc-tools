@@ -881,6 +881,11 @@ Boolean CExpr_IsLValue(ENode* expr) {
     }
 
     expr = expr->data.monadic;
+#if VERSION == VERSION_WII_1_0RC1
+    while (ENODE_IS(expr, ECOMMA)) {
+        expr = expr->data.diadic.right;
+    }
+#endif
     switch (expr->type) {
         case ETEMP:
             return FALSE;

@@ -1752,6 +1752,66 @@ def check_reference_cast_diagnostics(compiler, objcopy, work):
     return results
 
 
+def check_reference_initializers(compiler, objcopy, work):
+    cases = {
+        "local_reference_cast.cpp": """\
+struct Value { int data; };
+extern Value make();
+extern void use(const Value&);
+void test() {
+    const Value& value = static_cast<const Value&>(make());
+    use(value);
+}
+""",
+        "local_reference_lifetime.cpp": """\
+struct Value { Value(); Value(const Value&); ~Value(); int data; };
+extern Value make();
+extern void use(const Value&);
+void result() { const Value& value = make(); use(value); }
+void construct() { const Value& value = Value(); use(value); }
+""",
+        "local_reference_scalar.cpp": """\
+extern int make_int();
+extern void use(const int&);
+extern void use_volatile(const volatile int&);
+extern void use_short(short);
+void test() {
+    const int& value((make_int(), 42));
+    use(value);
+    use_short(-1);
+}
+void preserve_store() {
+    volatile int value = make_int();
+    const volatile int& ref = value;
+    use_volatile(ref);
+}
+""",
+        "local_reference_alias.cpp": """\
+struct Value { int data; };
+extern Value make();
+extern void use(const Value*, const Value*);
+void test() {
+    const Value first = make();
+    const Value second = first;
+    use(&first, &second);
+}
+""",
+    }
+
+    results = {}
+    for name, contents in cases.items():
+        source = work / name
+        source.write_text(contents, encoding="ascii")
+        obj = source.with_suffix(".o")
+        normalized = source.with_suffix(".normalized")
+        for opt, ipa in (("-O0", "off"), ("-O4,p", "file")):
+            output = run(compiler, *FLAGS, opt, "-ipa", ipa, "-msgstyle", "parseable",
+                         "-c", source.name, "-o", obj, cwd=work)
+            run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
+            results[f"{name} {opt} -ipa {ipa}"] = (output, normalized.read_bytes())
+    return results
+
+
 def check(compiler, objcopy, nm, objdump, work):
     if "Version 4.2 build 140" not in run(compiler, "-version", cwd=work):
         raise ValueError(f"{compiler}: incorrect version banner")
@@ -3474,6 +3534,7 @@ void member_call(V* v) { Guard guard; v->g(); }
     results.update(check_void_delete_diagnostics(compiler, work))
     results.update(check_template_actions(compiler, objcopy, nm, work))
     results.update(check_reference_cast_diagnostics(compiler, objcopy, work))
+    results.update(check_reference_initializers(compiler, objcopy, work))
 
     source = work / "jump_warnings.cpp"
     jump_warnings = (

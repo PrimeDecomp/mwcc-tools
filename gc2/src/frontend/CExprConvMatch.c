@@ -215,7 +215,10 @@ static Boolean CExpr_TypeCompare(
     return is_typesame(typeA, typeB);
 }
 
-static int CExpr_IsReferenceCompatible(Type* typeA, UInt32 qualA, Type* typeB, UInt32 qualB) {
+#if VERSION != VERSION_WII_1_0RC1
+static
+#endif
+int CExpr_IsReferenceCompatible(Type* typeA, UInt32 qualA, Type* typeB, UInt32 qualB) {
     if (CParser_IsSameOrMoreCVQualified(
             CParser_GetCVTypeQualifiers(typeA, qualA), CParser_GetCVTypeQualifiers(typeB, qualB)
         )) {

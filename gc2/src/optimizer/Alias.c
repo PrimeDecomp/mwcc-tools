@@ -1640,6 +1640,15 @@ Boolean uniquely_aliases(PCode* a, PCode* b) {
 }
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+Boolean may_alias_worst_case(PCode* pcode) {
+    if (n_aliases != n_gathered_aliases) {
+        gather_alias_members();
+    }
+    return may_alias_alias(pcode->alias, worst_case_ptr);
+}
+#endif
+
 Boolean may_alias_object(PCode* pcode, Object* object) {
 #if VERSION == VERSION_WII_1_0RC1
     Alias* alias = make_alias(object, 0, 0);

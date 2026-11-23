@@ -49,6 +49,31 @@ static Boolean memory_definition_reaches(PCode* def, int defID, PCode* use) {
     return TRUE;
 }
 
+static Boolean remove_unread_local_stores(ObjectUseDef* entry) {
+    RegUseOrDef* use;
+    RegUseOrDef* def;
+    Boolean changed = FALSE;
+
+    if (entry->object->datatype != DLOCAL || is_volatile_object(entry->object)) {
+        return FALSE;
+    }
+    for (use = entry->uses; use; use = use->next) {
+        if (Uses[use->id].pcode->block) {
+            return FALSE;
+        }
+    }
+    for (def = entry->defs; def; def = def->next) {
+        PCode* store = Defs[def->id].pcode;
+        if (store->block &&
+            (store->flags & (fIsWrite | fIsVolatile | fSideEffects | fUpdatesPtr)) == fIsWrite &&
+            must_alias_object(store, entry->object) && !may_alias_worst_case(store)) {
+            deletepcode(store);
+            changed = TRUE;
+        }
+    }
+    return changed;
+}
+
 static Boolean rename_store_register(PCode* store, short replacement) {
     PCodeArg* operand = &store->args[0];
     RegClass regClass = operand->arg;
@@ -92,7 +117,11 @@ Boolean rewrite_memory_references(void) {
         PCodeArg saved = {0};
         Alias* savedAlias = NULL;
 
-        if (!entry->directdefs || !entry->directuses) {
+        if (!entry->directdefs) {
+            continue;
+        }
+        if (!entry->directuses) {
+            changed |= remove_unread_local_stores(entry);
             continue;
         }
         for (use = entry->uses; use; use = use->next) {
@@ -152,6 +181,8 @@ Boolean rewrite_memory_references(void) {
             deletepcode(load);
             changed = TRUE;
         }
+
+        changed |= remove_unread_local_stores(entry);
     }
     return changed;
 }

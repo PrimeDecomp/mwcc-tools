@@ -496,6 +496,18 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   warning 10142 at `0x5f80fc` when the operand is an rvalue. Stock
   suppresses a second error in the same expression when `-w error`
   promotes the warning and the conversion also rejects the operand.
+- Reference initialization at `0x543c70` tries direct binding first.
+  The class rvalue check at `0x543ea0` follows the right side of comma
+  expressions and inspects the call or temporary behind an indirection.
+  A cast of a register-returned class can require a copy out of the
+  temporary made by the cast. When a constructor or class-returning
+  function already takes a temporary destination, class initialization
+  at `0x5c8800` can retarget that call to the reference's local storage.
+  At `-O3` and above, the memory-reference pass at `0x64f030` can remove
+  the store into the cast's original temporary after forwarding its
+  only read. The deletion at `0x64f708` follows checks for aliasing and
+  remaining uses. Argument setup at `0x5fe975` sets the extension flag
+  for narrow integer arguments, including prototyped destructor calls.
 - The `AND` case of constant propagation (`0x6462f1`) follows `LI` and
   `LIS` definitions. Contiguous masks become `RLWINM` with a zero shift.
   Disjoint masks use `ANDI` or `ANDIS` and define CR0. The stock formatter

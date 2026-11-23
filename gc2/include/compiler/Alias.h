@@ -54,6 +54,9 @@ extern Alias* make_distinct_virtual_alias(Object* obj);
 #endif
 extern void gather_alias_info(void);
 extern Boolean may_alias(PCode* a, PCode* b);
+#if VERSION == VERSION_WII_1_0RC1
+extern Boolean may_alias_worst_case(PCode* pcode);
+#endif
 #if VERSION == VERSION_GC_2_0P2
 extern Boolean is_direct_small_data_access(PCode* pcode);
 extern Boolean may_alias_scheduling(PCode* a, PCode* b);
