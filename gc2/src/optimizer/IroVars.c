@@ -300,41 +300,74 @@ void ResetVars(void) {
     }
 }
 
-static void IRO_HandleExceptionActions(IROLinear* linear) {
+static void IRO_HandleExceptionActions(IROLinear* linear, Boolean create) {
     ExceptionAction* action;
+    /* RC1 unwind actions can read pointer and condition values from registers. */
+    const Boolean allowPointerRegister = VERSION == VERSION_WII_1_0RC1;
 
     for (action = linear->stmt->dobjstack; action; action = action->prev) {
         switch (action->type) {
             case EAT_DESTROYLOCAL:
-                IRO_FindVar(action->data.destroy_local.local, TRUE, FALSE);
+                IRO_FindVar(action->data.destroy_local.local, create, FALSE);
                 break;
             case EAT_DESTROYLOCALCOND:
-                IRO_FindVar(action->data.destroy_local_cond.local, TRUE, FALSE);
+                IRO_FindVar(action->data.destroy_local_cond.local, create, FALSE);
+#if VERSION == VERSION_WII_1_0RC1
+                IRO_FindVar(action->data.destroy_local_cond.cond, create, TRUE);
+#endif
                 break;
             case EAT_DESTROYLOCALOFFSET:
-                IRO_FindVar(action->data.destroy_local_offset.local, TRUE, FALSE);
+                IRO_FindVar(action->data.destroy_local_offset.local, create, FALSE);
                 break;
             case EAT_DESTROYLOCALARRAY:
-                IRO_FindVar(action->data.destroy_local_array.localarray, TRUE, FALSE);
+                IRO_FindVar(action->data.destroy_local_array.localarray, create, FALSE);
                 break;
+#if VERSION == VERSION_WII_1_0RC1
+            case EAT_DESTROYLOCALPOINTER:
+                IRO_FindVar(action->data.destroy_local_pointer.pointer, create, TRUE);
+                break;
+            case EAT_DESTROYPARTIALARRAY:
+                IRO_FindVar(action->data.destroy_partial_array.arraypointer, create, TRUE);
+                IRO_FindVar(action->data.destroy_partial_array.arraycounter, create, TRUE);
+                IRO_FindVar(action->data.destroy_partial_array.element_size, create, TRUE);
+                break;
+#endif
             case EAT_DESTROYMEMBER:
+                IRO_FindVar(action->data.destroy_member.objectptr, create, allowPointerRegister);
+                break;
             case EAT_DESTROYBASE:
-                IRO_FindVar(action->data.destroy_member.objectptr, TRUE, FALSE);
+                IRO_FindVar(action->data.destroy_base.objectptr, create, allowPointerRegister);
                 break;
             case EAT_DESTROYMEMBERCOND:
-                IRO_FindVar(action->data.destroy_member_cond.objectptr, TRUE, FALSE);
+                IRO_FindVar(action->data.destroy_member_cond.objectptr, create, allowPointerRegister);
+#if VERSION == VERSION_WII_1_0RC1
+                IRO_FindVar(action->data.destroy_member_cond.cond, create, TRUE);
+#endif
                 break;
             case EAT_DESTROYMEMBERARRAY:
-                IRO_FindVar(action->data.destroy_member_array.objectptr, TRUE, FALSE);
+                IRO_FindVar(action->data.destroy_member_array.objectptr, create, allowPointerRegister);
                 break;
+#if VERSION == VERSION_WII_1_0RC1
+            case EAT_DELETEPOINTER:
+            case EAT_DELETELOCALPOINTER:
+                IRO_FindVar(action->data.delete_pointer.pointerobject, create, TRUE);
+                break;
+            case EAT_DELETEPOINTERCOND:
+                IRO_FindVar(action->data.delete_pointer_cond.pointerobject, create, TRUE);
+                IRO_FindVar(action->data.delete_pointer_cond.cond, create, TRUE);
+                break;
+            case EAT_SPECIFICATION:
+                IRO_FindVar(action->data.specification.unexp_info_object, create, FALSE);
+                break;
+#endif
             case EAT_CATCHBLOCK:
                 if (action->data.catch_block.catch_object) {
-                    IRO_FindVar(action->data.catch_block.catch_object, TRUE, FALSE);
+                    IRO_FindVar(action->data.catch_block.catch_object, create, allowPointerRegister);
                 }
-                IRO_FindVar(action->data.catch_block.catch_info_object, TRUE, FALSE);
+                IRO_FindVar(action->data.catch_block.catch_info_object, create, FALSE);
                 break;
             case EAT_ACTIVECATCHBLOCK:
-                IRO_FindVar(action->data.active_catch_block.catch_info_object, TRUE, FALSE);
+                IRO_FindVar(action->data.active_catch_block.catch_info_object, create, FALSE);
                 break;
             default:
                 break;
@@ -361,7 +394,7 @@ void IRO_FindAllVars(void) {
             }
         } else if (linear->type == IROLinearFunccall) {
             if (linear->stmt && IRO_FunctionCallMightThrowException(linear)) {
-                IRO_HandleExceptionActions(linear);
+                IRO_HandleExceptionActions(linear, TRUE);
             }
         } else if (linear->type == IROLinearAsm) {
             IAEffects effects;
@@ -414,7 +447,7 @@ void IRO_UpdateVars(void) {
             }
         } else if (linear->type == IROLinearFunccall) {
             if (linear->stmt && IRO_FunctionCallMightThrowException(linear)) {
-                IRO_HandleExceptionActions(linear);
+                IRO_HandleExceptionActions(linear, VERSION != VERSION_WII_1_0RC1);
             }
         } else if (linear->type == IROLinearAsm) {
             IAEffects effects;

@@ -3115,10 +3115,16 @@ Outer::~Outer() {
         if not fixups:
             raise ValueError(f"{compiler}: {source.name} has no destructor unwind relocations")
         results[source.name] = (tuple(path.read_bytes() for path in dumps), fixups)
+        if suffix == "nested":
+            results[f"{source.name} object"] = obj.read_bytes()
         run(compiler, *flags, "-Cpp_exceptions", "off", "-c", source, "-o", obj, cwd=work)
         headers = run(objdump, "--section-headers", obj, cwd=work)
         if any(name in headers.split() for name in sections[1:]):
             raise ValueError(f"{compiler}: {source.name} emitted disabled unwind tables")
+        if suffix == "nested":
+            run(compiler, *FLAGS, "-func_align", "4", "-O4,s", "-inline", "off",
+                "-Cpp_exceptions", "on", "-c", source, "-o", obj, cwd=work)
+            results[f"{source.name} size without inlining"] = obj.read_bytes()
 
     source = work / "immediate_reuse.c"
     source.write_text(

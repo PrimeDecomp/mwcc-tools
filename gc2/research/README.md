@@ -412,6 +412,14 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   precedes destructor registration at `0x5489e3` and `0x5489f8`. RC1
   removes the temporary actions at `0x49fac7` after the destructor body
   has used their stack transitions to attach subobject actions.
+  The unwind-variable walk at `0x5d35b0` keeps member and base pointers,
+  condition flags, and delete operands eligible for registers. Destructible
+  local objects and exception bookkeeping storage require an address.
+  `IRO_FindAllVars` records these operands, and `IRO_UpdateVars` updates
+  existing records. The nested destructor object at `-O4,p` now matches
+  stock, including the generated table names. With `-O4,s`, stock also
+  materializes constructor results during the inlineability analysis at
+  `0x601dc3`, before the optimizer's variable walk.
   `call_function` at `0x5fcc9b` checks whether a known callee can throw
   and suppresses exception recording for that call after its arguments
   have been evaluated. The nested-local fixture compares all 13 stock
