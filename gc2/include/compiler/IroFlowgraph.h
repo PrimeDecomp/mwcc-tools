@@ -51,6 +51,11 @@ extern IRONode** IRO_NodeTable;
 extern BitVector* IRO_VarKills;
 extern BitVector* IRO_Avail;
 extern BitVector* IRO_FuncKills;
+#if VERSION == VERSION_WII_1_0RC1
+extern BitVector* IRO_CallKills;
+#else
+#define IRO_CallKills IRO_FuncKills
+#endif
 extern BitVector* IRO_ExprKills;
 
 extern void IRO_BuildFlowgraph(IROLinear* linear);

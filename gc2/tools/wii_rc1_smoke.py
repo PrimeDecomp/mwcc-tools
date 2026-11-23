@@ -3831,6 +3831,40 @@ int state(int value) {
         run(compiler, *FLAGS, "-inline", "auto", opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    source = work / "call_memory_effects.c"
+    source.write_text(
+        """\
+static const unsigned sizes[] = {4, 12, 20, 36, 52, 68};
+static unsigned values[] = {4, 12, 20, 36, 52, 68};
+extern const unsigned limit;
+extern void touch(const unsigned *);
+extern void observe(void);
+
+unsigned twice(unsigned i) {
+    unsigned x = sizes[i];
+    touch(&sizes[i]);
+    return x + sizes[i];
+}
+
+unsigned scale(unsigned n) {
+    unsigned x = n + limit;
+    observe();
+    return x + (n + limit);
+}
+
+unsigned twice_writable(unsigned i) {
+    unsigned x = values[i];
+    touch(&values[i]);
+    return x + values[i];
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O2", "-O4,p"):
+        run(compiler, *FLAGS, "-inline", "auto", opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     source = work / "memory_references.c"
     source.write_text(
         """\

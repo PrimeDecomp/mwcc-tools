@@ -66,6 +66,9 @@ SInt32 IRO_BaseTerms;
 SInt32 IRO_VarTerms;
 Boolean IRO_IsModifyOp[MAXEXPR];
 Boolean IRO_IsAssignOp[MAXEXPR];
+#if VERSION == VERSION_WII_1_0RC1
+BitVector* IRO_CallKills;
+#endif
 
 static int CheckAddress(IROLinear* nd, Boolean* resultFlag);
 static int CheckAddressConsistency(IROLinear* nd, VarRecord* var, SInt32 addend, Type* type);
@@ -375,9 +378,33 @@ static void IRO_HandleExceptionActions(IROLinear* linear, Boolean create) {
     }
 }
 
+static void BuildFunctionKillSets(void) {
+    VarRecord* var;
+
+    Bv_AllocVector(&IRO_FuncKills, IRO_NumVars + 1);
+    Bv_SetBit(0, IRO_FuncKills);
+#if VERSION == VERSION_WII_1_0RC1
+    Bv_AllocVector(&IRO_CallKills, IRO_NumVars + 1);
+    Bv_SetBit(0, IRO_CallKills);
+#endif
+
+    for (var = IRO_FirstVar; var; var = var->next) {
+        if (Inline_IsObjectData(var->object) || var->noregister) {
+            Bv_SetBit(var->index, IRO_FuncKills);
+#if VERSION == VERSION_WII_1_0RC1
+            Type* type = var->object->type;
+            if (!CParser_IsReadOnly(type, var->object->qual) ||
+                (IS_TYPE_CLASS(type) &&
+                 (CClass_Constructor(TYPE_CLASS(type)) || CClass_Destructor(TYPE_CLASS(type))))) {
+                Bv_SetBit(var->index, IRO_CallKills);
+            }
+#endif
+        }
+    }
+}
+
 void IRO_FindAllVars(void) {
     IROLinear* linear;
-    VarRecord* var;
     Object* obj;
 
     linear = IRO_FirstLinear;
@@ -409,16 +436,7 @@ void IRO_FindAllVars(void) {
         linear = linear->next;
     }
 
-    var = IRO_FirstVar;
-    Bv_AllocVector(&IRO_FuncKills, IRO_NumVars + 1);
-    Bv_SetBit(0, IRO_FuncKills);
-    while (var) {
-        if (Inline_IsObjectData(var->object) || var->noregister) {
-            Bv_SetBit(var->index, IRO_FuncKills);
-        }
-        var = var->next;
-    }
-
+    BuildFunctionKillSets();
     IRO_CheckForUserBreak();
 }
 
@@ -432,7 +450,6 @@ void IRO_ZapVarPtrs(void) {
 
 void IRO_UpdateVars(void) {
     IROLinear* linear;
-    VarRecord* var;
     Object* obj;
 
     ResetVars();
@@ -463,15 +480,7 @@ void IRO_UpdateVars(void) {
         }
     }
 
-    var = IRO_FirstVar;
-    Bv_AllocVector(&IRO_FuncKills, IRO_NumVars + 1);
-    Bv_SetBit(0, IRO_FuncKills);
-    while (var) {
-        if (Inline_IsObjectData(var->object) || var->noregister) {
-            Bv_SetBit(var->index, IRO_FuncKills);
-        }
-        var = var->next;
-    }
+    BuildFunctionKillSets();
 }
 
 void IRO_AddElmToList(IROLinear* linear, IROElmList** list) {
@@ -776,7 +785,7 @@ static void GetKillsByFunctionCall(IROLinear* linear) {
     }
 
     if (result) {
-        Bv_Or(IRO_FuncKills, IRO_VarKills);
+        Bv_Or(IRO_CallKills, IRO_VarKills);
     }
 }
 
