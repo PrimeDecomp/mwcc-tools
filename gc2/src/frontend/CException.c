@@ -62,27 +62,36 @@ Boolean CExcept_CanThrowException(Object* object, Boolean isVirtualCall) {
             return FALSE;
         }
 
+#if VERSION != VERSION_WII_1_0RC1
         if (!isVirtualCall &&
             TYPE_FUNC(object->type)->exspecs &&
             TYPE_FUNC(object->type)->exspecs &&
             !TYPE_FUNC(object->type)->exspecs->type) {
             return FALSE;
         }
+#endif
 
         if (copts.optEH2 &&
             !(object->qual & Q_MANGLE_NAME) &&
             object != rt_ptmf_call &&
             object != rt_ptmf_scall &&
             object != Rdync_func &&
+#if VERSION == VERSION_WII_1_0RC1
+            object != Rgtid_func &&
+#else
             object != rt_som_glue1 &&
             object != rt_som_glue2 &&
             object != rt_som_glue3 &&
+#endif
             object != carr_func &&
             object != cnar_func &&
             object != darr_func &&
             object != dnar_func &&
             object != dnar3_func &&
             object != Xthrw_func) {
+#if VERSION == VERSION_WII_1_0RC1
+            TYPE_FUNC(object->type)->flags |= FUNC_NOTHROW;
+#endif
             return FALSE;
         }
     }

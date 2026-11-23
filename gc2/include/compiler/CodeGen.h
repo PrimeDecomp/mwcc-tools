@@ -101,7 +101,7 @@ extern Boolean CodeGen_ReInitRuntimeObjects(Boolean is_precompiler);
 extern Boolean CodeGen_IsPublicRuntimeObject(Object* obj);
 extern void CodeGen_SOMStub(Object* stub, Object* glue, Object* classdata, SInt32 offset);
 extern void CodeGen_ParseDeclSpec(HashNameNode* identifier, DeclInfo* declinfo);
-extern void CodeGen_ParsePragma(HashNameNode* name);
+extern void CodeGen_ParsePragma(HashNameNode* name, const FileOffsetInfo* source);
 extern void CodeGen_UpdateObject(Object* object);
 extern void CodeGen_UpdateBackEndOptions(void);
 extern SInt32 CodeGen_objc_method_self_offset(ObjCMethod* meth);

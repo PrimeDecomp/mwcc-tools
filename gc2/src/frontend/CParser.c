@@ -379,12 +379,18 @@ static void CParser_SetupRuntimeObjects(void) {
     func = CParser_NewRTFunc(TYPE(&stvoid), CMangler_OperatorName(TK_DELETE), 1, 1, &void_ptr);
     CError_ASSERT(379, IS_TYPE_FUNC(func->type));
     TYPE_FUNC(func->type)->exspecs = exspecs;
+#if VERSION == VERSION_WII_1_0RC1
+    TYPE_FUNC(func->type)->flags |= FUNC_NOTHROW;
+#endif
     CScope_AddGlobalObject(func);
 
     func =
         CParser_NewRTFunc(TYPE(&stvoid), CMangler_OperatorName(TK_DELETE_ARRAY), 1, 1, &void_ptr);
     CError_ASSERT(387, IS_TYPE_FUNC(func->type));
     TYPE_FUNC(func->type)->exspecs = exspecs;
+#if VERSION == VERSION_WII_1_0RC1
+    TYPE_FUNC(func->type)->flags |= FUNC_NOTHROW;
+#endif
     CScope_AddGlobalObject(func);
 
     newh_func = CParser_NewRTFunc(TYPE(&void_ptr), NULL, 0, 1, sizet);

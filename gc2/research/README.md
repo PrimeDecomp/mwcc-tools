@@ -436,8 +436,15 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   `0x601dc3`, before the optimizer's variable walk.
   `call_function` at `0x5fcc9b` checks whether a known callee can throw
   and suppresses exception recording for that call after its arguments
-  have been evaluated. The nested-local fixture compares all 13 stock
-  unwind relocations and the ranges that select them.
+  have been evaluated. `CExcept_CanThrowException` at `0x49f600` checks
+  the function's `FUNC_NOTHROW` flag for direct calls. An external
+  C++ declaration with `throw()` still produces a cleanup range if
+  that flag is clear. Runtime setup marks both built-in delete operators
+  non-throwing at `0x458c0e` and `0x458c5c`. The internal `optEH2` setting can cache a
+  non-throwing result for unmangled functions outside the runtime allowlist.
+  The Wii pragma table exposes `optEH` and reports unsupported names at
+  the pragma identifier with warning 10186. The nested-local fixture
+  compares all 13 stock unwind relocations and the ranges that select them.
 - The `AND` case of constant propagation (`0x6462f1`) follows `LI` and
   `LIS` definitions. Contiguous masks become `RLWINM` with a zero shift.
   Disjoint masks use `ANDI` or `ANDIS` and define CR0. The stock formatter

@@ -3147,6 +3147,46 @@ Outer::~Outer() {
                 "-Cpp_exceptions", "on", "-c", source, "-o", obj, cwd=work)
             results[f"{source.name} size without inlining"] = obj.read_bytes()
 
+    source = work / "call_unwind.cpp"
+    source.write_text(
+        """\
+extern void plain();
+extern void declared_nothrow() throw();
+extern "C" void c_linkage();
+struct V { virtual void f() throw(); void g() throw(); };
+struct Guard { Guard(); ~Guard(); };
+void known_nothrow() {}
+void external_stop(V* v) { Guard guard; declared_nothrow(); }
+void external_call(V* v) { Guard guard; plain(); }
+void external_c(V* v) { Guard guard; c_linkage(); }
+void inline_known(V* v) { Guard guard; known_nothrow(); }
+void virtual_call(V* v) { Guard guard; v->f(); }
+void devirtual_call(V* v) { Guard guard; v->V::f(); }
+void member_call(V* v) { Guard guard; v->g(); }
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O4,p", "-O4,s"):
+        for pragma in ((), ("-pragma", "optEH off"), ("-pragma", "optEH2 on")):
+            run(compiler, *FLAGS, opt, "-inline", "off", "-func_align", "4",
+                "-Cpp_exceptions", "on", *pragma, "-c", source, "-o", obj, cwd=work)
+            results[f"{source.name} {' '.join((opt, *pragma))}"] = obj.read_bytes()
+
+    source = work / "unrecognized_pragma.cpp"
+    source.write_text(
+        "#pragma warn_illpragma on\n"
+        "#pragma optEH2 on\n"
+        "int identity(int x) { return x; }\n",
+        encoding="ascii",
+    )
+    output = run(compiler, *FLAGS, "-msgstyle", "parseable", "-c", source.name,
+                 "-o", source.with_suffix(".o"), cwd=work)
+    lines = output.splitlines()
+    if [line for line in lines if line.startswith(">")] != [">(10186) illegal #pragma"]:
+        raise ValueError(f"{compiler}: unexpected pragma diagnostic\n{output}")
+    results[source.name] = lines[1:]
+
     source = work / "jump_warnings.cpp"
     jump_warnings = (
         "#define GO(label) goto label\n"

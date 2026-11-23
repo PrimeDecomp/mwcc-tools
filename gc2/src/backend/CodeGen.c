@@ -2792,7 +2792,7 @@ static void update_bc_range(Boolean compressing) {
     }
 }
 
-void CodeGen_ParsePragma(HashNameNode* name) {
+void CodeGen_ParsePragma(HashNameNode* name, const FileOffsetInfo* source) {
     short t;
     SInt32 value;
     const char* str;
@@ -3325,7 +3325,11 @@ void CodeGen_ParsePragma(HashNameNode* name) {
     }
 
     if (copts.warn_illpragma) {
+#if VERSION == VERSION_WII_1_0RC1
+        CError_ANSIErrorWarning(ERR_ILLEGAL_PRAGMA, source);
+#else
         CPrep_Warning(ERR_ILLEGAL_PRAGMA);
+#endif
     }
 
     if (plex() != TK_EOL) {

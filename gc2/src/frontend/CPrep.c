@@ -194,7 +194,9 @@ CompilerOption compileroptions[] = {
     "stdc_cx_limitedr", OPT_OFFSET(stdc_cx_limitedr),
     "old_argmatch", OPT_OFFSET(old_argmatch),
     "optEH", OPT_OFFSET(optEH),
+#if VERSION != VERSION_WII_1_0RC1
     "optEH2", OPT_OFFSET(optEH2),
+#endif
     "new_mangler", OPT_OFFSET(new_mangler),
     "fullpath_file", OPT_OFFSET(fullpath_file),
     "microsoft_exceptions", OPT_OFFSET(microsoft_EH),
@@ -4451,11 +4453,22 @@ static void pragma_message(void) {
 static void preppragma(void) {
     CompilerOption* opt;
     Boolean save_eoltokens;
+#if VERSION == VERSION_WII_1_0RC1
+    FileOffsetInfo source;
+#endif
 
     if (!notendofline()) {
         return;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    source.file = prep_file;
+    source.tokenline = linenumber;
+    source.tokenoffset = prep_file
+        ? (tokenstacklevel ? tokenstack[0].pos : pos) - prep_file_start
+        : 0;
+    source.is_inline = FALSE;
+#endif
     macrocheck = FALSE;
     if (lexidentifier() == TK_IDENTIFIER) {
 #if VERSION >= VERSION_GC_2_0
@@ -4551,7 +4564,11 @@ static void preppragma(void) {
 
             save_eoltokens = cprep_eoltokens;
             cprep_eoltokens = TRUE;
-            CodeGen_ParsePragma(tkidentifier);
+#if VERSION == VERSION_WII_1_0RC1
+            CodeGen_ParsePragma(tkidentifier, &source);
+#else
+            CodeGen_ParsePragma(tkidentifier, NULL);
+#endif
             cprep_eoltokens = save_eoltokens;
             macrocheck = TRUE;
             PRAGMA_EXIT;
