@@ -1489,9 +1489,12 @@ static ENode* CInline_SetupArgsExpression(Object* object, CI_FuncData* data, ENo
                 obj = CInline_NewLocalObject(var->type, var->qual, var->sflags, 0);
             }
             local_dobjects[i] = obj;
+            // Wii RC1 keeps the address-taken flag recorded in the local's sflags.
+#if VERSION != VERSION_WII_1_0RC1
             if (!var->unmodified) {
                 obj->flags |= OBJECT_REFERENCED;
             }
+#endif
         } else {
             local_dobjects[i] = NULL;
         }
