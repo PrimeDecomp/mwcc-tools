@@ -426,6 +426,9 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   under warning 10577. The source reference points at the branch token
   or the macro invocation that produced it. The smoke test compares the
   warnings, token ranges, and source excerpts for both LF and CRLF.
+  `CError_ANSIErrorWarning` at `0x45b590` makes these diagnostics errors
+  under `ANSI_strict`, even when warnings are disabled. The unsupported
+  pragma diagnostic stays a warning in that mode.
   The unwind-variable walk at `0x5d35b0` keeps member and base pointers,
   condition flags, and delete operands eligible for registers. Destructible
   local objects and exception bookkeeping storage require an address.
@@ -445,6 +448,14 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   The Wii pragma table exposes `optEH` and reports unsupported names at
   the pragma identifier with warning 10186. The nested-local fixture
   compares all 13 stock unwind relocations and the ranges that select them.
+- `CDecl_TypedefDeclarator` at `0x536fa0` reports diagnostic 10122 at
+  the declarator's final token when an equivalent typedef is repeated.
+  The diagnostic is enabled in C with `cpp_extensions` off and in C++
+  when the declaration is in a class scope. Stock also checks that the
+  previous and new types and qualifiers agree before applying this rule.
+  `ObjGen_Setup` enables message numbers for Gekko at `0x4c7ce2`.
+  `Msg_EmitCoreV` checks that setting at `0x45a841` before prefixing
+  the diagnostic text. The `750` and `e500` targets leave that setting off.
 - The `AND` case of constant propagation (`0x6462f1`) follows `LI` and
   `LIS` definitions. Contiguous masks become `RLWINM` with a zero shift.
   Disjoint masks use `ANDI` or `ANDIS` and define CR0. The stock formatter

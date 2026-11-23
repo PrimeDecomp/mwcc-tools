@@ -731,6 +731,9 @@ void CError_ErrorMessage(int errTable, char* str, Boolean isTerminal, Boolean is
     char buf[128];
     CWMessageRef* ref;
     short tokensize;
+#if VERSION == VERSION_WII_1_0RC1
+    char numbered[256];
+#endif
 
     if (CWDisplayLines(cparamblkptr->context, lines) != cwNoErr) {
         CError_UserBreak();
@@ -792,6 +795,19 @@ void CError_ErrorMessage(int errTable, char* str, Boolean isTerminal, Boolean is
         if (!isWarning) {
             fatalerrors = anyerrors = TRUE;
         }
+#if VERSION == VERSION_WII_1_0RC1
+        if (copts.numbered_diagnostics && errTable >= 10000 + ERR_ILLEGAL_CHARACTER_CONSTANT) {
+            CErrorBuffer message;
+            char prefix[24];
+
+            snprintf(prefix, sizeof(prefix), "(%5d) ", errTable);
+            CError_BufferInit(&message, numbered, sizeof(numbered));
+            CError_BufferAppendString(&message, prefix);
+            CError_BufferAppendString(&message, str);
+            CError_BufferTerminate(&message);
+            str = message.start;
+        }
+#endif
         if (CWReportMessage(cparamblkptr->context, ref, str, buf, messagetype, errTable) !=
             cwNoErr) {
             longjmp(errorreturn, 1);
@@ -1096,14 +1112,13 @@ void CError_Warning(int code, ...) {
 }
 
 #if VERSION == VERSION_WII_1_0RC1
-void CError_ANSIErrorWarning(int code, const FileOffsetInfo* source, ...) {
+static void CError_SourceDiagnostic(
+    int code, const FileOffsetInfo* source, va_list args, Boolean isWarning
+) {
     char resource[256];
-    char format[288];
     const char* message;
     static TStreamElement token;
-    va_list args;
-
-    if (trychain || copts.supress_warnings) {
+    if (trychain || (isWarning && copts.supress_warnings)) {
         return;
     }
 
@@ -1119,15 +1134,26 @@ void CError_ANSIErrorWarning(int code, const FileOffsetInfo* source, ...) {
             message = resource;
             break;
     }
-    if (source->file) {
+    if (source && source->file) {
         token.tokenfile = source->file;
         token.tokenline = source->tokenline;
         token.tokenoffset = source->tokenoffset;
         CError_SetErrorToken(&token);
     }
-    snprintf(format, sizeof(format), "(%d) %s", code + 10000, message);
+    CError_ErrorMessageVA(code + 10000, message, args, FALSE, isWarning);
+}
+
+void CError_ANSIErrorWarning(int code, const FileOffsetInfo* source, ...) {
+    va_list args;
     va_start(args, source);
-    CError_ErrorMessageVA(code + 10000, format, args, FALSE, TRUE);
+    CError_SourceDiagnostic(code, source, args, !copts.ANSIstrict);
+    va_end(args);
+}
+
+void CError_WarningAt(int code, const FileOffsetInfo* source, ...) {
+    va_list args;
+    va_start(args, source);
+    CError_SourceDiagnostic(code, source, args, TRUE);
     va_end(args);
 }
 #endif

@@ -1854,12 +1854,17 @@ void CDecl_TypedefDeclarator(DeclInfo* declinfo) {
                 declinfo->thetype,
                 declinfo->qual
             );
+#if VERSION == VERSION_WII_1_0RC1
+        } else if (copts.cplusplus ? nspace->theclass != NULL : !copts.cpp_extensions) {
+            CError_ANSIErrorWarning(ERR_IDENTIFIER_REDECLARED, NULL, declinfo->name->name);
+#else
         } else if (!copts.cplusplus && (copts.pedantic || copts.ANSIstrict)) {
             if (copts.pedantic) {
                 CError_Warning(ERR_IDENTIFIER_REDECLARED, declinfo->name->name);
             } else {
                 CError_Error(ERR_IDENTIFIER_REDECLARED, declinfo->name->name);
             }
+#endif
         }
     } else {
         objt = galloc(sizeof(ObjType));

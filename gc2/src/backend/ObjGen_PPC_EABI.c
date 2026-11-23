@@ -238,6 +238,11 @@ void ObjGen_Setup(void) {
     unused_flag = FALSE;
     objcodesize = object_storage_size = object_data_size = unused_size = 0;
     IRO_Setup();
+#if VERSION == VERSION_WII_1_0RC1
+    if (copts.processor == CPU_PPCGEKKO) {
+        copts.numbered_diagnostics = TRUE;
+    }
+#endif
 }
 
 #if VERSION == VERSION_WII_1_0RC1

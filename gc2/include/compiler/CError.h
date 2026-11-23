@@ -345,6 +345,7 @@ extern void CError_Warning(int code, ...);
 #if VERSION == VERSION_WII_1_0RC1
 enum { ERR_ILLEGAL_JUMP_INTO_TRY_CATCH = 577 };
 extern void CError_ANSIErrorWarning(int code, const FileOffsetInfo* source, ...);
+extern void CError_WarningAt(int code, const FileOffsetInfo* source, ...);
 #endif
 extern void CError_Internal(char* filename, int line);
 extern void CError_NoMem(void);

@@ -3326,7 +3326,7 @@ void CodeGen_ParsePragma(HashNameNode* name, const FileOffsetInfo* source) {
 
     if (copts.warn_illpragma) {
 #if VERSION == VERSION_WII_1_0RC1
-        CError_ANSIErrorWarning(ERR_ILLEGAL_PRAGMA, source);
+        CError_WarningAt(ERR_ILLEGAL_PRAGMA, source);
 #else
         CPrep_Warning(ERR_ILLEGAL_PRAGMA);
 #endif

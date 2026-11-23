@@ -3212,6 +3212,83 @@ void member_call(V* v) { Guard guard; v->g(); }
         raise ValueError(f"{compiler}: unexpected pragma diagnostic\n{output}")
     results[source.name] = lines[1:]
 
+    duplicate_typedefs = {
+        "duplicate_typedef.c": (
+            "typedef int Count;\n"
+            "typedef int Count;\n"
+            "typedef void (*Callback)(Count);\n"
+            "typedef void (*Callback)(int x);\n"
+            "int identity(Count value) { return value; }\n",
+            ("Count", "Callback"),
+        ),
+        "duplicate_typedef.cpp": (
+            "typedef int Count;\n"
+            "typedef int Count;\n"
+            "struct Holder { typedef int Value; typedef int Value; };\n"
+            "int identity(Count value) { return value; }\n",
+            ("Value",),
+        ),
+    }
+    strict = ("-pragma", "ANSI_strict on")
+    for name, (contents, aliases) in duplicate_typedefs.items():
+        source = work / name
+        source.write_text(contents, encoding="ascii")
+        messages = [f">(10122) identifier '{alias}' redeclared" for alias in aliases]
+        cases = [
+            ((), messages, 0),
+            (("-w", "off"), [], 0),
+            (strict + ("-w", "off"), messages, 1),
+        ]
+        if source.suffix == ".c":
+            cases.append((("-pragma", "cpp_extensions on"), [], 0))
+        for flags, expected, status in cases:
+            process = subprocess.run(
+                (compiler, *FLAGS, *flags, "-msgstyle", "parseable", "-c", source.name,
+                 "-o", source.with_suffix(".o")),
+                cwd=work, capture_output=True, text=True, timeout=30,
+            )
+            output = process.stdout + process.stderr
+            if process.returncode != status or [
+                line for line in output.splitlines() if line.startswith(">")
+            ] != expected:
+                raise ValueError(f"{compiler}: unexpected typedef diagnostic\n{output}")
+            results[f"{name} {flags}"] = (process.stdout, process.stderr)
+
+    source = work / "conflicting_typedef.c"
+    source.write_text("typedef int Count;\ntypedef unsigned Count;\n", encoding="ascii")
+    for processor, prefix in (("gekko", "(10249) "), ("750", "")):
+        process = subprocess.run(
+            (compiler, "-nodefaults", "-proc", processor, "-fp", "hard", "-msgstyle",
+             "parseable", "-c", source.name, "-o", source.with_suffix(".o")),
+            cwd=work, capture_output=True, text=True, timeout=30,
+        )
+        output = process.stdout + process.stderr
+        if process.returncode != 1 or f">{prefix}identifier 'Count' redeclared" not in output:
+            raise ValueError(f"{compiler}: unexpected conflicting typedef diagnostic\n{output}")
+        results[f"{source.name} {processor}"] = (process.stdout, process.stderr)
+
+    source = work / "strict_diagnostics.cpp"
+    source.write_text(
+        "#pragma warn_illpragma on\n"
+        "#pragma not_a_pragma on\n"
+        "void jump() { goto end; int initialized = 1; end:; }\n",
+        encoding="ascii",
+    )
+    process = subprocess.run(
+        (compiler, *FLAGS, *strict, "-msgstyle", "parseable", "-c", source.name,
+         "-o", source.with_suffix(".o")),
+        cwd=work, capture_output=True, text=True, timeout=30,
+    )
+    output = process.stdout + process.stderr
+    if process.returncode != 1 or [
+        line for line in output.splitlines() if line.startswith(">")
+    ] != [
+        ">(10186) illegal #pragma",
+        ">(10211) illegal jump past 'initialized' declaration/initializer",
+    ]:
+        raise ValueError(f"{compiler}: unexpected strict-mode diagnostic\n{output}")
+    results[source.name] = (process.stdout, process.stderr)
+
     source = work / "jump_warnings.cpp"
     jump_warnings = (
         "#define GO(label) goto label\n"

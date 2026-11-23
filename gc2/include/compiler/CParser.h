@@ -302,6 +302,7 @@ struct CompilerLinkerOptions {
     Boolean e500v2_floatingpoint;
     Boolean optimize_tail_call;
     Boolean ppc_dont_balance_ir;
+    Boolean numbered_diagnostics;
 #endif
 };
 #pragma pack(pop)
