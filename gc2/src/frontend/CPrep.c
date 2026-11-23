@@ -4488,6 +4488,7 @@ static void preppragma(void) {
             CPrep_PragmaInlineDepth();
 #if VERSION == VERSION_WII_1_0RC1
         } else if (!strcmp(tkidentifier->name, "inline_max_auto_size")) {
+            macrocheck = TRUE;
             CPrep_PragmaInlineMaxSize(&copts.inlinemaxautosize);
 #endif
         } else if (!strcmp(tkidentifier->name, "inline_max_size")) {

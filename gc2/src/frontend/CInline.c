@@ -4822,9 +4822,7 @@ static Boolean CInline_IsSmallFunction(Object* object, Statement* stmt) {
     while (stmt) {
 #if VERSION == VERSION_WII_1_0RC1
         if (stmt->type != ST_NOP && stmt->type != ST_LABEL &&
-            (stmt->type != ST_EXPRESSION ||
-             (stmt->expr->type != EFUNCCALL && stmt->expr->type != EFUNCCALLP &&
-              stmt->expr->type != ESCOPE))) {
+            (stmt->type != ST_EXPRESSION || stmt->expr->type != ESCOPE)) {
             statementCount++;
         }
         if (statementCount > copts.inlinemaxautosize) {

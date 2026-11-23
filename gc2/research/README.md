@@ -688,6 +688,10 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   `0x449CA0` and `0x4654A0`. The driver handles the `Ai` and `Fa` optimization flags in
   `TargetSetOptFlags` at `0x435850`. `CInline_CheckInlineability` at `0x55D210`
   uses the auto-inline statement and local-storage limits in its speed path.
+  The statement count at `0x55d302` includes standalone calls, including
+  Pascal calls. Stock skips `ESCOPEBEGIN`, `ESCOPEEND`, and `EINFO`, which
+  the port represents with `ESCOPE`. The `inline_max_auto_size` handler
+  at `0x446bd0` reads the limit after macro expansion.
   With `-O4,s`, the call-site check at `0x55dad0` compares the estimated
   sizes before and after expansion. The fast estimate at `0x55f833`
   applies when the callee costs more than ten units and the call costs

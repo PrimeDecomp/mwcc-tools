@@ -1586,13 +1586,38 @@ def check(compiler, objcopy, nm, objdump, work):
         if actual != expected:
             raise ValueError(f"{compiler}: {' '.join(args)} expands auto_inline to {actual!r}, expected {expected}")
 
+    results = {}
+    source = work / "auto_inline_limit.cpp"
+    obj = source.with_suffix(".o")
+    body = """\
+extern void ext(int);
+extern pascal void ext_pascal(int);
+static int plain(int x) { return x + 3; }
+static int with_call(int x) { ext(x); return x; }
+static int with_pascal(int x) { ext_pascal(x); return x; }
+static int with_scope(int x) { { int unused; } return x; }
+int call_plain(int x) { return plain(x); }
+int call_with(int x) { return with_call(x); }
+int call_pascal(int x) { return with_pascal(x); }
+int call_scope(int x) { return with_scope(x); }
+"""
+    for limit in ("0", "1", "2", "LIMIT", "VALUE(1)"):
+        source.write_text(
+            f"#define LIMIT 1\n#define VALUE(x) x\n#pragma inline_max_auto_size({limit})\n" + body,
+            encoding="ascii",
+        )
+        output = run(compiler, *FLAGS, "-O4,p", "-inline", "auto", "-Cpp_exceptions", "off",
+                     "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        if "illegal #pragma" in output:
+            raise ValueError(f"{compiler}: rejected inline limit {limit}\n{output}")
+        results[f"{source.name} {limit}"] = obj.read_bytes()
+
     cases = (
         ("increment.cpp", CPP_SOURCE, (14, 19)),
         ("copy_word.c", COPY_SOURCE, (32, 32, 36, 36, 19)),
         ("copy_byte.c", "#pragma legacy_struct_alignment on\n" + COPY_SOURCE, (34, 34, 38, 38) * 4 + (19,)),
         ("copy_fp.c", "#pragma ppc_no_fp_blockmove off\n" + COPY_SOURCE, (50, 54, 19)),
     )
-    results = {}
     for name, content, expected in cases:
         source = work / name
         source.write_text(content, encoding="ascii")
