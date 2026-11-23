@@ -519,7 +519,8 @@ Boolean CIRStream_UnpackFunctionOptions(
     const CIRStreamFunctionHeader* header, struct CInlineBackendOptions* options
 ) {
     const UInt8* bytes = header->options.bytes;
-    UInt32 branchRange;
+    UInt32 conditionalRange;
+    UInt32 unconditionalRange;
 
     if (header->options.size != CIRStreamFunctionOptionsSize || bytes[0x78] > 7) {
         return FALSE;
@@ -537,11 +538,10 @@ Boolean CIRStream_UnpackFunctionOptions(
     options->function_align = (UInt8)(1U << bytes[0x78]);
     options->peephole = bytes[0x12] ? CInlinePeepholeOn : CInlinePeepholeOff;
     options->opt_bcc_lr_ctr = bytes[0x9e];
-    branchRange = CIRStream_ReadWord(bytes + 0xa8);
-    // Sidecars from older source builds omitted both range words.
-    if (branchRange || CIRStream_ReadWord(bytes + 0xac)) {
-        options->bc_range = branchRange ? branchRange : CInlineExplicitZeroBranchRange;
-    }
+    conditionalRange = CIRStream_ReadWord(bytes + 0xa8);
+    unconditionalRange = CIRStream_ReadWord(bytes + 0xac);
+    options->bc_range = conditionalRange ? conditionalRange : CInlineExplicitZeroConditionalBranchRange;
+    options->b_range = unconditionalRange ? unconditionalRange : CInlineExplicitZeroUnconditionalBranchRange;
     return TRUE;
 }
 
@@ -554,7 +554,8 @@ Boolean CIRStream_PackFunctionOptions(
 ) {
     UInt8 bytes[CIRStreamFunctionOptionsSize];
     UInt8 alignment = options->function_align;
-    UInt32 branchRange = options->bc_range ? options->bc_range : 0x10000;
+    UInt32 conditionalRange = options->bc_range ? options->bc_range : PPCDefaultConditionalBranchRange;
+    UInt32 unconditionalRange = options->b_range ? options->b_range : PPCDefaultUnconditionalBranchRange;
 
     if (!alignment || (alignment & (alignment - 1))) {
         return FALSE;
@@ -577,8 +578,8 @@ Boolean CIRStream_PackFunctionOptions(
 #undef WRITE_BYTE
     bytes[0x12] = options->peephole ? options->peephole == CInlinePeepholeOn : defaultPeephole;
     bytes[0x9e] = options->opt_bcc_lr_ctr;
-    CIRStream_WriteWord(bytes + 0xa8, branchRange == CInlineExplicitZeroBranchRange ? 0 : branchRange);
-    CIRStream_WriteWord(bytes + 0xac, 0x04000000);
+    CIRStream_WriteWord(bytes + 0xa8, conditionalRange == CInlineExplicitZeroConditionalBranchRange ? 0 : conditionalRange);
+    CIRStream_WriteWord(bytes + 0xac, unconditionalRange == CInlineExplicitZeroUnconditionalBranchRange ? 0 : unconditionalRange);
     bytes[0xb7] = CPU_IS_SPE(options->processor);
     bytes[0xce] = canInline;
     bytes[0xcf] = initializer;

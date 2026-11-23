@@ -32,6 +32,9 @@ extern short lookahead(void);
 extern short lookahead_noeol(void);
 extern short lex(void);
 extern short plex(void);
+#if VERSION == VERSION_WII_1_0RC1
+extern short CPrep_LexPragmaToken(TStreamElement* source);
+#endif
 extern short lexidentifier(void);
 
 #ifdef __cplusplus

@@ -111,7 +111,11 @@ CompilerOption compileroptions[] = {
     "ppc_opt_bclr_bcctr", OPT_OFFSET(opt_bcc_lr_ctr),
     "misaligned_mem_access", OPT_OFFSET(misaligned_mem_access),
     "switch_tables", OPT_OFFSET(switch_tables),
+#if VERSION == VERSION_WII_1_0RC1
+    "prepare_compress", OPT_FLAG_NOPRAGMA | OPT_OFFSET(prepare_compress),
+#else
     "prepare_compress", OPT_OFFSET(prepare_compress),
+#endif
     "unsafe_global_reg_vars", OPT_OFFSET(unsafe_global_reg_vars),
     "ignore_global_reg_vars", OPT_OFFSET(ignore_global_reg_vars),
     "gprfloatcopy", OPT_OFFSET(gprfloatcopy),
@@ -1128,6 +1132,23 @@ static short CPrep_TokenSize(char* str) {
     int len;
     short c;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if ((str[0] >= '0' && str[0] <= '9') || (str[0] == '.' && str[1] >= '0' && str[1] <= '9')) {
+        len = 1;
+        for (;;) {
+            c = str[len];
+            if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') ||
+                (c >= 'A' && c <= 'Z') || c == '_' || c == '.' ||
+                ((c == '+' || c == '-') &&
+                 (str[len - 1] == 'e' || str[len - 1] == 'E' ||
+                  str[len - 1] == 'p' || str[len - 1] == 'P'))) {
+                ++len;
+            } else {
+                return len;
+            }
+        }
+    }
+#endif
     if ((str[0] >= 'a' && str[0] <= 'z') || (str[0] >= 'A' && str[0] <= 'Z') || (str[0] == '_')) {
         len = 1;
         str++;

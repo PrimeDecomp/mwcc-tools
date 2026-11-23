@@ -683,15 +683,18 @@ static Boolean check_function_options(const CIRStreamFunctionHeader* function) {
         options.inlinelevel == 19;
 }
 
-Boolean CIRTest_CheckBranchRanges(const UInt8* bytes, UInt32 size, UInt32 entryRange) {
+Boolean CIRTest_CheckBranchRanges(
+    const UInt8* bytes, UInt32 size, UInt32 entryConditionalRange, UInt32 entryUnconditionalRange
+) {
     CIRStreamImportedGraph graph;
     UInt32 index;
     UInt32 definitions = 0;
     CIRStreamNode* node;
-    CIRStreamFunctionHeader function;
+    const CIRStreamFunctionHeader* function;
     struct CInlineBackendOptions options = {0};
-    UInt8 legacy[CIRStreamFunctionOptionsSize];
-    UInt32 range;
+    Boolean entry;
+    UInt32 conditionalRange;
+    UInt32 unconditionalRange;
 
     if (!CIRStream_ImportCallGraph(bytes, size, new_root(), TRUE, &graph)) {
         return FALSE;
@@ -701,20 +704,15 @@ Boolean CIRTest_CheckBranchRanges(const UInt8* bytes, UInt32 size, UInt32 entryR
         if (node->kind != CIRStreamFunctionNode || !node->definition.function.header.code.size) {
             continue;
         }
-        function = node->definition.function.header;
-        range = equal_string(node->decl.name->name, "__start") ? entryRange : 0x10000;
-        if (!CIRStream_UnpackFunctionOptions(&function, &options) ||
-            options.bc_range != (range ? range : CInlineExplicitZeroBranchRange) ||
-            CIRStream_ReadWord(function.options.bytes + 0xa8) != range ||
-            CIRStream_ReadWord(function.options.bytes + 0xac) != 0x04000000) {
-            return FALSE;
-        }
-        memcpy(legacy, function.options.bytes, sizeof(legacy));
-        CIRStream_WriteWord(legacy + 0xa8, 0);
-        CIRStream_WriteWord(legacy + 0xac, 0);
-        function.options.bytes = legacy;
-        options.bc_range = 256;
-        if (!CIRStream_UnpackFunctionOptions(&function, &options) || options.bc_range != 256) {
+        function = &node->definition.function.header;
+        entry = equal_string(node->decl.name->name, "__start");
+        conditionalRange = entry ? entryConditionalRange : PPCDefaultConditionalBranchRange;
+        unconditionalRange = entry ? entryUnconditionalRange : PPCDefaultUnconditionalBranchRange;
+        if (!CIRStream_UnpackFunctionOptions(function, &options) ||
+            options.bc_range != (conditionalRange ? conditionalRange : CInlineExplicitZeroConditionalBranchRange) ||
+            options.b_range != (unconditionalRange ? unconditionalRange : CInlineExplicitZeroUnconditionalBranchRange) ||
+            CIRStream_ReadWord(function->options.bytes + 0xa8) != conditionalRange ||
+            CIRStream_ReadWord(function->options.bytes + 0xac) != unconditionalRange) {
             return FALSE;
         }
         ++definitions;

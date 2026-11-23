@@ -1372,10 +1372,13 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
 - The conditional and unconditional branch ranges are little-endian words at offsets
   `0xa8` and `0xac` of the function options block. Stock reads them in
   `CMach_SetBackEndOptions` at `0x4F07F4` and `0x4F0800`. The defaults are
-  `0x10000` and `0x04000000`. The `bc_range` pragma doubles a numeric argument at
-  `0x466E87` before checking the limit. Stock populates the unconditional range even
-  when the conditional range is zero. Older source sidecars omitted both words.
-  The source reader preserves the active range when both words are zero.
+  `0x10000` and `0x04000000`. The `bc_range` and `b_range` pragmas double
+  numeric arguments at `0x466E87` and `0x466F57` before checking their limits.
+  Zero is a valid setting in both fields, including when both are zero. A local
+  relative `b` checks its displacement against `-(b_range / 2)` through
+  `b_range / 2 - 1` at `0x59D637`. A local `bl`, an immediate, and an external
+  relocation bypass that check. The backend resets both ranges when disabling
+  compression and requires custom ranges to appear after enabling it.
 - `CMach_GetBackEndOptions` at `0x4F09C2` reads the peephole setting from
   `0x74F4CA` and writes it to byte `0x12`. `CMach_SetBackEndOptions` at
   `0x4F02B7` restores it. Compiling a function-local static with `-opt peep`

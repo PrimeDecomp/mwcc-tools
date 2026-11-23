@@ -2779,6 +2779,22 @@ static void pragma_scheduling(void) {
 }
 
 static void update_bc_range(Boolean compressing) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (compressing) {
+        if (copts.bc_range != PPCDefaultConditionalBranchRange) {
+            PPCError_Error(PPCERR_PRAGMA_NEEDS_PREPARE_COMPRESS, "bc_range");
+        }
+        if (copts.b_range != PPCDefaultUnconditionalBranchRange) {
+            PPCError_Error(PPCERR_PRAGMA_NEEDS_PREPARE_COMPRESS, "b_range");
+        }
+        copts.switch_tables = FALSE;
+        copts.bc_range = 0x1000;
+    } else {
+        copts.switch_tables = TRUE;
+        copts.bc_range = PPCDefaultConditionalBranchRange;
+    }
+    copts.b_range = PPCDefaultUnconditionalBranchRange;
+#else
     if (compressing) {
         copts.switch_tables = FALSE;
         if (copts.prepare_compress) {
@@ -2794,7 +2810,48 @@ static void update_bc_range(Boolean compressing) {
         copts.switch_tables = 1;
         copts.bc_range = 0x10000;
     }
+#endif
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static void check_branch_range_pragma_end(TStreamElement* argument) {
+    TStreamElement* saved;
+
+    if (notendofline()) {
+        CError_LockErrorPos(argument, &saved);
+        CError_Error(ERR_END_LINE_EXPECTED);
+        CError_UnlockErrorPos(&saved);
+        skipendofline();
+    }
+}
+
+static void pragma_branch_range(UInt32* range, UInt32 maximum, UInt32 defaultRange) {
+    TStreamElement argument = {0};
+    TStreamElement* saved;
+    short token = CPrep_LexPragmaToken(&argument);
+
+    CError_LockErrorPos(&argument, &saved);
+    if (token == TK_INTCONST) {
+        *range = CInt64_GetULong(&tkintconst) * 2U;
+        if (*range > maximum) {
+            *range = maximum;
+            CError_Error(ERR_ILLEGAL_PRAGMA);
+        }
+    } else if (token == TK_DEFAULT) {
+        *range = defaultRange;
+    } else if (token == TK_IDENTIFIER && !strcmp(tkidentifier->name, "off")) {
+        *range = maximum;
+    } else {
+        CError_Error(ERR_ILLEGAL_PRAGMA);
+        if (token == TK_IDENTIFIER) {
+            CError_UnlockErrorPos(&saved);
+            return;
+        }
+    }
+    CError_UnlockErrorPos(&saved);
+    check_branch_range_pragma_end(&argument);
+}
+#endif
 
 void CodeGen_ParsePragma(HashNameNode* name, const FileOffsetInfo* source) {
     short t;
@@ -2835,7 +2892,15 @@ void CodeGen_ParsePragma(HashNameNode* name, const FileOffsetInfo* source) {
     }
 
     if (!strcmp(name->name, "prepare_compress")) {
-        if (plex() == TK_IDENTIFIER) {
+#if VERSION == VERSION_WII_1_0RC1
+        TStreamElement argument = {0};
+        TStreamElement* saved;
+        t = CPrep_LexPragmaToken(&argument);
+        CError_LockErrorPos(&argument, &saved);
+#else
+        t = plex();
+#endif
+        if (t == TK_IDENTIFIER) {
             if (!strcmp(tkidentifier->name, "off")) {
                 CPrep_PushOption(OPT_OFFSET(prepare_compress), 0);
             } else if (!strcmp(tkidentifier->name, "on")) {
@@ -2844,31 +2909,45 @@ void CodeGen_ParsePragma(HashNameNode* name, const FileOffsetInfo* source) {
                 CPrep_PopOption(OPT_OFFSET(prepare_compress));
             } else {
                 CError_Error(ERR_ILLEGAL_PRAGMA);
+#if VERSION == VERSION_WII_1_0RC1
+                CError_UnlockErrorPos(&saved);
+#endif
                 return;
             }
         } else {
             CError_Error(ERR_ILLEGAL_PRAGMA);
         }
         update_bc_range(copts.prepare_compress);
+#if VERSION == VERSION_WII_1_0RC1
+        CError_UnlockErrorPos(&saved);
+        check_branch_range_pragma_end(&argument);
+#else
         CodeGen_EOLCheck();
+#endif
         return;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (!strcmp(name->name, "b_range")) {
+        pragma_branch_range(&copts.b_range, PPCDefaultUnconditionalBranchRange, PPCDefaultUnconditionalBranchRange);
+        return;
+    }
+    if (!strcmp(name->name, "bc_range")) {
+        pragma_branch_range(
+            &copts.bc_range, PPCDefaultConditionalBranchRange,
+            copts.prepare_compress ? 0x1000 : PPCDefaultConditionalBranchRange
+        );
+        return;
+    }
+#else
     if (!strcmp(name->name, "bc_range")) {
         t = plex();
         if (t == TK_INTCONST) {
             copts.bc_range = CInt64_GetULong(&tkintconst);
-#if VERSION == VERSION_WII_1_0RC1
-            copts.bc_range *= 2;
-#endif
             if (copts.bc_range > 0x10000) {
                 copts.bc_range = 0x10000;
                 CError_Error(ERR_ILLEGAL_PRAGMA);
             }
-#if VERSION == VERSION_WII_1_0RC1
-        } else if (t == TK_DEFAULT) {
-            copts.bc_range = copts.prepare_compress ? 0x1000 : 0x10000;
-#endif
         } else if (t == TK_IDENTIFIER) {
             if (!strcmp(tkidentifier->name, "off")) {
                 copts.bc_range = 0x10000;
@@ -2884,6 +2963,7 @@ void CodeGen_ParsePragma(HashNameNode* name, const FileOffsetInfo* source) {
         CodeGen_EOLCheck();
         return;
     }
+#endif
 
     if (!strcmp(name->name, "gprfloatcopy")) {
         if (plex() == TK_IDENTIFIER) {

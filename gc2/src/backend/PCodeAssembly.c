@@ -247,7 +247,14 @@ UInt32 assemblepcode(PCode* instr, UInt32 offset, WeirdOperand* wop) {
                     bits |= 2;
                 }
             } else {
-                bits |= (instr->args[0].data.label.label->block->codeOffset - offset) & 0x3FFFFFC;
+                SInt32 displacement = instr->args[0].data.label.label->block->codeOffset - offset;
+                bits |= displacement & 0x3FFFFFC;
+#if VERSION == VERSION_WII_1_0RC1
+                SInt32 halfRange = copts.b_range >> 1;
+                if (displacement < -halfRange || displacement >= halfRange) {
+                    PPCError_Error(PPCERR_BRANCH_OUT_OF_RANGE, displacement, halfRange - 1, -halfRange);
+                }
+#endif
                 if (isAbsolute) {
                     CError_FATAL(312);
                 }

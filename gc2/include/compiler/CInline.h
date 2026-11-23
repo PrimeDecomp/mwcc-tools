@@ -13,8 +13,9 @@ extern "C" {
 
 #if VERSION == VERSION_WII_1_0RC1
 enum {
-    // Earlier source PCHs left bc_range at zero. Keep that value for missing options.
-    CInlineExplicitZeroBranchRange = 0x10001
+    // Earlier source PCHs left these slots at zero. Keep that value for missing options.
+    CInlineExplicitZeroConditionalBranchRange = 0x10001,
+    CInlineExplicitZeroUnconditionalBranchRange = 0x04000001
 };
 enum {
     CInlinePeepholeOff = 1,
@@ -73,7 +74,12 @@ struct CInlineBackendOptions {
     struct ObjGenSection* constSection;
     struct ObjGenSection* sdataSection;
     struct ObjGenSection* sconstSection;
+#if VERSION == VERSION_WII_1_0RC1
+    // Reuse the unused sectionHeaderTableSize slot in source PCHs.
+    UInt32 b_range;
+#else
     SInt32 sectionHeaderTableSize;
+#endif
     struct SectionSymbolAttributes** sectionHeaderTable;
     struct InterruptList* interruptList;
     struct InterruptGenerationRecord* interruptOptions;

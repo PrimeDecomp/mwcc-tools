@@ -2821,11 +2821,21 @@ skipped:
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+short CPrep_LexPragmaToken(TStreamElement* source) {
+#else
 short plex(void) {
+#endif
     short t;
 
     while (1) {
         t = prepskipnextchar();
+#if VERSION == VERSION_WII_1_0RC1
+        if (source) {
+            CPrep_GetPrepPos(&source->tokenfile, &source->tokenoffset);
+            source->tokenline = linenumber;
+        }
+#endif
         pos = nextcharpos;
         if ((t = cprep_tokenize[t](t))) {
             return t;
@@ -2844,6 +2854,12 @@ short plex(void) {
 
     return 0;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+short plex(void) {
+    return CPrep_LexPragmaToken(NULL);
+}
+#endif
 
 short lexidentifier(void) {
     short t;

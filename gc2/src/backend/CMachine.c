@@ -2684,7 +2684,8 @@ void CMach_GetBackEndOptions(struct CInlineBackendOptions* options) {
     options->inlinemaxsize = copts.inlinemaxsize;
     options->inlinemaxtotalsize = copts.inlinemaxtotalsize;
     options->peephole = copts.peephole ? CInlinePeepholeOn : CInlinePeepholeOff;
-    options->bc_range = copts.bc_range ? copts.bc_range : CInlineExplicitZeroBranchRange;
+    options->bc_range = copts.bc_range ? copts.bc_range : CInlineExplicitZeroConditionalBranchRange;
+    options->b_range = copts.b_range ? copts.b_range : CInlineExplicitZeroUnconditionalBranchRange;
     options->gprfloatcopy = copts.gprfloatcopy;
     options->switch_tables = copts.switch_tables;
 #endif
@@ -2771,7 +2772,10 @@ void CMach_SetBackEndOptions(struct CInlineBackendOptions* options) {
         copts.peephole = options->peephole == CInlinePeepholeOn;
     }
     if (options->bc_range) {
-        copts.bc_range = options->bc_range == CInlineExplicitZeroBranchRange ? 0 : options->bc_range;
+        copts.bc_range = options->bc_range == CInlineExplicitZeroConditionalBranchRange ? 0 : options->bc_range;
+    }
+    if (options->b_range) {
+        copts.b_range = options->b_range == CInlineExplicitZeroUnconditionalBranchRange ? 0 : options->b_range;
     }
     copts.gprfloatcopy = options->gprfloatcopy;
     copts.switch_tables = options->switch_tables;

@@ -2289,6 +2289,45 @@ int local(int value) {
     return results
 
 
+def check_unconditional_branch_ranges(compiler, objcopy, work):
+    forward = "asm void target() {\n    b label\n    nop\n    nop\nlabel:\n    blr\n}\n"
+    backward = "asm void target() {\nlabel:\n    nop\n    nop\n    nop\n    b label\n}\n"
+    results = {}
+    for name, pragmas, body, diagnostic in (
+        ("forward_out", "#pragma b_range 12\n", forward, "(33122) branch instruction needs to branch 12 but range is 11 ... -12"),
+        ("forward_in", "#pragma b_range 13\n", forward, None),
+        ("backward_out", "#pragma b_range 11\n", backward, "(33122) branch instruction needs to branch -12 but range is 10 ... -11"),
+        ("backward_in", "#pragma b_range 12\n", backward, None),
+        ("absolute_label", "#pragma b_range 0\n", forward.replace("b label", "ba label"),
+         "(33078) illegal use of label or constant in a absolute branch"),
+        ("compressed_reset", "#pragma b_range 4\n#pragma prepare_compress off\n", forward, None),
+        ("compressed_conflict", "#pragma b_range 4\n#pragma prepare_compress on\n",
+         "int target(int x) { return x + 1; }\n", "(33121) use pragma b_range after pragma prepare_compress"),
+        ("invalid", "#pragma b_range 0x2000001\n", "int target(int x) { return x + 1; }\n", "(10186) illegal #pragma"),
+        ("float", "#pragma b_range 1e+2\n", "int target(int x) { return x + 1; }\n", "(10186) illegal #pragma"),
+        ("eol", "#pragma b_range off extra\n", "int target(int x) { return x + 1; }\n", "(10113) end of line expected"),
+    ):
+        source = work / f"b_range_{name}.cpp"
+        source.write_text(pragmas + body, encoding="ascii")
+        obj = source.with_suffix(".o")
+        proc = subprocess.run(
+            (compiler, *FLAGS, "-O0", "-inline", "noauto", "-func_align", "4", "-Cpp_exceptions", "off",
+             "-c", source.name, "-o", obj),
+            cwd=work, text=True, capture_output=True, timeout=30,
+        )
+        if diagnostic:
+            if proc.returncode != 1 or diagnostic not in proc.stdout:
+                raise ValueError(f"{compiler}: unexpected {name} branch diagnostics\n{proc.stdout}{proc.stderr}")
+            results[source.name] = (proc.stdout, proc.stderr)
+        else:
+            if proc.returncode or proc.stdout or proc.stderr:
+                raise ValueError(f"{compiler}: {name} branch failed\n{proc.stdout}{proc.stderr}")
+            section = source.with_suffix(".text")
+            run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+            results[source.name] = section.read_bytes()
+    return results
+
+
 def check(compiler, objcopy, nm, objdump, work):
     if "Version 4.2 build 140" not in run(compiler, "-version", cwd=work):
         raise ValueError(f"{compiler}: incorrect version banner")
@@ -4349,6 +4388,7 @@ bool same(const Values& a, const Values& b) {
         results[f"{name} {opt}"] = section.read_bytes()
     check_pch(compiler, objcopy, work)
     check_source_encoding(compiler, objcopy, work)
+    results.update(check_unconditional_branch_ranges(compiler, objcopy, work))
     return results
 
 

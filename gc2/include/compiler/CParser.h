@@ -13,6 +13,12 @@ extern "C" {
 #endif
 
 #pragma pack(push, 2)
+#if VERSION == VERSION_WII_1_0RC1
+enum {
+    PPCDefaultConditionalBranchRange = 0x10000,
+    PPCDefaultUnconditionalBranchRange = 0x04000000
+};
+#endif
 enum {
     AlignMode0_Mac68k,
     AlignMode1_Mac68k4byte,
@@ -310,6 +316,7 @@ struct CompilerLinkerOptions {
     Boolean space_prepdump;
     Boolean macro_prepdump;
     Boolean pool_float_constants;
+    UInt32 b_range;
 #endif
 };
 #pragma pack(pop)

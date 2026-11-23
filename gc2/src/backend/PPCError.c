@@ -19,6 +19,12 @@ static void PPCError_VAErrorMessage(int code, va_list list, Boolean isTerminal, 
 #if VERSION == VERSION_WII_1_0RC1
     if (code == PPCERR_SECTION_PERMISSION_CHANGED) {
         messageCode = 33058;
+    } else if (code == PPCERR_ASM_ABSOLUTE_BRANCH_TARGET) {
+        messageCode = 33078;
+    } else if (code == PPCERR_PRAGMA_NEEDS_PREPARE_COMPRESS) {
+        messageCode = 33121;
+    } else if (code == PPCERR_BRANCH_OUT_OF_RANGE) {
+        messageCode = 33122;
     }
 #endif
     CError_ErrorMessageVA(messageCode, format, list, isTerminal, isWarning);

@@ -4,6 +4,7 @@
 import argparse
 import ctypes as c
 import os
+import subprocess
 import tempfile
 from _ctypes import FreeLibrary
 from pathlib import Path
@@ -111,7 +112,7 @@ def load_codec(work):
         function.argtypes = args
         setattr(library, name, function)
     library.CIRTest_CheckBranchRanges.restype = Byte
-    library.CIRTest_CheckBranchRanges.argtypes = [Pointer, U32, U32]
+    library.CIRTest_CheckBranchRanges.argtypes = [Pointer, U32, U32, U32]
     library.CIRTest_CheckFunctions.restype = U32
     library.CIRTest_CheckFunctions.argtypes = [Pointer, U32, Byte]
     library.CIRTest_RepackGraph.restype = U32
@@ -483,21 +484,41 @@ def check_program_inline_strings(compiler, reference, work):
 
 def check_program_branch_ranges(codec, compiler, reference, work):
     flags = ("-inline", "noauto", "-func_align", "4", "-Cpp_exceptions", "off")
-    for pragma, expected in (("default", 65536), ("0", 0), ("8", 16)):
+    guard = "static int value = next_value(); return value;"
+    linker_path = os.pathsep.join((str(reference.parent), os.environ.get("PATH", "")))
+    for case, conditional, unconditional, expected, entry in (
+        ("default", "default", "default", (65536, 67108864), guard),
+        ("conditional_zero", "0", "off", (0, 67108864), guard),
+        ("custom", "8", "32", (16, 64), guard),
+        ("both_zero", "0", "0", (0, 0), "return next_value();"),
+        ("out_of_range", "0", "0", (0, 0), guard),
+    ):
         (work / "branch_ranges.cpp").write_text(
             "volatile int counter;\n"
             "static int next_value() { return ++counter; }\n"
-            f"#pragma bc_range {pragma}\n"
-            'extern "C" int __start() { static int value = next_value(); return value; }\n',
+            f"#pragma bc_range {conditional}\n"
+            f"#pragma b_range {unconditional}\n"
+            f'extern "C" int __start() {{ {entry} }}\n',
             "ascii",
         )
         for prefix, producer in (("stock", reference), ("source", compiler)):
-            name = f"{prefix}_range_{pragma}"
+            name = f"{prefix}_range_{case}"
             run(producer, *FLAGS, "-O4,p", *flags, "-ipa", "program", "-c",
                 "branch_ranges.cpp", "-o", f"{name}.o", cwd=work)
             data = (work / f"{name}.irobj").read_bytes()
-            assert codec.CIRTest_CheckBranchRanges(data, len(data), expected), name
-            assert linked_program_text(reference, work, name, flags=(*flags, "-nostdlib")), name
+            assert codec.CIRTest_CheckBranchRanges(data, len(data), *expected), name
+            if case == "out_of_range":
+                with patch.dict(os.environ, PATH=linker_path):
+                    for linker in (reference, compiler):
+                        proc = subprocess.run(
+                            (linker, *FLAGS, "-O4,p", *flags, "-nostdlib", "-ipa", "program",
+                             f"{name}.irobj", "-o", f"{name}.elf"),
+                            cwd=work, text=True, capture_output=True, timeout=30,
+                        )
+                        assert proc.returncode == 1, name
+                        assert "(33122) branch instruction needs to branch 20 but range is -1 ... 0" in proc.stdout, name
+            else:
+                assert linked_program_text(reference, work, name, flags=(*flags, "-nostdlib")), name
 
 
 def check_program_peephole(compiler, reference, work):

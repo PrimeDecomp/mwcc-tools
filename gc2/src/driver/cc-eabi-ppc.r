@@ -386,7 +386,11 @@ static const char *STR10001[] = {
     "PCode cannot access the global variable %o, because it has been stored in the TOC.",
     "PCode cannot use long long.",
     "PCode function cannot take a variable argument list.",
+#if VERSION == VERSION_WII_1_0RC1
+    "illegal use of label or constant in a absolute branch",
+#else
     "illegal use of label or object in a absolute branch.",
+#endif
     "AltiVec PIM requires warning for volatile parameter to %u.",
     "Mach-O can't load a float constant directly. Use addis rX,picbase,ha16(float_const_var); lfd fX,lo16(float_const_var)(rX)",
     "Illegal addressing mode (32 bit). Try constructing an address using addis rX,rPIC,ha16(var); lwz rX,lo16(var)(rX)",

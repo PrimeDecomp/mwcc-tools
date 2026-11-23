@@ -492,7 +492,12 @@ void CodeGen_InitBackEndOptions(void) {
     copts.opt_bcc_lr_ctr = TRUE;
     copts.optimizewithasm = TRUE;
     copts.strengthreductionstrict = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+    copts.bc_range = PPCDefaultConditionalBranchRange;
+    copts.b_range = PPCDefaultUnconditionalBranchRange;
+#else
     copts.bc_range = 0x10000;
+#endif
     copts.gprfloatcopy = FALSE;
 #if VERSION == VERSION_WII_1_0RC1
     copts.ppc_no_fp_blockmove = TRUE;
