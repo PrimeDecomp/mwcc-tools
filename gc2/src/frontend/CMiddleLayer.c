@@ -20,6 +20,7 @@
 #include "compiler/scopes.h"
 #include "driver/COSToolsCLT.h"
 #include "driver/DropInCompilerLinker.h"
+#include "driver/Files.h"
 #include "driver/Generic.h"
 #include "driver/MacSpecs.h"
 #include "driver/Memory.h"
@@ -725,7 +726,7 @@ static Boolean read_program_graph(const CWProgramInput* input, CIRStreamImported
         memcpy(bytes, *input->ir, size);
         HUnlock(input->ir);
     } else {
-        if (COS_FileOpen(&input->spec, &handle)) {
+        if (FSpOpenDF(&input->spec, fsRdPerm, &handle)) {
             return FALSE;
         }
         error = COS_FileGetSize(handle, &size);

@@ -568,14 +568,35 @@ def check_program_conditional_returns(compiler, reference, work):
     assert stock_text["on"] != stock_text["off"]
 
 
+def check_wasm_program_replay(reference, runner, root, work):
+    oracle = root / "build/Wii_1_0RC1/oracle/mwcceppc.exe"
+    wasm = (runner, "run", oracle)
+    flags = (*FLAGS, "-O4,p", "-inline", "noauto", "-func_align", "4", "-ipa", "program", "-c")
+    (work / "wasm_ipa.c").write_text(
+        "#pragma bc_range 0\n#pragma b_range 0\nint __start(void) { return 7; }\n", "ascii",
+    )
+    with patch.dict(os.environ, MWCC_ORACLE_ROOT=str(root), MWCC_WASM_DOWNLOAD="0"):
+        for name, producer in (("stock", (reference,)), ("wasm", wasm)):
+            run(*producer, *flags, "wasm_ipa.c", "-o", f"{name}_wasm_ipa.o", cwd=work)
+            run(*wasm, *flags, f"{name}_wasm_ipa.irobj", "-o", f"{name}_wasm_replay.o", cwd=work)
+            run("llvm-objcopy", "-O", "binary", "--only-section=.text",
+                f"{name}_wasm_replay.o", f"{name}_wasm_replay.text", cwd=work)
+            assert (work / f"{name}_wasm_replay.text").read_bytes() == bytes.fromhex("38600007 4e800020"), name
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("reference", type=Path, help="path to stock Wii 1.0RC1")
     parser.add_argument("--compiler", type=Path, help="also exercise program IPA in a source-built compiler")
+    parser.add_argument("--wasm-runner", type=Path, help="path to mwcc-tools for replay using MWCC_ORACLE_ROOT's Wii module")
     args = parser.parse_args()
     reference = args.reference.resolve(strict=True)
     if args.compiler and not reference.with_name("mwldeppc.exe").is_file():
         parser.error("--compiler requires mwldeppc.exe beside the stock compiler")
+    if args.wasm_runner:
+        wasm_root = Path(os.environ.get("MWCC_ORACLE_ROOT", ".")).resolve()
+        if not (wasm_root / "build/Wii_1_0RC1/wasm/mwcc.wasm").is_file():
+            parser.error("--wasm-runner requires a built Wii 1.0RC1 module in MWCC_ORACLE_ROOT")
     with tempfile.TemporaryDirectory(prefix="rc1-irobj-") as directory:
         work = Path(directory)
         compiler_flags = (*FLAGS, "-O4,p", "-inline", "auto", "-func_align", "4", "-ipa", "program", "-c")
@@ -709,6 +730,8 @@ def main():
                     check_program_peephole(compiler, reference, work)
                     check_program_conditional_returns(compiler, reference, work)
                     check_spe_program(compiler, reference, work)
+            if args.wasm_runner:
+                check_wasm_program_replay(reference, args.wasm_runner.resolve(strict=True), wasm_root, work)
         finally:
             # Windows keeps a loaded DLL open until its last reference is released.
             FreeLibrary(codec._handle)
