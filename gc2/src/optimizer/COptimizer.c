@@ -504,6 +504,7 @@ static void removeunusedcode(Statement* stmt) {
     }
 }
 
+#if VERSION != VERSION_WII_1_0RC1
 static void COpt_ReturnCheck(Object* obj, Statement* stmt) {
     Statement* scan;
 
@@ -524,6 +525,7 @@ static void COpt_ReturnCheck(Object* obj, Statement* stmt) {
         }
     }
 }
+#endif
 
 static void COpt_Optimize(Object* obj, Statement* stmt) {
     Statement* scan;
@@ -562,7 +564,9 @@ void COpt_SimpleOptimizer(Object* obj, Statement* stmt) {
     static_for_inlines = TRUE;
     cleanreturnlabel = NULL;
     COpt_Optimize(obj, stmt);
+#if VERSION != VERSION_WII_1_0RC1
     COpt_ReturnCheck(obj, stmt);
+#endif
 }
 
 Statement* COpt_Optimizer(Object* obj, Statement* stmt) {
@@ -574,9 +578,11 @@ Statement* COpt_Optimizer(Object* obj, Statement* stmt) {
     static_for_inlines = FALSE;
     COpt_Optimize(obj, stmt);
 
+#if VERSION != VERSION_WII_1_0RC1
     if (obj && !(obj->qual & Q_INLINE)) {
         COpt_ReturnCheck(obj, stmt);
     }
+#endif
 
     checklocalusage(stmt->next);
 #if VERSION == VERSION_WII_1_0RC1

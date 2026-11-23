@@ -147,6 +147,9 @@ extern Statement* CFunc_AppendStatement(StatementType sttype);
 extern Statement* CFunc_InsertStatement(StatementType sttype, Statement* after);
 extern Statement* CFunc_InsertBeforeStatement(StatementType sttype, Statement* before);
 extern void CheckCLabels(void);
+#if VERSION == VERSION_WII_1_0RC1
+extern void CFunc_ReportMissingReturn(Boolean explicitReturn);
+#endif
 extern Object* create_temp_object(Type* type);
 extern ENode* create_temp_node(Type* type);
 extern ENode* create_temp_node2(Type* type);

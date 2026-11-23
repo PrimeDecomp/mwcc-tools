@@ -303,6 +303,8 @@ struct CompilerLinkerOptions {
     Boolean optimize_tail_call;
     Boolean ppc_dont_balance_ir;
     Boolean numbered_diagnostics;
+    Boolean warn_missingreturn;
+    Boolean warn_missingreturn_as_error;
 #endif
 };
 #pragma pack(pop)

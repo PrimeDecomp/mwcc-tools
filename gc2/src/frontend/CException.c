@@ -2253,10 +2253,16 @@ static void CExcept_InsertSpecificationActions(Statement* stmt, ExceptSpecList* 
         iter = CFunc_InsertStatement(ST_RETURN, iter);
         iter->expr = NULL;
         iter->dobjstack = NULL;
+#if VERSION == VERSION_WII_1_0RC1
+        if (TYPE_FUNC(cscope_currentfunc->type)->functype != &stvoid) {
+            CFunc_ReportMissingReturn(FALSE);
+        }
+#else
         if (TYPE_FUNC(cscope_currentfunc->type)->functype != &stvoid &&
             (copts.pedantic || copts.cplusplus)) {
             CError_Warning(ERR_RETURN_VALUE_EXPECTED);
         }
+#endif
     }
 
     iter = CFunc_InsertStatement(ST_LABEL, iter);

@@ -1752,6 +1752,85 @@ def check_reference_cast_diagnostics(compiler, objcopy, work):
     return results
 
 
+def check_return_diagnostics(compiler, work):
+    cases = (
+        (
+            "return_paths.cpp",
+            """\
+extern volatile void stop();
+extern int test(int);
+struct State {
+    int data;
+    bool check() const { return test(data); }
+};
+int paths(const State* s) {
+    if (!s) return 0;
+    else if (!s->check()) return 1;
+    else if (!s->data) { stop(); }
+    else { const int data = s->data; return test(data); }
+}
+int partial(int n) { if (n) return 1; }
+int explicit_return(int n) { if (n) return; return 1; }
+""",
+            0,
+            [("Warning", 13, 38), ("Warning", 14, 42), ("Warning", 14, 54)],
+        ),
+        (
+            "return_pragmas.c",
+            """\
+int default_c(void) {}
+#pragma warn_missingreturn on
+int enabled(void) {}
+#pragma warn_missingreturn_as_error on
+int error(void) {}
+#pragma warn_missingreturn_as_error reset
+int restored(void) {}
+#pragma warn_missingreturn reset
+int disabled(void) {}
+#pragma c9x on
+int c99_explicit(void) { return; }
+#pragma ANSI_strict on
+int strict_c99(void) { return; }
+""",
+            1,
+            [("Warning", 3, 19), ("Error", 5, 17), ("Warning", 11, 31), ("Error", 13, 29)],
+        ),
+        (
+            "return_templates.cpp",
+            """\
+template<class T> T select(T n) {
+    if (n) { const T x = n; return x; }
+    else return 0;
+}
+template<class T> T partial(T n) { if (n) return n; }
+int instantiate(int n) { return select(n) + partial(n); }
+""",
+            0,
+            [("Warning", 5, 52)],
+        ),
+    )
+    results = {}
+    for name, body, status, expected in cases:
+        source = work / name
+        source.write_text(body, encoding="ascii")
+        proc = subprocess.run(
+            (compiler, *FLAGS, "-O4,p", "-ipa", "file", "-maxerrors", "12",
+             "-msgstyle", "parseable", "-c", name, "-o", source.with_suffix(".o")),
+            cwd=work, capture_output=True, text=True, timeout=30,
+        )
+        lines = proc.stdout.splitlines()
+        diagnostics = []
+        for index, line in enumerate(lines):
+            if line == ">(10184) return value expected":
+                severity = lines[index - 3].rsplit("|", 1)[-1]
+                row, column = lines[index - 2].split("|")[1:3]
+                diagnostics.append((severity, int(row), int(column)))
+        if proc.returncode != status or diagnostics != expected:
+            raise ValueError(f"{compiler}: unexpected return diagnostics\n{proc.stdout}{proc.stderr}")
+        results[name] = (proc.stdout, proc.stderr)
+    return results
+
+
 def check_reference_initializers(compiler, objcopy, work):
     cases = {
         "local_reference_cast.cpp": """\
@@ -3696,6 +3775,7 @@ void member_call(V* v) { Guard guard; v->g(); }
     results.update(check_void_delete_diagnostics(compiler, work))
     results.update(check_template_actions(compiler, objcopy, nm, work))
     results.update(check_reference_cast_diagnostics(compiler, objcopy, work))
+    results.update(check_return_diagnostics(compiler, work))
     results.update(check_reference_initializers(compiler, objcopy, work))
 
     source = work / "jump_warnings.cpp"

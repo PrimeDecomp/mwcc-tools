@@ -223,6 +223,10 @@ CompilerOption compileroptions[] = {
     "warn_resultnotused", OPT_OFFSET(warn_resultnotused),
     "warn_ptr_int_conv", OPT_OFFSET(warn_ptr_int_conv),
     "warn_uninitializedvar", OPT_OFFSET(warn_uninitializedvar),
+#if VERSION == VERSION_WII_1_0RC1
+    "warn_missingreturn", OPT_OFFSET(warn_missingreturn),
+    "warn_missingreturn_as_error", OPT_OFFSET(warn_missingreturn_as_error),
+#endif
     "align_array_members", OPT_OFFSET(alignarraymembers),
     "dont_reuse_strings", OPT_OFFSET(dont_reuse_strings),
     "pool_strings", OPT_OFFSET(poolstrings),
@@ -3675,19 +3679,27 @@ static void CPrep_PragmaImExport(int flags) {
 
 static void pragma_on_off_reset(int bits) {
     int imex_flags;
+    int offset = bits & OPT_OFFSET_MASK;
     Boolean allowList = (bits & OPT_FLAG_LIST) != 0;
 
     if (notendofline() && plex() == TK_IDENTIFIER) {
-        if (!strcmp(tkidentifier->name, "on")) {
-            CPrep_PushOption(bits & OPT_OFFSET_MASK, TRUE);
-            return;
-        }
-        if (!strcmp(tkidentifier->name, "off")) {
-            CPrep_PushOption(bits & OPT_OFFSET_MASK, FALSE);
+        if (!strcmp(tkidentifier->name, "on") || !strcmp(tkidentifier->name, "off")) {
+            Boolean enabled = !strcmp(tkidentifier->name, "on");
+#if VERSION == VERSION_WII_1_0RC1
+            if (offset == OPT_OFFSET(warn_missingreturn_as_error)) {
+                CPrep_PushOption(OPT_OFFSET(warn_missingreturn), enabled);
+            }
+#endif
+            CPrep_PushOption(offset, enabled);
             return;
         }
         if (!strcmp(tkidentifier->name, "reset")) {
-            CPrep_PopOption(bits & OPT_OFFSET_MASK);
+#if VERSION == VERSION_WII_1_0RC1
+            if (offset == OPT_OFFSET(warn_missingreturn_as_error)) {
+                CPrep_PopOption(OPT_OFFSET(warn_missingreturn));
+            }
+#endif
+            CPrep_PopOption(offset);
             return;
         }
         if (allowList && !strcmp(tkidentifier->name, "list")) {

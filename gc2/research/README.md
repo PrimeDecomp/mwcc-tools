@@ -584,6 +584,12 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   inlined comparisons in Echoes' `CloseEnough.cpp`, the zero loads target
   three registers below the first code-generation temporary, so stock
   keeps all three loads.
+- Wii's `CFunc_ErrorCheck` at `0x50ec90` diagnoses missing return
+  values before destructor cleanup and inlining. It checks whether the
+  final statement is reachable using the statement and exception edges
+  at `0x50efd0`. A bare return before the end gets an additional check at
+  the closing brace. The `warn_missingreturn_as_error` pragma updates
+  both missing-return options, including when it resets them (`0x444040`).
 - The `RLWINM` branch at `0x6457b1` rotates and masks the sign-extended
   immediate from a reaching `LI`. It rewrites the instruction when the
   result fits a single `LI` or `LIS`. This also folds the packing shift in

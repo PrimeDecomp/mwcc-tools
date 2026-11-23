@@ -633,6 +633,91 @@ void CheckCLabels(void) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+void CFunc_ReportMissingReturn(Boolean explicitReturn) {
+    if (copts.warn_missingreturn || copts.cplusplus || (explicitReturn && copts.c9x)) {
+        if (copts.warn_missingreturn_as_error || (explicitReturn && copts.c9x && copts.ANSIstrict)) {
+            CError_Error(ERR_RETURN_VALUE_EXPECTED);
+        } else {
+            CError_Warning(ERR_RETURN_VALUE_EXPECTED);
+        }
+    }
+}
+
+static void CFunc_MarkReachable(Statement* stmt) {
+    while (stmt && !stmt->marked) {
+        stmt->marked = TRUE;
+        for (ExceptionAction* action = stmt->dobjstack; action; action = action->prev) {
+            if (action->type == EAT_CATCHBLOCK) {
+                CFunc_MarkReachable(action->data.catch_block.catch_label->stmt);
+            } else if (action->type == EAT_SPECIFICATION) {
+                CFunc_MarkReachable(action->data.specification.unexp_label->stmt);
+            }
+        }
+
+        switch (stmt->type) {
+            case ST_GOTO:
+            case ST_EXIT:
+                stmt = stmt->label->stmt;
+                continue;
+            case ST_IFGOTO:
+            case ST_IFNGOTO:
+            case ST_OVF:
+                CFunc_MarkReachable(stmt->label->stmt);
+                break;
+            case ST_SWITCH: {
+                SwitchInfo* info = (SwitchInfo*)stmt->label;
+                for (SwitchCase* swcase = info->cases; swcase; swcase = swcase->next) {
+                    CFunc_MarkReachable(swcase->label->stmt);
+                }
+                stmt = info->defaultlabel->stmt;
+                continue;
+            }
+            case ST_EXPRESSION:
+                if (ENODE_IS(stmt->expr, EFUNCCALL) && stmt->expr->rtype == &stvoid &&
+                    (stmt->expr->flags & ENODE_FLAG_VOLATILE)) {
+                    return;
+                }
+                break;
+            case ST_RETURN:
+            case ST_GOTOEXPR:
+                return;
+            default:
+                break;
+        }
+        stmt = stmt->next;
+    }
+}
+
+static void CFunc_ErrorCheck(Object* func, Statement* first) {
+    if (!(copts.warn_missingreturn || copts.cplusplus) ||
+        TYPE_FUNC(func->type)->functype == &stvoid ||
+        CClass_IsConstructor(func) || CClass_IsDestructor(func)) {
+        return;
+    }
+
+    for (Statement* stmt = first; stmt; stmt = stmt->next) {
+        stmt->marked = FALSE;
+        if (stmt->type == ST_ASM) {
+            return;
+        }
+        Boolean missing = stmt->type == ST_RETURN && !stmt->expr &&
+            !(stmt->flags & StmtFlag_AfterNoReturn);
+        if (stmt->next) {
+            if (missing) {
+                CError_Warning(ERR_RETURN_VALUE_EXPECTED);
+                return;
+            }
+        } else if (missing || (stmt->type != ST_RETURN && stmt->type != ST_GOTO)) {
+            CFunc_MarkReachable(first);
+            if (stmt->marked) {
+                CFunc_ReportMissingReturn(FALSE);
+            }
+        }
+    }
+}
+#endif
+
 Object* create_temp_object(Type* type) {
     Object* object = CParser_NewLocalDataObject(NULL, TRUE);
     object->name = CParser_GetUniqueName();
@@ -1935,9 +2020,15 @@ static void statement(DeclThing* thing) {
             }
 
             if (tk == ';') {
+#if VERSION == VERSION_WII_1_0RC1
+                if (thing->thetype != &stvoid) {
+                    CFunc_ReportMissingReturn(TRUE);
+                }
+#else
                 if (thing->thetype != &stvoid && (copts.pedantic || copts.cplusplus)) {
                     CError_Warning(ERR_RETURN_VALUE_EXPECTED);
                 }
+#endif
 
                 stmt = CFunc_AppendStatement(ST_RETURN);
                 stmt->expr = NULL;
@@ -3569,6 +3660,9 @@ void CFunc_ParseFuncDef(
         }
 
         if (!fatalerrors) {
+#if VERSION == VERSION_WII_1_0RC1
+            CFunc_ErrorCheck(func, &firstStmt);
+#endif
             if (CClass_IsConstructor(func)) {
                 CABI_TransConstructor(func, beforebody, cscope_currentclass, NULL, has_try);
             }
