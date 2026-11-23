@@ -568,27 +568,44 @@ def check_program_conditional_returns(compiler, reference, work):
     assert stock_text["on"] != stock_text["off"]
 
 
-def check_wasm_program_replay(reference, runner, root, work):
-    oracle = root / "build/Wii_1_0RC1/oracle/mwcceppc.exe"
-    wasm = (runner, "run", oracle)
+def check_wasm_program_replay(reference, wasm, work):
     flags = (*FLAGS, "-O4,p", "-inline", "noauto", "-func_align", "4", "-ipa", "program", "-c")
     (work / "wasm_ipa.c").write_text(
         "#pragma bc_range 0\n#pragma b_range 0\nint __start(void) { return 7; }\n", "ascii",
     )
-    with patch.dict(os.environ, MWCC_ORACLE_ROOT=str(root), MWCC_WASM_DOWNLOAD="0"):
-        for name, producer in (("stock", (reference,)), ("wasm", wasm)):
-            run(*producer, *flags, "wasm_ipa.c", "-o", f"{name}_wasm_ipa.o", cwd=work)
-            run(*wasm, *flags, f"{name}_wasm_ipa.irobj", "-o", f"{name}_wasm_replay.o", cwd=work)
-            run("llvm-objcopy", "-O", "binary", "--only-section=.text",
-                f"{name}_wasm_replay.o", f"{name}_wasm_replay.text", cwd=work)
-            assert (work / f"{name}_wasm_replay.text").read_bytes() == bytes.fromhex("38600007 4e800020"), name
+    for name, producer in (("stock", (reference,)), ("wasm", wasm)):
+        run(*producer, *flags, "wasm_ipa.c", "-o", f"{name}_wasm_ipa.o", cwd=work, timeout=180)
+        run(*wasm, *flags, f"{name}_wasm_ipa.irobj", "-o", f"{name}_wasm_replay.o", cwd=work, timeout=180)
+        run("llvm-objcopy", "-O", "binary", "--only-section=.text",
+            f"{name}_wasm_replay.o", f"{name}_wasm_replay.text", cwd=work)
+        assert (work / f"{name}_wasm_replay.text").read_bytes() == bytes.fromhex("38600007 4e800020"), name
+
+
+def check_wasm_precompiled_locals(reference, wasm, work):
+    flags = (*FLAGS, "-O4,p", "-inline", "on", "-func_align", "4", "-lang=c++", "-Cpp_exceptions", "off")
+    (work / "wasm_pch.h").write_text(
+        "struct Pair { int first, second; };\n"
+        "inline int local(int x) { Pair p = {x, x + 3}; return p.second; }\n", "ascii",
+    )
+    (work / "wasm_pch.cpp").write_text('extern "C" int entry(int x) { return local(x); }\n', "ascii")
+    results = {}
+    for name, tool in (("stock", (reference,)), ("wasm", wasm)):
+        prefix = f"{name}_wasm.mch"
+        obj = f"{name}_wasm_pch.o"
+        section = f"{name}_wasm_pch.text"
+        run(*tool, *flags, "-precompile", prefix, "wasm_pch.h", cwd=work, timeout=180)
+        assert (work / prefix).is_file(), f"{name} did not create the precompiled header"
+        run(*tool, *flags, "-prefix", prefix, "-c", "wasm_pch.cpp", "-o", obj, cwd=work, timeout=180)
+        run("llvm-objcopy", "-O", "binary", "--only-section=.text", obj, section, cwd=work)
+        results[name] = (work / section).read_bytes()
+    assert results["wasm"] == results["stock"], "Wasm-built PCH replay differs from stock"
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("reference", type=Path, help="path to stock Wii 1.0RC1")
     parser.add_argument("--compiler", type=Path, help="also exercise program IPA in a source-built compiler")
-    parser.add_argument("--wasm-runner", type=Path, help="path to mwcc-tools for replay using MWCC_ORACLE_ROOT's Wii module")
+    parser.add_argument("--wasm-runner", type=Path, help="path to mwcc-tools for IPA and PCH replay using MWCC_ORACLE_ROOT's Wii module")
     args = parser.parse_args()
     reference = args.reference.resolve(strict=True)
     if args.compiler and not reference.with_name("mwldeppc.exe").is_file():
@@ -731,7 +748,11 @@ def main():
                     check_program_conditional_returns(compiler, reference, work)
                     check_spe_program(compiler, reference, work)
             if args.wasm_runner:
-                check_wasm_program_replay(reference, args.wasm_runner.resolve(strict=True), wasm_root, work)
+                oracle = wasm_root / "build/Wii_1_0RC1/oracle/mwcceppc.exe"
+                wasm = (args.wasm_runner.resolve(strict=True), "run", oracle)
+                with patch.dict(os.environ, MWCC_ORACLE_ROOT=str(wasm_root), MWCC_WASM_DOWNLOAD="0"):
+                    check_wasm_program_replay(reference, wasm, work)
+                    check_wasm_precompiled_locals(reference, wasm, work)
         finally:
             # Windows keeps a loaded DLL open until its last reference is released.
             FreeLibrary(codec._handle)

@@ -2736,6 +2736,16 @@ static ENode* CPrec_GetExpressionPatch(ENode* expr) {
                 (void*)(p + offsetof(ENode, data.objref)), CPrec_GetObjectPatch(expr->data.objref)
             );
             break;
+#if VERSION == VERSION_WII_1_0RC1
+        case ESCOPE:
+            if (expr->data.scope.object) {
+                CPrec_NewPointerPatch(
+                    (void*)(p + offsetof(ENode, data.scope.object)),
+                    CPrec_GetExpressionPatch(expr->data.scope.object)
+                );
+            }
+            break;
+#endif
         case EOBJLIST:
             CPrec_NewPointerPatch(
                 (void*)(p + offsetof(ENode, data.objlist.list)),

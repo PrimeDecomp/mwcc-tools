@@ -98,8 +98,8 @@ int disabled() { return select(LacksValue(), 0); }
 """
 
 
-def run(*args, cwd):
-    return subprocess.check_output(args, cwd=cwd, text=True, stderr=subprocess.STDOUT, timeout=30)
+def run(*args, cwd, timeout=30):
+    return subprocess.check_output(args, cwd=cwd, text=True, stderr=subprocess.STDOUT, timeout=timeout)
 
 
 def check_ipa(compiler, objcopy, nm, work):
@@ -797,28 +797,39 @@ def check_stock_pch_inline_locals(compiler, reference, objcopy, work):
     header = work / "inline_locals.h"
     header.write_text(
         "inline double abs_value(double x) { return __fabs(x); }\n"
-        "inline double with_local(double x) { double y = x * x; return abs_value(y) + y; }\n",
+        "inline double with_local(double x) { double y = x * x; return abs_value(y) + y; }\n"
+        "inline int with_scope(int x) {\n"
+        "    int result = x;\n"
+        "    { volatile int value = x * 3; result += value; }\n"
+        "    return result;\n"
+        "}\n"
+        "struct LocalPair { int first, second; };\n"
+        "inline int with_aggregate(int x) { LocalPair pair = {x, x + 3}; return pair.second; }\n",
         encoding="ascii",
     )
     source = work / "inline_locals.cpp"
     source.write_text(
         "extern double nested(double);\n"
         "double first(double x) { return abs_value(nested(x)) + 1.234567; }\n"
-        "double second(double x) { return with_local(nested(x)) + 7.392849; }\n",
+        "double second(double x) { return with_local(nested(x)) + 7.392849; }\n"
+        "int third(int x) { return with_scope(x); }\n"
+        "int fourth(int x) { return with_aggregate(x); }\n",
         encoding="ascii",
     )
     prefix = header.with_suffix(".mch")
+    rebuilt = work / "inline_locals_source.mch"
     obj = source.with_suffix(".o")
     section = source.with_suffix(".text")
     flags = (*FLAGS, "-fp_contract", "off", "-inline", "auto", "-O4,p", "-lang=c++", "-func_align", "4")
     run(reference, *flags, "-precompile", prefix, header, cwd=work)
+    run(compiler, *flags, "-precompile", rebuilt, header, cwd=work)
     code = []
-    for tool in (reference, compiler):
-        run(tool, *flags, "-prefix", prefix, "-c", source, "-o", obj, cwd=work)
+    for tool, pch in ((reference, prefix), (compiler, prefix), (compiler, rebuilt)):
+        run(tool, *flags, "-prefix", pch, "-c", source, "-o", obj, cwd=work)
         run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
         code.append(section.read_bytes())
-    if code[0] != code[1]:
-        raise ValueError(f"{compiler}: instruction bytes differ for inline locals from a stock PCH")
+    if code[0] != code[1] or code[0] != code[2]:
+        raise ValueError(f"{compiler}: instruction bytes differ for precompiled inline locals")
 
 
 def check_stock_pch_templates(compiler, reference, objcopy, nm, work):
@@ -2325,6 +2336,26 @@ def check_unconditional_branch_ranges(compiler, objcopy, work):
             section = source.with_suffix(".text")
             run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
             results[source.name] = section.read_bytes()
+    return results
+
+
+def check_auto_aggregate_initialization(compiler, work):
+    results = {}
+    for name, body in (
+        ("full", "struct Pair { int x, y; }; int entry(int x) { Pair p = {x, x + 3}; return p.y; }"),
+        ("partial", "struct Pair { int x, y; }; int entry(int x) { Pair p = {x}; use(&p); return p.y; }"),
+        ("nonzero", "struct Pair { int x, y; }; int entry(int x) { Pair p = {x, 3}; use(&p); return p.y; }"),
+        ("padding", "struct Pad { short s; int n; }; int entry(int x) { Pad p = {(short)x, x}; use(&p); return p.n; }"),
+        ("bitfield", "struct Bits { unsigned x:3, y:5; }; int entry(int x) { Bits p = {(unsigned)x}; use(&p); return p.y; }"),
+        ("class_array", "struct P { int x; }; P make(); int entry() { P p[2] = {make(), make()}; use(p); return p[1].x; }"),
+        ("large_zero", "struct Large { int x[10]; }; int entry() { Large v = {}; use(&v); return v.x[0]; }"),
+    ):
+        source = work / f"local_aggregate_{name}.cpp"
+        obj = source.with_suffix(".o")
+        source.write_text("extern void use(const void*);\n" + body + "\n", encoding="ascii")
+        run(compiler, *FLAGS, "-O4,p", "-lang=c++", "-inline", "noauto", "-func_align", "4",
+            "-Cpp_exceptions", "off", "-c", source, "-o", obj, cwd=work)
+        results[source.name] = obj.read_bytes()
     return results
 
 
@@ -4389,6 +4420,7 @@ bool same(const Values& a, const Values& b) {
     check_pch(compiler, objcopy, work)
     check_source_encoding(compiler, objcopy, work)
     results.update(check_unconditional_branch_ranges(compiler, objcopy, work))
+    results.update(check_auto_aggregate_initialization(compiler, work))
     return results
 
 

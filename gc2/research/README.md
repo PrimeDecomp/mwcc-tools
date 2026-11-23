@@ -902,6 +902,19 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   a 32-byte aligned typedef, 64-byte aligned static data, and a critical SPE
   interrupt declaration from a precompiled header. Source PCH revision 5146
   identifies raw records with the new encoding so older caches can be regenerated.
+- The source PCH writer relocates the optional expression attached to an
+  `ESCOPE` record. Declaration markers carry a local reference, while block
+  boundaries have no child. Native and source PCHs replay the same instruction
+  bytes for the scoped locals in the smoke test.
+- Wii file creation uses the output's existing file specification. Rebuilding
+  the specification in the legacy creation wrapper failed with OSErr -120
+  when the Wasm compiler wrote a PCH. The Wasm smoke test writes a PCH and
+  compares its replay against stock.
+- The stock automatic-aggregate initializer at `0x548E60` reserves a template
+  name before checking the constant bytes. At `0x549241` it marks the bytes
+  written by runtime initializers, excluding class and bitfield writes. For
+  a zero constant image, it emits a clear only when some bytes remain
+  uncovered. Nonzero constants and relocations use the read-only template.
 - RC1's `CPrep_InsertSpecialMacros` and `CodeGen_InsertSpecialMacros` start at
   `0x449CA0` and `0x4654A0`. The driver handles the `Ai` and `Fa` optimization flags in
   `TargetSetOptFlags` at `0x435850`. `CInline_CheckInlineability` at `0x55D210`

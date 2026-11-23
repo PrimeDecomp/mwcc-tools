@@ -71,10 +71,19 @@ Boolean COS_IsMultiByte(const void* str, const void* pos) {
 OSErr COS_FileNew(const FSSpec* spec, SInt16* refNum, OSType creator, OSType fileType) {
     OSErr err;
 
+#if VERSION == VERSION_WII_1_0RC1
+    FSpDelete(spec);
+    err = FSpCreate(spec, creator, fileType, -1);
+#else
     HDelete(spec->vRefNum, spec->parID, spec->name);
     err = HCreate(spec->vRefNum, spec->parID, spec->name, creator, fileType);
+#endif
     if (!err) {
+#if VERSION == VERSION_WII_1_0RC1
+        err = FSpOpenDF(spec, fsRdWrPerm, refNum);
+#else
         err = HOpenDF(spec->vRefNum, spec->parID, spec->name, fsRdWrPerm, refNum);
+#endif
     }
     return err;
 }

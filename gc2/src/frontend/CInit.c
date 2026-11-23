@@ -3155,6 +3155,26 @@ static ENode* CInit_SPEConstant(Type* type, const char* buffer) {
     }
     return expr;
 }
+
+static Boolean CInit_NeedsAggregateClear(CInit_DataBuffer* db) {
+    CInit_NonConst* entry;
+    SInt32 offset;
+
+    // The constant bytes are all zero. Mark the bytes written by runtime initializers.
+    for (entry = db->nonconst; entry; entry = entry->next) {
+        if (!IS_TYPE_CLASS(entry->type) && !IS_TYPE_BITFIELD(entry->type) &&
+            entry->offset >= 0 && entry->offset <= db->size &&
+            entry->type->size > 0 && entry->type->size <= db->size - entry->offset) {
+            memset(db->buffer + entry->offset, 1, entry->type->size);
+        }
+    }
+    for (offset = 0; offset < db->size; ++offset) {
+        if (db->buffer[offset] == 0) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
 #endif
 
 ENode* CInit_AutoObject(Object* obj, Type* type, UInt32 qual) {
@@ -3256,15 +3276,24 @@ ENode* CInit_AutoObject(Object* obj, Type* type, UInt32 qual) {
         newtype = CDecl_NewStructType(type->size, CMach_GetTypeAlign(type));
     }
     newobj = CInit_CreateStaticDataObject(newtype, 0, NULL);
-    if (db.list || !CInit_IsAllZero(db.buffer, db.size)) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (!db.list && CInit_IsAllZero(db.buffer, db.size)) {
+        expr = CInit_NeedsAggregateClear(&db)
+            ? funccallexpr(clear_func, obj_expr, intconstnode(CABI_GetSizeTType(), newtype->size), NULL, NULL)
+            : NULL;
+    } else
+#endif
+    {
+#if VERSION != VERSION_WII_1_0RC1
+        if (!db.list && CInit_IsAllZero(db.buffer, db.size)) {
+            db.buffer = NULL;
+        }
+#endif
         CInit_DeclareReadOnlyData(newobj, db.buffer, db.list, db.size);
-    } else {
-        CInit_DeclareReadOnlyData(newobj, NULL, NULL, db.size);
+        indirect_expr = makemonadicnode(obj_expr, EINDIRECT);
+        indirect_expr->rtype = newtype;
+        expr = makediadicnode(indirect_expr, create_objectnode(newobj), EASS);
     }
-
-    indirect_expr = makemonadicnode(obj_expr, EINDIRECT);
-    indirect_expr->rtype = newtype;
-    expr = makediadicnode(indirect_expr, create_objectnode(newobj), EASS);
 
     for (entry = db.nonconst; entry; entry = entry->next) {
         expr = CInit_InitConcat(expr, obj_expr, entry->offset, entry->type, entry->expr);
