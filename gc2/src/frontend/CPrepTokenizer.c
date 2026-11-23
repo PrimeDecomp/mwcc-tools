@@ -1319,6 +1319,15 @@ static short tapos(short _t) {
             CInt64_SetLong(&tkintconst, t);
             tksize = copts.cplusplus ? IT_SCHAR : IT_INT;
         }
+#if VERSION == VERSION_WII_1_0RC1
+        if (cprep_incondexpr) {
+            if (widestring) {
+                tksize = copts.cplusplus ? IT_INT : IT_UINT;
+            } else if (copts.cplusplus && copts.unsigned_char) {
+                tksize = IT_UCHAR;
+            }
+        }
+#endif
     } else {
         if (widestring) {
             switch (stwchar.size) {
@@ -1370,6 +1379,12 @@ static short tapos(short _t) {
             }
         }
 
+#if VERSION == VERSION_WII_1_0RC1
+        if (cprep_incondexpr) {
+            tksize = IT_INT;
+            return TK_INTCONST;
+        }
+#endif
         if (i <= stunsignedint.size && stunsignedint.size < stunsignedlong.size) {
             tksize = IT_UINT;
         } else if (i <= stunsignedlong.size) {
@@ -1859,7 +1874,10 @@ static short tchrL(short t) {
         t = tapos(t);
         widestring = FALSE;
 
-        tksize = (copts.wchar_type && copts.cplusplus) ? IT_WCHAR_T : IT_USHORT;
+#if VERSION == VERSION_WII_1_0RC1
+        if (!cprep_incondexpr)
+#endif
+            tksize = (copts.wchar_type && copts.cplusplus) ? IT_WCHAR_T : IT_USHORT;
         return t;
     }
 
@@ -2837,6 +2855,9 @@ short plex(void) {
     while (1) {
         t = prepskipnextchar();
 #if VERSION == VERSION_WII_1_0RC1
+        if (cprep_in_saved_condition && (t == CR || (!tokenstacklevel && !t))) {
+            return 0;
+        }
         if (source) {
             CPrep_GetPrepPos(&source->tokenfile, &source->tokenoffset);
             source->tokenline = linenumber;

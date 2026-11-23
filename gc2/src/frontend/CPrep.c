@@ -348,6 +348,9 @@ typedef struct CPrepFileCondition {
 
 static CPrepIncludedFile* included_files;
 static CPrepFileCondition* file_conditions[32];
+Boolean cprep_in_saved_condition;
+UInt8 cprep_incondexpr;
+static Boolean CPrep_EvaluateSavedCondition(const char* text, const char* end, Boolean* value);
 static const char* CPrep_IncludeBasename(const char* path);
 static Boolean CPrep_SkipIncludedFile(const char* path, const char* name, Boolean system);
 static CPrepIncludedFile* CPrep_RecordIncludedFile(
@@ -364,7 +367,9 @@ static SInt32 now_time;
 static SInt32 lineoffset;
 static UInt8 was_prep_error;
 static UInt8 cprep_hasprepline;
+#if VERSION != VERSION_WII_1_0RC1
 static UInt8 cprep_incondexpr;
+#endif
 static PackStack cprep_packstack[128];
 static SInt16 cprep_packstackp;
 static Macro lineM;
@@ -511,6 +516,7 @@ int setupprep(void) {
 #if VERSION == VERSION_WII_1_0RC1
     included_files = NULL;
     memset(file_conditions, 0, sizeof(file_conditions));
+    cprep_in_saved_condition = FALSE;
 #endif
 
     CLT_filesp = &filesp;
@@ -2644,57 +2650,6 @@ static CPrepIncludedFile* CPrep_RecordIncludedFile(
     return record;
 }
 
-static Boolean CPrep_EvaluateSavedCondition(const char* text, const char* end, Boolean* value) {
-    char name[256];
-    const char* start;
-    Boolean inverted = FALSE;
-    Boolean parenthesized;
-    size_t length;
-
-    text = CPrep_ConditionSkipHorizontalSpace(text, end);
-    if (text < end && *text == '!') {
-        inverted = TRUE;
-        text = CPrep_ConditionSkipHorizontalSpace(text + 1, end);
-    }
-    if (text == end) {
-        return FALSE;
-    }
-    if (*text == '0' || *text == '1') {
-        *value = (*text++ == '1') != inverted;
-    } else {
-        if (end - text < 8 || memcmp(text, "defined", 7) || cprep_idarray[(UInt8)text[7]]) {
-            return FALSE;
-        }
-        text = CPrep_ConditionSkipHorizontalSpace(text + 7, end);
-        parenthesized = text < end && *text == '(';
-        if (parenthesized) {
-            text = CPrep_ConditionSkipHorizontalSpace(text + 1, end);
-        }
-        if (text == end || cprep_idarray[(UInt8)*text] != 1) {
-            return FALSE;
-        }
-        start = text++;
-        while (text < end && cprep_idarray[(UInt8)*text]) {
-            ++text;
-        }
-        length = text - start;
-        if (length >= sizeof(name)) {
-            return FALSE;
-        }
-        memcpy(name, start, length);
-        name[length] = 0;
-        text = CPrep_ConditionSkipHorizontalSpace(text, end);
-        if (parenthesized && (text == end || *text++ != ')')) {
-            return FALSE;
-        }
-        if (ismacroname4(GetHashNameNodeExport("defined"))) {
-            return FALSE;
-        }
-        *value = (ismacroname4(GetHashNameNodeExport(name)) != NULL) != inverted;
-    }
-    return CPrep_ConditionSkipHorizontalSpace(text, end) == end;
-}
-
 static Boolean CPrep_PrecompiledConditionIsEmpty(const char* condition) {
     struct {
         Boolean parentActive;
@@ -2827,7 +2782,12 @@ static Boolean CPrep_SkipIncludedFile(const char* path, const char* name, Boolea
 
 void foundnl(void) {
     if (!tokenstacklevel) {
-#if VERSION != VERSION_WII_1_0RC1
+#if VERSION == VERSION_WII_1_0RC1
+        if (cprep_in_saved_condition) {
+            ++linenumber;
+            return;
+        }
+#else
         if (preprocessing_only) {
             CPrep_PreprocessDumpNewLine();
         }
@@ -2870,6 +2830,11 @@ loop:
                 poptokenseq();
                 goto loop;
             }
+#if VERSION == VERSION_WII_1_0RC1
+            if (cprep_incondexpr) {
+                return;
+            }
+#endif
             if (tokenstacklevel > 0 || pos >= prep_file_end) {
                 if (filesp > 0) {
                     popfile();
@@ -2880,6 +2845,11 @@ loop:
             pos = nextcharpos;
             goto loop;
         case 13:
+#if VERSION == VERSION_WII_1_0RC1
+            if (cprep_incondexpr) {
+                return;
+            }
+#endif
             newline();
             pos = nextcharpos;
             goto loop;
@@ -5406,6 +5376,18 @@ static PrepValue CPrep_ParseUnary(void) {
             case TK_IDENTIFIER:
                 val.val = cint64_zero;
                 val.is_unsigned = FALSE;
+#if VERSION == VERSION_WII_1_0RC1
+                // The preprocessor recognizes these constants independently of the keyword mode.
+                if (!strcmp("true", tkidentifier->name)) {
+                    val.val = cint64_one;
+                    val.is_unsigned = TRUE;
+                    break;
+                }
+                if (!strcmp("false", tkidentifier->name)) {
+                    val.is_unsigned = TRUE;
+                    break;
+                }
+#endif
                 if (!strcmp("defined", tkidentifier->name)) {
                     macrocheck = FALSE;
                     if (!notendofline()) {
@@ -5462,6 +5444,26 @@ static PrepValue CPrep_ParseUnary(void) {
 }
 
 static PrepValue CPrep_ParseBinary(PrepValue* rhs, short precLimit) {
+#if VERSION == VERSION_WII_1_0RC1
+    PrepValue a = rhs ? *rhs : CPrep_ParseUnary();
+
+    for (;;) {
+        short op = exprtk;
+        short prec = GetPrec(op);
+        PrepValue b;
+
+        if (prec <= precLimit || !prec) {
+            return a;
+        }
+        if (!notendofline()) {
+            CPrep_Error(ERR_UNEXPECTED_END_LINE);
+            return a;
+        }
+        b = CPrep_ParseBinary(NULL, prec);
+        a.is_unsigned |= b.is_unsigned;
+        a.val = CMach_CalcIntDiadic(CPrep_GetPrepType(&a), a.val, op, b.val);
+    }
+#else
     PrepValue a;
     PrepValue b;
     short op;
@@ -5513,6 +5515,7 @@ static PrepValue CPrep_ParseBinary(PrepValue* rhs, short precLimit) {
             }
         }
     }
+#endif
 }
 
 static PrepValue CPrep_ParseCond(void) {
@@ -5560,6 +5563,84 @@ static void doevalconstexpr(void) {
     }
     tkintconst = v.val;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean CPrep_EvaluateSavedCondition(const char* text, const char* end, Boolean* value) {
+    char* savedPos = pos;
+    char* savedNext = nextcharpos;
+    char* savedMacroPos = macropos;
+    char* savedMacroStart = macrostart;
+    char* savedFileStart = prep_file_start;
+    char* savedFileEnd = prep_file_end;
+    SInt32 savedLine = linenumber;
+    short savedExpr = exprtk;
+    short savedNLFlag = nlflag;
+    short savedPascalString = ispascalstring;
+    HashNameNode* savedIdentifier = tkidentifier;
+    char* savedString = tkstring;
+    CInt64 savedInteger = tkintconst;
+    Float savedFloat = tkfloatconst;
+    SInt32 savedSize = tksize;
+    UInt8 savedMacroCheck = macrocheck;
+    UInt8 savedLineStart = at_linestart;
+    UInt8 savedSpace = spaceskip;
+    UInt8 savedEscChar = was_escchar;
+    UInt8 savedCommentChar = CPrep_SkipNewCommentChar;
+    UInt8 savedLockedMacro = waslockedmacro;
+    UInt8 savedFreeHeap = dofreeaheap;
+    UInt8 savedPrepError = was_prep_error;
+    UInt8 savedCondExpr = cprep_incondexpr;
+    size_t length = end - text;
+    char* buffer;
+    PrepValue result;
+
+    if (tokenstacklevel) {
+        return FALSE;
+    }
+    // The saved expression has its own scanner input and line numbering.
+    buffer = galloc(length + 4);
+    memcpy(buffer, text, length);
+    memset(buffer + length, 0, 4);
+    pos = prep_file_start = buffer;
+    prep_file_end = buffer + length;
+    linenumber = 1;
+    exprtk = nlflag = 0;
+    at_linestart = spaceskip = FALSE;
+    macrocheck = cprep_incondexpr = cprep_in_saved_condition = TRUE;
+    result = CPrep_ParseCond();
+    while (tokenstacklevel) {
+        poptokenseq();
+    }
+    *value = !CInt64_IsZero(&result.val);
+
+    cprep_in_saved_condition = FALSE;
+    cprep_incondexpr = savedCondExpr;
+    was_prep_error = savedPrepError;
+    dofreeaheap = savedFreeHeap;
+    waslockedmacro = savedLockedMacro;
+    CPrep_SkipNewCommentChar = savedCommentChar;
+    was_escchar = savedEscChar;
+    spaceskip = savedSpace;
+    at_linestart = savedLineStart;
+    macrocheck = savedMacroCheck;
+    tksize = savedSize;
+    tkfloatconst = savedFloat;
+    tkintconst = savedInteger;
+    tkstring = savedString;
+    tkidentifier = savedIdentifier;
+    ispascalstring = savedPascalString;
+    nlflag = savedNLFlag;
+    exprtk = savedExpr;
+    linenumber = savedLine;
+    prep_file_end = savedFileEnd;
+    prep_file_start = savedFileStart;
+    macrostart = savedMacroStart;
+    macropos = savedMacroPos;
+    nextcharpos = savedNext;
+    pos = savedPos;
+    return TRUE;
+}
+#endif
 
 static void pushifstate(SInt16 state) {
     if (iflevel >= 64) {

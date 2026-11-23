@@ -424,34 +424,65 @@ def check_pch_include_state(compiler, reference, objcopy, work, *, timeout=30):
         if results[0] != results[1]:
             raise ValueError(f"{compiler}: once-only PCH include replay differs from stock")
 
-    outer.write_text('#include "inner.h"\n', encoding="ascii")
-    for start, end in (
-        ("#ifndef GUARD\n", "#endif\n"),
-        ("#if !defined(GUARD)\n", "#endif\n"),
-        ("#if 0\n#elif !defined(GUARD)\n", "#endif\n"),
-        ("#ifdef ABSENT\n#else\n#ifndef GUARD\n", "#endif\n#endif\n"),
+    outer.write_text(
+        '#define CHECK_PCH(n) ((n) * 2 == 0)\n#include "inner.h"\n', encoding="ascii"
+    )
+    for start, end, expected in (
+        ("#ifndef GUARD\n", "#endif\n", "23"),
+        ("#if !defined(GUARD)\n", "#endif\n", "23"),
+        ("#if 0\n#elif !defined(GUARD)\n", "#endif\n", "23"),
+        ("#ifdef ABSENT\n#else\n#ifndef GUARD\n", "#endif\n#endif\n", "23"),
+        ("#if CHECK_PCH(GUARD) && 1 ? 2 * 3 == 6 : 0\n", "#endif\n", "23"),
+        ("#if !GUARD || CHECK_PCH\n", "#endif\n", "23"),
+        ("#if !GUARD || (-1 < 'AB') == 0\n", "#endif\n", "23"),
+        ("#if 0\n#elif !GUARD /* multiline\ncomment */ && \\\n !defined(ABSENT)\n",
+         "#endif\n", "23"),
+        ("#if !GUARD || \\\n __LINE__ == 2\n", "#endif\n", "PCH_VALUE"),
     ):
         inner.write_text(
             start + "#define GUARD 1\n#define PCH_VALUE 23\n" + end,
             encoding="ascii",
         )
-        for first in (
-            '#import "inner.h"\n',
-            '#pragma once on\n#include "inner.h"\n#pragma once off\n',
-        ):
-            routes.write_text(
-                first + '#undef GUARD\n#undef PCH_VALUE\n#include "./inner.h"\nPCH_VALUE\n',
-                encoding="ascii",
-            )
-            outputs = []
-            for tool in ((reference,), compiler):
-                run(*tool, *flags, "-precompile", prefix, outer, cwd=directory, timeout=timeout)
-                outputs.append(
-                    run(*tool, *flags, "-E", "-prefix", prefix.name, routes.name, cwd=directory,
-                        timeout=timeout)
-                )
-            if outputs[0] != outputs[1] or outputs[1].splitlines()[-1:] != ["23"]:
-                raise ValueError(f"{compiler}: guarded PCH include replay differs from stock")
+        results = []
+        for builder, readers in (((reference,), ((reference,), compiler)), (compiler, (compiler,))):
+            run(*builder, *flags, "-precompile", prefix, outer, cwd=directory, timeout=timeout)
+            for tool in readers:
+                outputs = []
+                for first in (
+                    '#import "inner.h"\n',
+                    '#pragma once on\n#include "inner.h"\n#pragma once off\n',
+                ):
+                    routes.write_text(
+                        first + '#undef GUARD\n#undef PCH_VALUE\n#include "./inner.h"\n'
+                        "PCH_VALUE __LINE__\n",
+                        encoding="ascii",
+                    )
+                    output = run(
+                        *tool, *flags, "-E", "-prefix", prefix.name, routes.name, cwd=directory,
+                        timeout=timeout
+                    )
+                    if output.splitlines()[-1].split()[0] != expected:
+                        raise ValueError(f"{tool}: guarded PCH include replay differs for {start!r}")
+                    outputs.append(output)
+                results.append(outputs)
+        if any(output != results[0] for output in results[1:]):
+            raise ValueError(f"{compiler}: guarded PCH include output differs for {start!r}")
+
+    inner.write_text("#if !GUARD\n#define GUARD 1\n#endif\n", encoding="ascii")
+    routes.write_text(
+        '#undef GUARD\n#define GUARD 1/0\n#import "inner.h"\n'
+        '#undef GUARD\n#include "inner.h"\nGUARD\n',
+        encoding="ascii",
+    )
+    outputs = []
+    for tool in ((reference,), compiler):
+        run(*tool, *flags, "-precompile", prefix, outer, cwd=directory, timeout=timeout)
+        outputs.append(
+            run(*tool, *flags, "-msgstyle", "parseable", "-E", "-prefix", prefix.name,
+                routes.name, cwd=directory, timeout=timeout)
+        )
+    if outputs[0] != outputs[1] or "(10139) division by 0" not in outputs[1]:
+        raise ValueError(f"{compiler}: saved PCH expression warning differs from stock")
 
     inner.write_text("ordinary_header\n", encoding="ascii")
     routes.write_text(
@@ -2042,6 +2073,22 @@ def check_preprocess_output(compiler, work):
             or not data.endswith(b"<: :> <% %> %: %:%:\r\n")):
         raise ValueError(f"{compiler}: unexpected text for directive and digraph spellings\n{data!r}")
     results["preprocess directive and token spelling"] = data
+
+    expressions = work / "preprocess_expressions.c"
+    expressions.write_text(
+        "#pragma bool off\n"
+        "#if true && !false && (-1 < 'AB')\nconditional_tokens\n#endif\n"
+        "#define true 0\n"
+        "#if !true\nmacro_shadows_constant\n#endif\n",
+        encoding="ascii",
+    )
+    data = subprocess.check_output(
+        (compiler, *FLAGS, "-lang=c", "-E", expressions.name),
+        cwd=work, stderr=subprocess.STDOUT, timeout=30,
+    )
+    if data != b"conditional_tokens\r\nmacro_shadows_constant\r\n":
+        raise ValueError(f"{compiler}: unexpected conditional tokens\n{data!r}")
+    results["preprocess conditional tokens"] = data
     return results
 
 

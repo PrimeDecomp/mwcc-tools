@@ -742,6 +742,9 @@ void CError_ErrorMessage(int errTable, char* str, Boolean isTerminal, Boolean is
     short tokensize;
 #if VERSION == VERSION_WII_1_0RC1
     char numbered[256];
+    if (cprep_in_saved_condition && !isWarning) {
+        return;
+    }
 #endif
 
     if (CWDisplayLines(cparamblkptr->context, lines) != cwNoErr) {
@@ -753,7 +756,11 @@ void CError_ErrorMessage(int errTable, char* str, Boolean isTerminal, Boolean is
         isWarning = FALSE;
     }
 #endif
-    if (!in_assembler && !isTerminal && cerror_lasterrorline == lines) {
+    if (!in_assembler && !isTerminal && cerror_lasterrorline == lines
+#if VERSION == VERSION_WII_1_0RC1
+        && !cprep_in_saved_condition
+#endif
+    ) {
         if (cerror_errorcount++ >= 50) {
             if (cerror_errorcount > 60) {
                 longjmp(errorreturn, 1);
@@ -786,7 +793,7 @@ void CError_ErrorMessage(int errTable, char* str, Boolean isTerminal, Boolean is
         }
         if ((SInt32)token == -1
 #if VERSION == VERSION_WII_1_0RC1
-            || (!token && !prep_file)
+            || cprep_in_saved_condition || (!token && !prep_file)
 #endif
         ) {
             ref = NULL;
@@ -833,7 +840,10 @@ void CError_ErrorMessage(int errTable, char* str, Boolean isTerminal, Boolean is
 #endif
     }
 
-    cerror_token = NULL;
+#if VERSION == VERSION_WII_1_0RC1
+    if (!cprep_in_saved_condition)
+#endif
+        cerror_token = NULL;
 }
 
 #if VERSION == VERSION_WII_1_0RC1
@@ -1014,6 +1024,11 @@ static void CError_VAErrorMessage(int code, va_list list, Boolean isTerminal, Bo
 void CError_Error(int code, ...) {
     va_list va;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (cprep_in_saved_condition) {
+        return;
+    }
+#endif
     if (trychain) {
         longjmp(trychain->jmpbuf, 1);
     }

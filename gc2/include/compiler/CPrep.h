@@ -77,6 +77,8 @@ struct CPrecStockFile;
 int CPrep_RememberPrecompiledFile(const struct CPrecStockFile* file, void* context);
 int CPrep_VisitIncludedFiles(int (*visit)(const struct CPrecStockFile*, void*), void* context);
 void CPrep_RecordConditionContent(void);
+extern Boolean cprep_in_saved_condition;
+extern UInt8 cprep_incondexpr;
 void CPrep_InstallPrecompiledMacro(Macro* macro);
 #endif
 struct TokenStack {

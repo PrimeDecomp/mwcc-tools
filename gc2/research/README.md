@@ -1013,9 +1013,13 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   identifier length and spelling, `#i` and `#l` followed by the
   original expression and a newline, `#e` and `#f` for branch boundaries,
   and `$` for content. The source PCH writer now records these conditions.
-  Replay handles definedness guards and simple `#if` and `#elif` tests.
-  General preprocessor expressions still need the stock replay semantics,
-  and the source writer still uses its own enclosing graph layout.
+  Stock's evaluator at `0x4decc0` uses a temporary scanner and evaluates
+  each saved expression at line 1. Source replay uses the same
+  macro expansion and integer expression parser as a live directive,
+  restores the caller's lexer state, and reports arithmetic warnings
+  without a file location. Some malformed expressions still differ in
+  diagnostics and recovery. The source writer uses its own enclosing
+  graph layout.
 - The stock root namespace uses `0x400` buckets at header offset `0x40da`.
   The first four words of an entry are its next link, hash name, next object
   in the overload list, and first object. This agrees with the source
