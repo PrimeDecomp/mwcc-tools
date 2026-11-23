@@ -537,6 +537,12 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   constructor and destructor registration separately. A materialized
   reference temporary inherits the owner's qualifiers, including weak
   linkage.
+- The inline dispatcher at `0x559f50` sends expression-capable bodies
+  to `0x55a1d0`, where it combines the expanded expressions with commas.
+  Calls from an expression statement use the same path. Statement-only
+  bodies use `0x5592e0` with a continuation label. For a non-void
+  statement-only call, the branch at `0x55a116` creates a result temporary
+  even if the caller discards the value.
 - The `AND` case of constant propagation (`0x6462f1`) follows `LI` and
   `LIS` definitions. Contiguous masks become `RLWINM` with a zero shift.
   Disjoint masks use `ANDI` or `ANDIS` and define CR0. The stock formatter

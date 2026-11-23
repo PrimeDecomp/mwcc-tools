@@ -1845,6 +1845,35 @@ inline void f() {
 }
 void test() { f(); }
 """,
+        "inline_function_names.cpp": """\
+extern void use(const char*);
+inline void f() {
+    use(__func__);
+    use(__FUNCTION__);
+    use(__PRETTY_FUNCTION__);
+}
+void test() { f(); }
+""",
+        "inline_terminal_return.cpp": """\
+extern int value();
+extern void use(int);
+inline int f() {
+    use(1);
+    return value();
+}
+void discard() { f(); use(2); }
+int forward() { return f(); }
+""",
+        "inline_discarded_conditional_result.cpp": """\
+extern bool ready();
+extern void use(int);
+inline int f() {
+    if (ready())
+        return 1;
+    return 2;
+}
+void test() { f(); use(10); }
+""",
     }
 
     results = {}
@@ -1853,9 +1882,11 @@ void test() { f(); }
         source.write_text(contents, encoding="ascii")
         obj = source.with_suffix(".o")
         normalized = source.with_suffix(".normalized")
-        modes = (("-O0", "off"), ("-O4,p", "file"))
-        if name == "inline_static_constant.cpp":
-            modes = modes[1:]
+        modes = (
+            (("-O0", "off"), ("-O4,p", "off"))
+            if name == "inline_discarded_conditional_result.cpp"
+            else (("-O0", "off"), ("-O4,p", "file"))
+        )
         for opt, ipa in modes:
             output = run(compiler, *FLAGS, opt, "-ipa", ipa, "-msgstyle", "parseable",
                          "-c", source.name, "-o", obj, cwd=work)

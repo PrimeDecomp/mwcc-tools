@@ -3209,6 +3209,12 @@ static Statement* CInline_InlineFunctionStatement(Statement* stmt, Boolean* chan
     if (!funcdata || funcdata->can_inline < CI_CanInlineStatement) {
         return stmt;
     }
+#if VERSION == VERSION_WII_1_0RC1
+    if (funcdata->can_inline >= CI_CanInlineExpression ||
+        (stmt->type == ST_EXPRESSION && !IS_TYPE_VOID(TYPE_FUNC(object->type)->functype))) {
+        return stmt;
+    }
+#endif
 
     if (stmt->type != ST_EXPRESSION) {
         short i;
