@@ -3253,7 +3253,13 @@ void CInit_InitializeAutoData(
             expr = CExpr_AssignmentPromotion(
                 expr, obj->type, obj->qual & (Q_CONST | Q_VOLATILE), TRUE
             );
-            insert_cb(makediadicnode(create_objectnode2(obj), expr, EASS));
+#if VERSION == VERSION_WII_1_0RC1
+            if (!IS_TYPE_CLASS(obj->type) || !(TYPE_CLASS(obj->type)->flags & CLASS_EMPTY))
+#endif
+            {
+                expr = makediadicnode(create_objectnode2(obj), expr, EASS);
+            }
+            insert_cb(expr);
             return;
         } else if (copts.cplusplus && is_const_object(obj)) {
             CError_Error(ERR_CONST_AMPERSAND_VARIABLE_NEEDS_INITIALIZER);
@@ -3307,7 +3313,13 @@ void CInit_InitializeAutoData(
     } else {
         if (obj->type->size || IS_TYPE_ARRAY(obj->type)) {
             if ((expr = CInit_GenericData(NULL, obj->type, obj->qual, CInit_AutoInit, FALSE))) {
-                insert_cb(makediadicnode(create_objectnode2(obj), expr, EASS));
+#if VERSION == VERSION_WII_1_0RC1
+                if (!IS_TYPE_CLASS(obj->type) || !(TYPE_CLASS(obj->type)->flags & CLASS_EMPTY))
+#endif
+                {
+                    expr = makediadicnode(create_objectnode2(obj), expr, EASS);
+                }
+                insert_cb(expr);
             }
         } else {
             CError_Error(ERR_DATA_TYPE_INCOMPLETE);

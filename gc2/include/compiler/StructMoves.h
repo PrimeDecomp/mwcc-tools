@@ -8,6 +8,9 @@ extern "C" {
 #endif
 
 extern void move_block(Operand* dst, Operand* src, SInt32 len, SInt32 align);
+#if VERSION == VERSION_WII_1_0RC1
+extern void clear_block(Operand* dst, SInt32 len, SInt32 align);
+#endif
 extern void make_addressable(Operand* operand, SInt32 offset, int n);
 extern void load_small_block_into_reg(short dstReg, Operand* srcOpnd, Type* type, SInt32 align);
 extern void load_small_block_into_reg_pair(

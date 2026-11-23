@@ -2267,9 +2267,16 @@ static void* typeTable[] = {
 
 int is_intrinsic_function_call(ENode* funccall) {
     ENode* funcref = funccall->data.funccall.funcref;
-    return ENODE_IS(funcref, EOBJREF) &&
-        funcref->data.objref->datatype == DFUNC &&
-        (TYPE_FUNC(funcref->data.objref->type)->flags & FUNC_INTRINSIC);
+    if (!ENODE_IS(funcref, EOBJREF) || funcref->data.objref->datatype != DFUNC) {
+        return FALSE;
+    }
+    Object* object = funcref->data.objref;
+#if VERSION == VERSION_WII_1_0RC1
+    if (object == clear_func || object == copy_func) {
+        return TRUE;
+    }
+#endif
+    return (TYPE_FUNC(object->type)->flags & FUNC_INTRINSIC) != 0;
 }
 
 #if VERSION == VERSION_WII_1_0RC1
@@ -2449,6 +2456,17 @@ static void data_cache_block_intrinsic(short opcode, ENode* expr1, ENode* expr2)
         emitpcode(opcode, op1.reg, op2.reg);
     }
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static void clear_intrinsic(ENode* destination, SInt32 size, Operand* output) {
+    GEN_NODE(destination, output);
+    Operand target = *output;
+    indirect(&target, destination);
+    SInt32 alignment = target.object || destination->rtype
+        ? CMach_GetCopyAlignment(destination->rtype, target.object) : 1;
+    clear_block(&target, size, alignment);
+}
+#endif
 
 static void memcpy_intrinsic(
     ENode* destexpr, ENode* srcexpr, SInt32 size, Boolean ignored, Operand* output
@@ -3988,6 +4006,17 @@ void call_intrinsic_function(ENode* funccall, short outputReg, Operand* output) 
 
     args = funccall->data.funccall.args;
     object = funccall->data.funccall.funcref->data.objref;
+#if VERSION == VERSION_WII_1_0RC1
+    if (object == clear_func) {
+        clear_intrinsic(args->node, args->next->node->data.intval.lo, output);
+        return;
+    }
+    if (object == copy_func) {
+        memcpy_intrinsic(args->node, args->next->node, args->next->next->node->data.intval.lo,
+                         funccall->ignored, output);
+        return;
+    }
+#endif
     id = object->u.func.u.intrinsicid;
     cur_intrinsic_object = object;
 

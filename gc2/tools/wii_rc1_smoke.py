@@ -1884,6 +1884,18 @@ void test(int value) {
     use(2);
 }
 """,
+        "pod_value_initialization.cpp": """\
+struct Tag {};
+struct Tiny { char bytes[3]; };
+struct Block { int words[17]; };
+extern int accept(const Tag&);
+inline int ignore(const Tag& = Tag()) { return 7; }
+int pass() { return accept(Tag()); }
+int discard() { return ignore(); }
+int read_local() { Tag tag = Tag(); return accept(tag); }
+Tiny result() { return Tiny(); }
+void assign(Block* target) { *target = Block(); }
+""",
     }
 
     results = {}

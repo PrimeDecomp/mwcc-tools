@@ -925,8 +925,10 @@ static ENode* skipcommaexpr(ENode* expr) {
 }
 
 ENode* CExpr_DoExplicitConversion(Type* type, UInt32 qual, ENodeList* list) {
+#if VERSION != VERSION_WII_1_0RC1
     Object* obj;
     ENode* tempnode;
+#endif
 
     if (!IS_TYPE_CLASS(type)) {
         if (!list) {
@@ -944,6 +946,22 @@ ENode* CExpr_DoExplicitConversion(Type* type, UInt32 qual, ENodeList* list) {
     }
 
     CanCreateObject(type);
+#if VERSION == VERSION_WII_1_0RC1
+    if (!list && !CClass_Constructor(TYPE_CLASS(type))) {
+        CFunc_CheckClassCtors(TYPE_CLASS(type));
+        if (CClass_IsPODClass(TYPE_CLASS(type))) {
+            ENode* clear = funccallexpr(
+                clear_func, create_temp_node(type),
+                intconstnode(CABI_GetSizeTType(), type->size), NULL, NULL
+            );
+            ENode* result = makemonadicnode(clear, EINDIRECT);
+            result->cost = 4;
+            result->rtype = type;
+            result->flags = (result->flags & ~ENODE_FLAG_QUALS) | (qual & ENODE_FLAG_QUALS);
+            return result;
+        }
+    }
+#else
     if (!list && CClass_IsPODClass(TYPE_CLASS(type))) {
         obj = CParser_NewGlobalDataObject(NULL);
         obj->name = CParser_GetUniqueName();
@@ -958,6 +976,7 @@ ENode* CExpr_DoExplicitConversion(Type* type, UInt32 qual, ENodeList* list) {
         tempnode->flags = qual & ENODE_FLAG_QUALS;
         return makediadicnode(tempnode, create_objectnode(obj), EASS);
     }
+#endif
 
     return CExpr_ConstructObject(
         TYPE_CLASS(type), create_temp_node(type), list, TRUE, TRUE, TRUE, TRUE, TRUE

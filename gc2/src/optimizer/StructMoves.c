@@ -10,6 +10,10 @@
 #include "compiler/types.h"
 
 #if VERSION == VERSION_WII_1_0RC1
+#include "compiler/ObjGen_PPC_EABI.h"
+#include "compiler/StackFrame.h"
+#include "compiler/TOC.h"
+#include "compiler/objects.h"
 #define USE_FP_BLOCKMOVE (!copts.ppc_no_fp_blockmove && copts.use_fp && !copts.soft_float)
 #else
 #define USE_FP_BLOCKMOVE (copts.use_fp && !copts.soft_float)
@@ -466,6 +470,119 @@ void move_block(Operand* dst, Operand* src, SInt32 len, SInt32 align) {
         move_block_via_inline_loop(&myDst, src, len, align);
     }
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean clear_offset_is_16bit(Operand* dst) {
+    Object* object = dst->object;
+    if (!object) {
+        return TRUE;
+    }
+    if (object->datatype == DLOCAL) {
+        return local_is_16bit_offset(object);
+    }
+    if (object->datatype == DABSOLUTE) {
+        return FITS_IN_SHORT(object->u.address);
+    }
+    return is_pooled_object(object) || is_16bitdata(object);
+}
+
+static void make_clear_addressable(Operand* dst, SInt32 len) {
+    if (dst->optype == OpndType_IndirectSymbol) {
+        coerce_to_addressable(dst);
+    }
+    if (dst->optype != OpndType_IndirectGPR_ImmOffset ||
+        dst->immOffset + len > 0x7FFF || !clear_offset_is_16bit(dst)) {
+        short reg = ALLOC_GPR();
+        load_address(reg, dst);
+        dst->optype = OpndType_IndirectGPR_ImmOffset;
+        dst->reg = reg;
+        dst->object = NULL;
+        dst->immOffset = 0;
+    }
+}
+
+static void store_zero_chunk(Operand* dst, short zero, SInt32 step, SInt32 offset) {
+    if (dst->optype == OpndType_IndirectGPR_Indexed) {
+        emitpcode(step == 1 ? PC_STBX : step == 2 ? PC_STHX : PC_STWX,
+                  zero, dst->reg, dst->regOffset);
+    } else {
+        CError_ASSERT(1178, dst->optype == OpndType_IndirectGPR_ImmOffset);
+        load_store_register(step == 1 ? PC_STB : step == 2 ? PC_STH : PC_STW,
+                            zero, dst->reg, dst->object, dst->immOffset + offset);
+    }
+    setpcodeflags(dst->flags);
+}
+
+static void clear_block_via_store(Operand* dst, SInt32 len, SInt32 align) {
+    SInt32 step = GetStep(len, align);
+    if (dst->optype == OpndType_IndirectSymbol) {
+        coerce_to_addressable(dst);
+    }
+    if (step != len && dst->optype == OpndType_IndirectGPR_Indexed) {
+        make_clear_addressable(dst, len);
+    }
+
+    for (SInt32 pos = 0; pos < len; pos += step) {
+        short zero = ALLOC_GPR();
+        load_immediate(zero, 0);
+        store_zero_chunk(dst, zero, step, pos);
+    }
+}
+
+static void clear_block_via_store_sequence(Operand* dst, SInt32 len, SInt32 align) {
+    make_clear_addressable(dst, len);
+    short zero = ALLOC_GPR();
+    load_immediate(zero, 0);
+    SInt32 pos = 0;
+    while (len > 0) {
+        SInt32 step = GetStep(len, align);
+        store_zero_chunk(dst, zero, step, pos);
+        pos += step;
+        len -= step;
+    }
+}
+
+static void clear_block_via_inline_loop(Operand* dst, SInt32 len, SInt32 align) {
+    PCodeLabel* label = makepclabel();
+    SInt32 step = GetStep(len, align);
+    SInt32 pair = step * 2;
+    load_displaced_address(dst, -step);
+    short zero = ALLOC_GPR();
+    load_immediate(zero, 0);
+    if (len > pair) {
+        short count = ALLOC_GPR();
+        load_immediate(count, len / pair);
+        emitpcode(PC_MTCTR, count);
+        branch_label(label);
+        store_zero_chunk(dst, zero, step, step);
+        load_store_register(step == 1 ? PC_STBU : step == 2 ? PC_STHU : PC_STWU,
+                            zero, dst->reg, NULL, pair);
+        setpcodeflags(dst->flags);
+        branch_decrement_always(PC_BDNZ, label);
+    }
+
+    len &= pair - 1;
+    SInt32 pos = step;
+    while (len > 0) {
+        SInt32 width = GetStep(len, align);
+        store_zero_chunk(dst, zero, width, pos);
+        pos += width;
+        len -= width;
+    }
+}
+
+void clear_block(Operand* dst, SInt32 len, SInt32 align) {
+    Operand target = *dst;
+    CError_ASSERT(1325, target.optype >= OpndType_IndirectGPR_ImmOffset);
+    if (len == 1 || len == 2 || len == 4) {
+        clear_block_via_store(&target, len, align);
+    } else if (len <= 16 || (!copts.optimizesize && len <= 64)) {
+        clear_block_via_store_sequence(&target, len, align);
+    } else {
+        clear_block_via_inline_loop(&target, len, align);
+    }
+}
+#endif
 
 static void load_word_of_small_struct(
     short dstReg, short srcReg, Operand* opnd, SInt32 offset, SInt32 len, SInt32 align

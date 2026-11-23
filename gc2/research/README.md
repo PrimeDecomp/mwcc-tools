@@ -543,6 +543,13 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   bodies use `0x5592e0` with a continuation label. For a non-void
   statement-only call, the branch at `0x55a116` creates a result temporary
   even if the caller discards the value.
+- Value initialization of a POD class without a constructor builds a
+  temporary cleared by `__clear` at `0x56fe2d`. The native intrinsic
+  dispatcher at `0x5801b0` recognizes `__clear` and `__copy` by object.
+  `clear_block` at `0x5bb580` selects individual stores for 1, 2, and 4
+  bytes, a store sequence through 16 bytes (64 outside size optimization),
+  or a counted loop. For an empty class, local initialization evaluates the
+  initializer without copying it into the destination (`0x543770`).
 - The `AND` case of constant propagation (`0x6462f1`) follows `LI` and
   `LIS` definitions. Contiguous masks become `RLWINM` with a zero shift.
   Disjoint masks use `ANDI` or `ANDIS` and define CR0. The stock formatter
@@ -554,6 +561,10 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
 - The constant propagation pass at `0x646890` folds XOR inputs from
   `LI` and `LIS`. Comparisons with zero, one, and
   `0x7abc000000000000` reach the move, `XORI`, and `XORIS` rewrites.
+- The `RLWINM` branch at `0x6457b1` rotates and masks the sign-extended
+  immediate from a reaching `LI`. It rewrites the instruction when the
+  result fits a single `LI` or `LIS`. This also folds the packing shift in
+  returns of small zero-initialized aggregates.
   When both XOR inputs come from eligible `LIS` definitions, stock
   combines them at `0x6477d7`, then continues the left-immediate rewrite
   at `0x646bf1` with the shortened operand list. The source preserves

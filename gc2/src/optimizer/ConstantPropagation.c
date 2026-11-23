@@ -319,27 +319,37 @@ static int isunsignedloadoperand(PCodeArg* op) {
     return 0;
 }
 
+static UInt32 rlwinm_mask(const PCode* instr) {
+    SInt32 first = instr->args[3].data.imm.value;
+    SInt32 last = instr->args[4].data.imm.value;
+    UInt32 from_first = first > 31 ? 0 : 0xFFFFFFFFU >> first;
+    UInt32 through_last = last >= 31 ? 0xFFFFFFFFU : ~(0xFFFFFFFFU >> (last + 1));
+    return first <= last ? from_first & through_last : from_first | through_last;
+}
+
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean propagate_rlwinm_constant(PCode* instr, SInt16 input) {
+    UInt32 bits = (UInt32)(SInt32)input;
+    UInt32 shift = (UInt32)instr->args[2].data.imm.value & 31;
+    UInt32 rotated = (bits << shift) | (bits >> ((32 - shift) & 31));
+    SInt32 value = (SInt32)(rotated & rlwinm_mask(instr));
+    if (FITS_IN_SHORT(value)) {
+        replace_with_constant_load(instr, PC_LI, value);
+        return TRUE;
+    }
+    if (!(value & 0xFFFF)) {
+        replace_with_constant_load(instr, PC_LIS, (SInt16)((UInt32)value >> 16));
+        return TRUE;
+    }
+    return FALSE;
+}
+#endif
+
 static int ismaskedoperand(PCodeArg* op, UInt32* resultMask) {
     PCode* instr;
-    UInt32 mask;
 
     if ((instr = defininginstruction[op->data.reg.reg]) && instr->op == PC_RLWINM) {
-        if (instr->args[3].data.imm.value <= instr->args[4].data.imm.value) {
-            mask = ((instr->args[3].data.imm.value > 31)
-                        ? 0
-                        : (0xFFFFFFFFU >> instr->args[3].data.imm.value)) &
-                ~(((instr->args[4].data.imm.value + 1) > 31)
-                      ? 0
-                      : (0xFFFFFFFFU >> (instr->args[4].data.imm.value + 1)));
-        } else {
-            mask = ((instr->args[3].data.imm.value > 31)
-                        ? 0
-                        : (0xFFFFFFFFU >> instr->args[3].data.imm.value)) |
-                ~(((instr->args[4].data.imm.value + 1) > 31)
-                      ? 0
-                      : (0xFFFFFFFFU >> (instr->args[4].data.imm.value + 1)));
-        }
-        *resultMask = mask;
+        *resultMask = rlwinm_mask(instr);
         return TRUE;
     }
 
@@ -427,9 +437,19 @@ static void propagateconstantstoblock(PCodeBlock* block) {
                 }
                 break;
             case PC_RLWINM:
+#if VERSION == VERSION_WII_1_0RC1
+                if (!(PCODE_FLAG_SET_F(instr) & fRecordBit) &&
+                    isconstantoperand(&instr->args[1], &value1)) {
+                    if (propagate_rlwinm_constant(instr, value1)) {
+                        changed = propagatedconstants = TRUE;
+                    }
+                    break;
+                }
+#endif
                 if (!(PCODE_FLAG_SET_F(instr) & fRecordBit) &&
                     instr->args[2].data.imm.value == 0 &&
                     instr->args[4].data.imm.value == 31) {
+#if VERSION != VERSION_WII_1_0RC1
                     if (isconstantoperand(&instr->args[1], &value1)) {
                         if ((instr->args[3].data.imm.value == 16 && value1 == (value1 & 0x7FFF)) ||
                             (instr->args[3].data.imm.value == 24 && value1 == (value1 & 0xFF))) {
@@ -442,6 +462,7 @@ static void propagateconstantstoblock(PCodeBlock* block) {
                             break;
                         }
                     }
+#endif
 
                     loadSize = isunsignedloadoperand(&instr->args[1]);
                     if ((loadSize == 2 && instr->args[3].data.imm.value <= 16) ||
@@ -453,22 +474,7 @@ static void propagateconstantstoblock(PCodeBlock* block) {
                     }
 
                     if (ismaskedoperand(&instr->args[1], &mask)) {
-                        if (instr->args[3].data.imm.value <= instr->args[4].data.imm.value) {
-                            loadSize = ((instr->args[3].data.imm.value > 31)
-                                            ? 0
-                                            : (0xFFFFFFFFU >> instr->args[3].data.imm.value)) &
-                                ~(((instr->args[4].data.imm.value + 1) > 31)
-                                      ? 0
-                                      : (0xFFFFFFFFU >> (instr->args[4].data.imm.value + 1)));
-                        } else {
-                            loadSize = ((instr->args[3].data.imm.value > 31)
-                                            ? 0
-                                            : (0xFFFFFFFFU >> instr->args[3].data.imm.value)) |
-                                ~(((instr->args[4].data.imm.value + 1) > 31)
-                                      ? 0
-                                      : (0xFFFFFFFFU >> (instr->args[4].data.imm.value + 1)));
-                        }
-                        if (mask == (mask & loadSize)) {
+                        if (mask == (mask & rlwinm_mask(instr))) {
                             change_opcode(instr, PC_MR);
                             change_num_operands(instr, 2);
                             changed = propagatedconstants = TRUE;

@@ -894,6 +894,12 @@ Boolean CExpr_IsLValue(ENode* expr) {
                 (expr->data.funccall.functype->flags & FUNC_IS_CTOR)) {
                 return FALSE;
             }
+#if VERSION == VERSION_WII_1_0RC1
+            if (ENODE_IS(expr->data.funccall.funcref, EOBJREF) &&
+                expr->data.funccall.funcref->data.objref == clear_func) {
+                return FALSE;
+            }
+#endif
         default:
             return TRUE;
     }
