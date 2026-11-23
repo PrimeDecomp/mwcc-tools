@@ -3741,6 +3741,16 @@ void run_update(Word *base, Word *p, Word *q) {
         *slot = p;
     }
 }
+void propagate_slot_offset(Word *base, Word offset, Word value) {
+    Word *slot = (Word *)((char *)base + (offset & ~7u)) - 1;
+    if (*slot == value) *slot = base[3];
+    if (*slot == value) {
+        *slot = 0;
+        base[2] = 0;
+    } else {
+        base[2] = *slot;
+    }
+}
 void run_indexed(char *base, Word offset) {
     char *p = base + offset;
     *(Word *)p &= ~4u;

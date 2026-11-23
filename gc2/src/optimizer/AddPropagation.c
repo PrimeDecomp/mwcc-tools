@@ -88,10 +88,14 @@ static int addpropagatestouse(int candidateID, int useID) {
         }
         otherSrcReg = candidateInstr->args[2].data.reg.reg;
     } else if (candidateInstr->op == PC_ADDI) {
+        // Wii RC1 takes the displacement from the instruction operand.
+#if VERSION != VERSION_WII_1_0RC1
         if (candidateInstr->alias && candidateInstr->alias->type == AliasType_Object) {
             object = candidateInstr->alias->object;
             offset = candidateInstr->alias->offset;
-        } else if (candidateInstr->args[2].kind == PCOp_MEMORY) {
+        } else
+#endif
+        if (candidateInstr->args[2].kind == PCOp_MEMORY) {
             object = candidateInstr->args[2].data.mem.obj;
             offset = candidateInstr->args[2].data.mem.offset;
         } else if (candidateInstr->args[2].kind == PCOp_IMMEDIATE) {
