@@ -136,7 +136,7 @@ extern DeclBlock* CFunc_NewDeclBlock(void);
 extern void CFunc_RestoreBlock(DeclBlock* block);
 extern void CFunc_SetupLocalVarInfo(Object* obj);
 #if VERSION == VERSION_WII_1_0RC1
-extern void CFunc_BeginStaticReferenceInitialization(Object* owner);
+extern void CFunc_BeginStaticInitialization(Object* owner);
 extern void CFunc_AppendLocal(Object* object);
 #endif
 extern Boolean CFunc_ParseFakeArgList(Boolean stopAtComma);

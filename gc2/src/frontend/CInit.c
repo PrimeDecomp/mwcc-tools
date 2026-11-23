@@ -40,6 +40,9 @@ typedef struct InitInfo {
     ExprCB expr_cb;
     Boolean expr_cb_called;
     Boolean has_runtime_init;
+#if VERSION == VERSION_WII_1_0RC1
+    ENode* static_scalar_init;
+#endif
     Boolean use_register_cb;
     InitExprRegisterCB init_expr_register_cb;
     Object* auto_obj;
@@ -1430,6 +1433,21 @@ static ENode* CInit_RegisterDtorObject(Type* type, Object* dtor, ENode* objexpr)
     return expr;
 }
 
+static void CInit_AppendLocalStaticInit(InitExprRegisterCB cb, Object* owner, ENode* expr) {
+#if VERSION == VERSION_WII_1_0RC1
+    CFunc_BeginStaticInitialization(owner);
+#endif
+    cb(expr);
+}
+
+static void CInit_AppendStaticInit(Object* owner, ENode* expr) {
+    if (cinit_initinfo->use_register_cb) {
+        CInit_AppendLocalStaticInit(cinit_initinfo->init_expr_register_cb, owner, expr);
+    } else {
+        InitExpr_Register(expr, owner);
+    }
+}
+
 static Boolean CInit_ConstructGlobalObject(
     Object* obj, TypeClass* tclass, ENode* valueexpr, SInt32 offset, Boolean parseInit
 ) {
@@ -1496,14 +1514,19 @@ static Boolean CInit_ConstructGlobalObject(
     }
 
     if (dtor) {
+#if VERSION == VERSION_WII_1_0RC1
+        if (cinit_initinfo->use_register_cb && !copts.no_static_dtors && ctor) {
+            CInit_AppendStaticInit(obj, expr);
+            expr = create_objectrefnode(obj);
+            if (offset) {
+                expr = makediadicnode(expr, intconstnode(TYPE(&stunsignedlong), offset), EADD);
+            }
+        }
+#endif
         expr = CInit_RegisterDtorObject(TYPE(tclass), dtor, expr);
     }
 
-    if (cinit_initinfo->use_register_cb) {
-        cinit_initinfo->init_expr_register_cb(expr);
-    } else {
-        InitExpr_Register(expr, obj);
-    }
+    CInit_AppendStaticInit(obj, expr);
 
     return TRUE;
 }
@@ -2179,11 +2202,14 @@ static void CInit_GlobalStaticInit(Type* type, ENode* valueexpr, Boolean isClass
         lvalue = makemonadicnode(expr, EINDIRECT);
         lvalue->rtype = type;
         expr = makediadicnode(lvalue, valueexpr, EASS);
-        if (cinit_initinfo->use_register_cb) {
-            cinit_initinfo->init_expr_register_cb(expr);
-        } else {
-            InitExpr_Register(expr, cinit_initinfo->obj);
+#if VERSION == VERSION_WII_1_0RC1
+        if (cinit_initinfo->use_register_cb && !cinit_initinfo->expr_offset &&
+            type == cinit_initinfo->obj->type && !IS_TYPE_CLASS(type) && !IS_TYPE_STRUCT(type)) {
+            cinit_initinfo->static_scalar_init = expr;
+            return;
         }
+#endif
+        CInit_AppendStaticInit(cinit_initinfo->obj, expr);
     }
 }
 
@@ -2606,11 +2632,7 @@ static void CInit_InitializeClassArray(Object* obj, TypeClass* tclass, Boolean i
                     NULL
                 );
             }
-            if (cinit_initinfo->use_register_cb) {
-                cinit_initinfo->init_expr_register_cb(expr);
-            } else {
-                InitExpr_Register(expr, obj);
-            }
+            CInit_AppendStaticInit(obj, expr);
         } else {
             stmt = CFunc_AppendStatement(ST_EXPRESSION);
             stmt->expr = expr;
@@ -2787,20 +2809,18 @@ static Boolean CInit_CanBindClassRValue(ENode* expr) {
 static void CInit_AppendReferenceInit(ENode* expr, Object* owner, Boolean isLocal) {
     if (isLocal) {
         cinit_initinfo->insert_expr_cb(expr);
-    } else if (cinit_initinfo->use_register_cb) {
-        CFunc_BeginStaticReferenceInitialization(owner);
-        cinit_initinfo->init_expr_register_cb(expr);
     } else {
-        InitExpr_Register(expr, owner);
+        CInit_AppendStaticInit(owner, expr);
     }
 }
 
-static ENode* CInit_MaterializeReferenceTemp(Type* type, UInt32 qual, ENode* value, Boolean isLocal) {
+static ENode* CInit_MaterializeReferenceTemp(Object* owner, Type* type, ENode* value, Boolean isLocal) {
     ENode* result;
     ENode* call;
     ENode* address;
     Object* dtor;
     Object* temp;
+    UInt32 qual = owner->qual & Q_CV;
 
     if (isLocal) {
         temp = create_temp_object(type);
@@ -2810,7 +2830,7 @@ static ENode* CInit_MaterializeReferenceTemp(Type* type, UInt32 qual, ENode* val
         temp->name = CParser_GetUniqueName();
         temp->nspace = cscope_root;
         temp->type = type;
-        temp->qual = qual;
+        temp->qual = owner->qual;
         CInit_DeclareData(temp, NULL, NULL, type->size);
     }
 
@@ -2871,7 +2891,7 @@ static ENode* CInit_BindReference(Object* obj, ENode* value, Boolean isLocal) {
             }
             if (!CInit_CanBindClassRValue(value)) {
                 Type* actual = value->rtype;
-                ENode* address = CInit_MaterializeReferenceTemp(actual, qual, value, isLocal);
+                ENode* address = CInit_MaterializeReferenceTemp(obj, actual, value, isLocal);
                 return CClass_ClassPointerCast(
                     address, TYPE_CLASS(actual), TYPE_CLASS(target), TRUE, TRUE, TRUE
                 );
@@ -2881,7 +2901,7 @@ static ENode* CInit_BindReference(Object* obj, ENode* value, Boolean isLocal) {
                    (!lvalue || !CExpr_IsReferenceCompatible(
                        target, qual, value->rtype, ENODE_QUALS(value)
                    ))) {
-            return CInit_MaterializeReferenceTemp(target, qual, value, isLocal);
+            return CInit_MaterializeReferenceTemp(obj, target, value, isLocal);
         }
     }
 
@@ -3317,6 +3337,11 @@ void CInit_InitializeStaticData(Object* obj, InitExprRegisterCB cb) {
             CInit_InitData(&db, obj->type, obj->qual, copts.cplusplus);
 
             IsCompleteType(obj->type);
+#if VERSION == VERSION_WII_1_0RC1
+            if (!db.list && CInit_IsAllZero(db.buffer, db.size)) {
+                db.buffer = NULL;
+            }
+#endif
 
             if (!db.nonconst && is_const_object(obj)) {
                 CInit_DeclareReadOnlyData(obj, db.buffer, db.list, db.size);
@@ -3333,7 +3358,7 @@ void CInit_InitializeStaticData(Object* obj, InitExprRegisterCB cb) {
                         CInit_InitConcat(expr, obj_expr, entry->offset, entry->type, entry->expr);
                     entry = entry->next;
                 }
-                cb(expr);
+                CInit_AppendLocalStaticInit(cb, obj, expr);
             }
         } else {
             if (copts.cplusplus && is_const_object(obj)) {
@@ -3395,15 +3420,22 @@ void CInit_InitializeStaticData(Object* obj, InitExprRegisterCB cb) {
         }
     } else {
         if (obj->type->size || IS_TYPE_ARRAY(obj->type)) {
-            if ((expr =
-                     CInit_GenericData(obj, obj->type, obj->qual, CInit_GlobalStaticInit, TRUE))) {
-                cb(makediadicnode(create_objectnode2(obj), expr, EASS));
+            if ((expr = CInit_GenericData(
+                     obj, obj->type, obj->qual, CInit_GlobalStaticInit,
+                     VERSION != VERSION_WII_1_0RC1
+                 ))) {
+                CInit_AppendLocalStaticInit(cb, obj, makediadicnode(create_objectnode2(obj), expr, EASS));
             }
         } else {
             CError_Error(ERR_DATA_TYPE_INCOMPLETE);
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (initinfo.static_scalar_init) {
+        CInit_AppendStaticInit(obj, initinfo.static_scalar_init);
+    }
+#endif
     CInit_CleanupInitInfo(&initinfo);
 }
 

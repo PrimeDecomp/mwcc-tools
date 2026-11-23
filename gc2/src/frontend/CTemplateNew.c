@@ -1848,7 +1848,11 @@ Boolean CTempl_GenFuncInstance(
         if (isExplicit) {
             inst->object->sclass = TK_EXTERN;
         } else {
+#if VERSION == VERSION_WII_1_0RC1
+            inst->object->qual |= Q_IMPLICIT_WEAK;
+#else
             inst->object->qual |= Q_WEAK;
+#endif
         }
     }
 

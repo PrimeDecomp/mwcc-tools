@@ -27,6 +27,9 @@ extern void CMangler_MangleType(Type* type, UInt32 qual);
 extern HashNameNode* CMangler_ConversionFuncName(Type* type, UInt32 qual);
 extern HashNameNode* CMangler_GetCovariantFunctionName(Object* dobj, TypeClass* theclass);
 extern HashNameNode* CMangler_GetLinkName(Object* obj);
+#if VERSION == VERSION_WII_1_0RC1
+extern void CMangler_SetupLocalVarName(Object* obj, Object* func, SInt32 index);
+#endif
 
 #ifdef __cplusplus
 }

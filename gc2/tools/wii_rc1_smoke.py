@@ -1827,6 +1827,24 @@ void test() {
     use(value);
 }
 """,
+        "inline_static_reference.cpp": """\
+struct Value { int data; };
+extern Value source;
+extern void use(const Value&);
+inline void f() {
+    static const Value& value = source;
+    use(value);
+}
+void test() { f(); }
+""",
+        "inline_static_constant.cpp": """\
+extern void use(const int&);
+inline void f() {
+    static int value = 42;
+    use(value);
+}
+void test() { f(); }
+""",
     }
 
     results = {}
@@ -1835,7 +1853,10 @@ void test() {
         source.write_text(contents, encoding="ascii")
         obj = source.with_suffix(".o")
         normalized = source.with_suffix(".normalized")
-        for opt, ipa in (("-O0", "off"), ("-O4,p", "file")):
+        modes = (("-O0", "off"), ("-O4,p", "file"))
+        if name == "inline_static_constant.cpp":
+            modes = modes[1:]
+        for opt, ipa in modes:
             output = run(compiler, *FLAGS, opt, "-ipa", ipa, "-msgstyle", "parseable",
                          "-c", source.name, "-o", obj, cwd=work)
             run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)

@@ -65,7 +65,11 @@ static ExceptionAction* ainit_actions;
 #endif
 static FuncArg* check_arglist;
 static Boolean cfunc_is_extern_c;
+#if VERSION == VERSION_WII_1_0RC1
+static SInt32 cfunc_staticvarcount;
+#else
 static SInt16 cfunc_staticvarcount;
+#endif
 static void* destroyobjects;
 static Boolean cfunc_hasdtortemp;
 
@@ -1166,7 +1170,27 @@ static void scancase(DeclThing* thing) {
     statement(thing);
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void CFunc_NamePrivateStaticDataObject(Object* obj, char* str) {
+    HashNameNode* name = obj->name;
+    obj->name = CParser_AppendUniqueName(str);
+    obj->u.data.linkname = CMangler_GetLinkName(obj);
+    obj->name = name;
+}
+#endif
+
 static void CFunc_NameLocalStaticDataObject(Object* obj, char* str) {
+#if VERSION == VERSION_WII_1_0RC1
+    Object* func = cscope_currentfunc;
+    if (func && ((func->qual & Q_IMPLICIT_WEAK) ||
+                 ((func->qual & Q_INLINE) && func->sclass != TK_STATIC))) {
+        CMangler_SetupLocalVarName(obj, func, cfunc_staticvarcount++);
+        obj->qual |= Q_IMPLICIT_WEAK;
+        obj->sclass = 0;
+    } else {
+        CFunc_NamePrivateStaticDataObject(obj, str);
+    }
+#else
     char buf[64];
     HashNameNode* name;
 
@@ -1182,6 +1206,7 @@ static void CFunc_NameLocalStaticDataObject(Object* obj, char* str) {
         obj->qual |= Q_IMPLICIT_WEAK;
         obj->sclass = 0;
     }
+#endif
 }
 
 static void sinit_skip_initialized(void) {
@@ -1192,7 +1217,7 @@ static void sinit_skip_initialized(void) {
 }
 
 #if VERSION == VERSION_WII_1_0RC1
-void CFunc_BeginStaticReferenceInitialization(Object* owner) {
+void CFunc_BeginStaticInitialization(Object* owner) {
     if (!sinit_first_object) {
         sinit_first_object = CABI_NewGuardVariable(owner);
         sinit_skip_initialized();
@@ -1201,6 +1226,7 @@ void CFunc_BeginStaticReferenceInitialization(Object* owner) {
 #endif
 
 static void sinit_insert_expr(ENode* expr) {
+#if VERSION != VERSION_WII_1_0RC1
     if (!sinit_first_object) {
         sinit_first_object = CParser_NewCompilerDefDataObject();
         sinit_first_object->type = TYPE(&stsignedchar);
@@ -1210,6 +1236,7 @@ static void sinit_insert_expr(ENode* expr) {
 
         sinit_skip_initialized();
     }
+#endif
 
     Statement* stmt = CFunc_AppendStatement(ST_EXPRESSION);
     stmt->expr = expr;
@@ -3348,7 +3375,11 @@ static Object* CFunc_DeclareFuncName(char* str, HashNameNode* name) {
     aliasobj = CParser_NewAliasObject(obj, 0);
     obj->nspace = cscope_root;
     obj->datatype = DDATA;
+#if VERSION == VERSION_WII_1_0RC1
+    CFunc_NamePrivateStaticDataObject(obj, obj->name->name);
+#else
     CFunc_NameLocalStaticDataObject(obj, obj->name->name);
+#endif
 
     return aliasobj;
 }

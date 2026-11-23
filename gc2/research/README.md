@@ -522,6 +522,21 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   The translation-unit initializer at `0x595840` starts its filename
   suffix at the final backslash in the input path and replaces periods
   with underscores.
+- A function-scope static in an implicitly weak function or an inline
+  function without the `static` storage class gets a weak link name at
+  `0x50d826`. The
+  mangler at `0x56a2a0` concatenates `@LOCAL@`, the enclosing function's
+  mangled name, and the original variable name separated by an at sign.
+  The second variable and subsequent variables append `@0`, `@1`, and
+  so on, regardless of whether the variable names repeat. The frontend
+  keeps the source identifier. Hidden function-name strings keep private
+  numbered symbols and use the ordinary unique ID counter.
+- All function-scope dynamic initializers share the guard path at
+  `0x548ce7`. Static scalar and aggregate data is emitted before
+  appending its runtime assignment. Class initialization appends the
+  constructor and destructor registration separately. A materialized
+  reference temporary inherits the owner's qualifiers, including weak
+  linkage.
 - The `AND` case of constant propagation (`0x6462f1`) follows `LI` and
   `LIS` definitions. Contiguous masks become `RLWINM` with a zero shift.
   Disjoint masks use `ANDI` or `ANDIS` and define CR0. The stock formatter

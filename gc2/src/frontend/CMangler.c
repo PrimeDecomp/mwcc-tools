@@ -831,6 +831,30 @@ HashNameNode* CMangler_GetCovariantFunctionName(Object* dobj, TypeClass* theclas
     return name;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+void CMangler_SetupLocalVarName(Object* obj, Object* func, SInt32 index) {
+    if (func->u.func.inst) {
+        CMangler_CheckTemplateArguments(func->u.func.inst->args);
+    }
+
+    name_mangle_list.size = 0;
+    AppendGListName(&name_mangle_list, "@LOCAL@");
+    CMangler_MangleFunction(func, func->nspace);
+    AppendGListByte(&name_mangle_list, '@');
+    AppendGListName(&name_mangle_list, obj->name->name);
+    if (index > 0) {
+        char suffix[16];
+        sprintf(suffix, "@%ld", (long)(index - 1));
+        AppendGListName(&name_mangle_list, suffix);
+    }
+    AppendGListByte(&name_mangle_list, 0);
+
+    COS_LockHandle(name_mangle_list.data);
+    obj->u.data.linkname = GetHashNameNodeExport(*name_mangle_list.data);
+    COS_UnlockHandle(name_mangle_list.data);
+}
+#endif
+
 static HashNameNode* CMangler_DataLinkName(Object* obj) {
     NameSpace* nspace;
     HashNameNode* name;
