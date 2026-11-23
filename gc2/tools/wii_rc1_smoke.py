@@ -1831,6 +1831,81 @@ int instantiate(int n) { return select(n) + partial(n); }
     return results
 
 
+def check_preprocess_output(compiler, work):
+    source = work / "preprocess_output.c"
+    source.write_bytes(
+        b"// Intro comment\n#define A 3\n# pragma   c99 on\n\n"
+        b"  int   one = A; /* tail */\n#include \"preprocess_output.h\"\n\n"
+        b"int two=ID(0x1UL);\n\n#line 42 \"fake\\file.c\"\nint in_fake=__LINE__;\n"
+        b"#line 45\nint same_file=__LINE__;\n"
+    )
+    (work / "preprocess_output.h").write_bytes(
+        b"#pragma once\n#define ID(x) x\nint from_head;\n"
+    )
+    expected = (
+        b"int one = 3 ;\r\nint from_head;\r\nint two=0x1UL ;\r\nint in_fake=42 ;\r\n"
+        b"int same_file=45 ;\r\n"
+    )
+    results = {}
+    options = (
+        ("-E",),
+        ("-EP",),
+        ("-E", "-ppopt", "break"),
+        ("-E", "-ppopt", "line,full"),
+        ("-E", "-ppopt", "line,nobreak"),
+        ("-E", "-ppopt", "pragma,line"),
+        ("-E", "-ppopt", "pragma,comment,space"),
+        ("-E", "-ppopt", "line", "-DTEST=1"),
+        ("-EP", "-ppopt", "line"),
+        ("-E", "-pragma", "simple_prepdump off"),
+    )
+    for args in options:
+        data = subprocess.check_output(
+            (compiler, *FLAGS, *args, source.name), cwd=work, stderr=subprocess.STDOUT, timeout=30,
+        )
+        if args in (("-E",), ("-EP",), ("-E", "-ppopt", "line,nobreak")) and data != expected:
+            raise ValueError(f"{compiler}: unexpected preprocessed output with {' '.join(args)}\n{data!r}")
+        results[f"preprocess {' '.join(args)}"] = data
+
+    output = work / "preprocess_output.i"
+    diagnostic = subprocess.check_output(
+        (compiler, *FLAGS, "-P", "-o", output.name, source.name),
+        cwd=work, stderr=subprocess.STDOUT, timeout=30,
+    )
+    if diagnostic or output.read_bytes() != expected:
+        raise ValueError(f"{compiler}: unexpected preprocessed file output\n{diagnostic!r}")
+    results["preprocess -P"] = output.read_bytes()
+
+    show_macros = work / "preprocess_macros.c"
+    show_macros.write_bytes(
+        b"#define I 1\n#define DOUBLE(x) x+x\nint n = DOUBLE(  I );\n#undef I\n"
+    )
+    data = subprocess.check_output(
+        (compiler, *FLAGS, "-E", "-pragma", "macro_prepdump on", show_macros.name),
+        cwd=work, stderr=subprocess.STDOUT, timeout=30,
+    )
+    expected = b"/*#define I 1*/\r\n/*#define DOUBLE(x) x+x*/\r\nint n = 1+ 1 ;\r\n/*#undef I*/\r\n"
+    if data != expected:
+        raise ValueError(f"{compiler}: unexpected macro dump\n{data!r}")
+    results["preprocess macro_prepdump"] = data
+
+    tokens = work / "preprocess_tokens.c"
+    tokens.write_bytes(
+        b"<: :> <% %> %: %:%:\n??=pragma c99 on\n"
+        b"int a; /* start\n * middle\n * end */ int follow;\n"
+        b"<: :> <% %> %: %:%:\n"
+    )
+    data = subprocess.check_output(
+        (compiler, *FLAGS, "-E", "-ppopt", "pragma,comment,line", "-pragma", "trigraphs on", tokens.name),
+        cwd=work, stderr=subprocess.STDOUT, timeout=30,
+    )
+    if (b"#pragma c99 on\r\n" not in data or b"< : : > < % % > % : % : % :\r\n" not in data
+            or not data.endswith(b"<: :> <% %> %: %:%:\r\n")):
+        raise ValueError(f"{compiler}: unexpected text for directive and digraph spellings\n{data!r}")
+    results["preprocess directive and token spelling"] = data
+    return results
+
+
 def check_c99_language(compiler, objcopy, work):
     source = work / "c99_language.cpp"
     source.write_text(
@@ -3935,6 +4010,7 @@ void member_call(V* v) { Guard guard; v->g(); }
     results.update(check_template_actions(compiler, objcopy, nm, work))
     results.update(check_reference_cast_diagnostics(compiler, objcopy, work))
     results.update(check_return_diagnostics(compiler, work))
+    results.update(check_preprocess_output(compiler, work))
     results.update(check_c99_language(compiler, objcopy, work))
     results.update(check_backend_diagnostics(compiler, objcopy, work))
     results.update(check_reference_initializers(compiler, objcopy, work))

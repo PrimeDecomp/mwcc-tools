@@ -602,6 +602,12 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   changing whether a translation unit uses C or C++. The `c99` and
   `c9x` pragmas update the same compiler option and can restore its
   command-line setting.
+- The preprocessor starts with file and line markers disabled. The
+  directive callbacks at `0x4e7230` and `0x4e72c0` retain pragmas as text
+  and macro directives as comments when enabled. The file marker writer
+  at `0x4e7720` uses blank lines for gaps below eight lines and reissues
+  `#line` for larger gaps or backward jumps. Command-line definitions are
+  one level deeper than the preprocessor panel.
 - The uninitialized-variable diagnostic at `0x5d2926` uses the local
   object's declaration token. File IPA preserves the declaration location
   when it reconstructs the optimized function body, even with debug

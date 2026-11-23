@@ -5,6 +5,9 @@
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CPreprocess.h"
+#endif
 #include "compiler/InlineAsmPPC.h"
 #include "compiler/tokens.h"
 #include "compiler/types.h"
@@ -71,7 +74,11 @@ static UInt16 decode_sjis(UInt8 first) {
 #define scanner_is_multibyte COS_IsMultiByte
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+static short prepskipnextchar_impl(Boolean captureTrivia) {
+#else
 short prepskipnextchar(void) {
+#endif
     short c;
     StringPtr start;
     StringPtr p;
@@ -99,6 +106,17 @@ loop:
         case LF:
         case '\v':
         case '\f':
+#if VERSION == VERSION_WII_1_0RC1
+            if (captureTrivia && *p != LF) {
+                StringPtr space = p;
+                do {
+                    ++p;
+                } while (*p == ' ' || *p == '\t' || *p == '\v' || *p == '\f');
+                CPrep_PreprocessKeepSpace((char*)space, p - space);
+                spaceskip = TRUE;
+                goto loop;
+            }
+#endif
             p++;
             spaceskip = TRUE;
             goto loop;
@@ -142,9 +160,19 @@ loop:
                 }
             }
             if (tokenstacklevel <= 0) {
+#if VERSION == VERSION_WII_1_0RC1
+                SInt32 commentLine = linenumber;
+#endif
                 if (p[0] == '/' && (!copts.ANSIstrict || copts.cplusplus || copts.c9x)) {
                     spaceskip = TRUE;
                     nextcharpos = (char*)CPrep_SkipNewComment(p + 1);
+#if VERSION == VERSION_WII_1_0RC1
+                    if (captureTrivia && copts.comment_prepdump) {
+                        CPrep_PreprocessDumpComment(
+                            pos, nextcharpos - (CPrep_SkipNewCommentChar == CR), commentLine
+                        );
+                    }
+#endif
                     return CPrep_SkipNewCommentChar;
                 } else if (p[0] == '*') {
                     spaceskip = TRUE;
@@ -180,6 +208,11 @@ loop:
                             }
                             if (*p == '/') {
                                 p++;
+#if VERSION == VERSION_WII_1_0RC1
+                                if (captureTrivia && copts.comment_prepdump) {
+                                    CPrep_PreprocessDumpComment(pos, (char*)p, commentLine);
+                                }
+#endif
                                 goto loop;
                             }
                         }
@@ -193,7 +226,11 @@ loop:
             return c;
         case '%':
             pos = (char*)p++;
-            if (*p == ':' && copts.cplusplus) {
+            if (*p == ':' && (copts.cplusplus
+#if VERSION == VERSION_WII_1_0RC1
+                              || (preprocessing_only && copts.c9x)
+#endif
+                             )) {
                 nextcharpos = (char*)p + 1;
                 return '#';
             }
@@ -257,6 +294,12 @@ mid_backslash:
             return c;
     }
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+short prepskipnextchar(void) {
+    return prepskipnextchar_impl(FALSE);
+}
+#endif
 
 short prepnextchar(void) {
     short c;
@@ -2673,7 +2716,11 @@ short lex(void) {
     }
 
     while (1) {
+#if VERSION == VERSION_WII_1_0RC1
+        t = prepskipnextchar_impl(preprocessing_only && (copts.space_prepdump || copts.comment_prepdump));
+#else
         t = prepskipnextchar();
+#endif
 #if VERSION == VERSION_WII_1_0RC1
         const Boolean inMacro = tokenstacklevel > 0;
         SInt32 sourceOffset;

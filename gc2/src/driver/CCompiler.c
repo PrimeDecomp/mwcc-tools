@@ -194,6 +194,12 @@ static void initialize_compiler_options(CompilerLinkerParamBlk* params) {
     copts.multibyteaware = pFrontEnd.multibyteaware;
 #if VERSION == VERSION_WII_1_0RC1
     copts.c9x = pFrontEnd.c99;
+    copts.simple_prepdump = !(pFrontEnd.preprocess_options & PreprocessBreaks);
+    copts.line_prepdump = (pFrontEnd.preprocess_options & PreprocessLines) != 0;
+    copts.fullpath_prepdump = (pFrontEnd.preprocess_options & PreprocessFullPaths) != 0;
+    copts.pragma_prepdump = (pFrontEnd.preprocess_options & PreprocessPragmas) != 0;
+    copts.comment_prepdump = (pFrontEnd.preprocess_options & PreprocessComments) != 0;
+    copts.space_prepdump = (pFrontEnd.preprocess_options & PreprocessSpace) != 0;
     copts.source_encoding = pFrontEnd.source_encoding;
     copts.multibyteaware |= pFrontEnd.source_encoding == SourceEncodingSJIS;
     copts.inline_bottom_up = !pFrontEnd.inline_top_down;

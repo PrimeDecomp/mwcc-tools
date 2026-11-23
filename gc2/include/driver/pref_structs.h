@@ -8,6 +8,16 @@ extern "C" {
 #endif
 
 #pragma pack(push, 2)
+#if VERSION == VERSION_WII_1_0RC1
+enum {
+    PreprocessBreaks = 1,
+    PreprocessLines = 2,
+    PreprocessFullPaths = 4,
+    PreprocessPragmas = 8,
+    PreprocessComments = 16,
+    PreprocessSpace = 32
+};
+#endif
 typedef struct PCmdLine {
     SInt16 version;
     SInt16 state;
@@ -148,6 +158,7 @@ typedef struct PFrontEndC {
     Boolean c99;
     UInt8 source_encoding;
     Boolean inline_top_down;
+    UInt8 preprocess_options;
 #endif
 } PFrontEndC;
 

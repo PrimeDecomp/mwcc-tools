@@ -178,6 +178,11 @@ CompilerOption compileroptions[] = {
     "simple_prepdump", OPT_OFFSET(simple_prepdump),
     "line_prepdump", OPT_OFFSET(line_prepdump),
     "fullpath_prepdump", OPT_OFFSET(fullpath_prepdump),
+#if VERSION == VERSION_WII_1_0RC1
+    "pragma_prepdump", OPT_OFFSET(pragma_prepdump),
+    "space_prepdump", OPT_OFFSET(space_prepdump),
+    "macro_prepdump", OPT_OFFSET(macro_prepdump),
+#endif
     "old_mtemplparser", OPT_OFFSET(old_mtemplparser),
     "suppress_init_code", OPT_OFFSET(suppress_init_code),
     "reverse_bitfields", OPT_OFFSET(reverse_bitfields),
@@ -554,6 +559,9 @@ void cleanupprep(void) {
     GListErrorProc = NULL;
     FreeGList(&mlist);
     FreeGList(&pplist);
+#if VERSION == VERSION_WII_1_0RC1
+    CPrep_PreprocessCleanup();
+#endif
 
     if (stringmem) {
         COS_FreeHandle(stringmem);
@@ -729,9 +737,18 @@ static Boolean setupfile(StringPtr filename, Boolean fullsearch, Boolean isImpor
     prep_file = filestack[filesp];
     prep_file_start = prep_file->textbuffer;
     prep_file_end = prep_file->textbuffer + prep_file->textlength;
+#if VERSION == VERSION_WII_1_0RC1
+    if (preprocessing_only) {
+        if (filename == copts.oldprefixname) {
+            CPrep_PreprocessEnterPrefix();
+        }
+        CPrep_PreprocessDumpFileInfo(TRUE);
+    }
+#else
     if (preprocessing_only && !copts.simple_prepdump) {
         CPrep_PreprocessDumpFileInfo(TRUE);
     }
+#endif
 
     cprep_extrafile = NULL;
     return TRUE;
@@ -1475,7 +1492,11 @@ void popfile(void) {
         cprep_hasprepline = prep_file->hasprepline;
         at_linestart = TRUE;
     }
-    if (preprocessing_only && !copts.simple_prepdump) {
+    if (preprocessing_only
+#if VERSION != VERSION_WII_1_0RC1
+        && !copts.simple_prepdump
+#endif
+    ) {
         CPrep_PreprocessDumpFileInfo(TRUE);
     }
 }
@@ -1841,6 +1862,12 @@ UInt8 C_Compiler(CompilerLinkerParamBlk* param) {
             } else
 #endif
             {
+#if VERSION == VERSION_WII_1_0RC1
+                preprocessing_only = param->preprocess;
+                if (preprocessing_only) {
+                    CPrep_PreprocessSetup();
+                }
+#endif
                 setupfile(NULL, TRUE, FALSE);
                 if (copts.oldprefixname[0]) {
                     setupfile(copts.oldprefixname, TRUE, FALSE);
@@ -2292,9 +2319,11 @@ static Boolean CPrep_SkipPrecompiledFile(const char* path, const char* name, Boo
 
 void foundnl(void) {
     if (!tokenstacklevel) {
+#if VERSION != VERSION_WII_1_0RC1
         if (preprocessing_only) {
             CPrep_PreprocessDumpNewLine();
         }
+#endif
         linenumber++;
         lines++;
         if (filesp <= 0) {
@@ -2304,6 +2333,11 @@ void foundnl(void) {
 }
 
 void newline(void) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (preprocessing_only) {
+        CPrep_PreprocessDiscardSpace();
+    }
+#endif
     foundnl();
     nlflag = TRUE;
     at_linestart = TRUE;
@@ -3318,6 +3352,7 @@ static char* XpandMacro(Macro* macro) {
     Boolean variadic;
 #if VERSION == VERSION_WII_1_0RC1
     Boolean omittedVariadic = FALSE;
+    Boolean* argumentSpace = NULL;
 #endif
     UInt16 nargs;
     SInt16 argumentIndex;
@@ -3346,6 +3381,12 @@ static char* XpandMacro(Macro* macro) {
             length = parameterCount * sizeof(char*);
             arguments = aalloc(length);
             expandedArguments = aalloc(length);
+#if VERSION == VERSION_WII_1_0RC1
+            if (preprocessing_only) {
+                argumentSpace = aalloc(parameterCount * sizeof(*argumentSpace));
+                memset(argumentSpace, 0, parameterCount * sizeof(*argumentSpace));
+            }
+#endif
             argument = 1;
             for (; argument < argumentCount;) {
                 firstToken = TRUE;
@@ -3376,6 +3417,12 @@ static char* XpandMacro(Macro* macro) {
                                 goto argumentFinished;
                             case '"':
                             case '\'':
+#if VERSION == VERSION_WII_1_0RC1
+                                if (argumentSpace && firstToken) {
+                                    argumentSpace[argument - 1] = spaceskip;
+                                    firstToken = FALSE;
+                                }
+#endif
                                 tokenStart = pos - 1;
                                 CPrep_MatchChar(token, FALSE);
                                 AppendGListData(&mlist, tokenStart, pos - tokenStart);
@@ -3423,6 +3470,11 @@ static char* XpandMacro(Macro* macro) {
                         if (spaceskip != 0 && !firstToken) {
                             AppendGListByte(&mlist, ' ');
                         }
+#if VERSION == VERSION_WII_1_0RC1
+                        if (argumentSpace && firstToken) {
+                            argumentSpace[argument - 1] = spaceskip;
+                        }
+#endif
                         AppendGListByte(&mlist, token);
                         firstToken = FALSE;
 tokenFinished:
@@ -3548,6 +3600,11 @@ argumentFinished:
                     mlist.size = 0;
                     AppendGListData(&mlist, savedText, savedLength);
                 }
+#if VERSION == VERSION_WII_1_0RC1
+                if (argumentSpace && argumentSpace[argumentIndex]) {
+                    AppendGListByte(&mlist, ' ');
+                }
+#endif
                 while (*argumentText != 0) {
                     AppendGListByte(&mlist, *argumentText++);
                 }
@@ -4460,7 +4517,7 @@ static void pragma_message(void) {
 }
 
 // GC 1.3.2 has no #pragma dump for -E output: the cases that skip goendofline just return
-#if VERSION < VERSION_GC_2_0
+#if VERSION < VERSION_GC_2_0 || VERSION == VERSION_WII_1_0RC1
 #define PRAGMA_EXIT return
 #else
 #define PRAGMA_EXIT goto exit
@@ -4486,7 +4543,7 @@ static void preppragma(void) {
 #endif
     macrocheck = FALSE;
     if (lexidentifier() == TK_IDENTIFIER) {
-#if VERSION >= VERSION_GC_2_0
+#if VERSION >= VERSION_GC_2_0 && VERSION != VERSION_WII_1_0RC1
         if (preprocessing_only) {
             CPrep_PreprocessDumpDirective("#pragma ", tkidentifier->name);
         }
@@ -4601,7 +4658,7 @@ foundOption:
     goendofline();
     CPrep_Reconfig();
     macrocheck = TRUE;
-#if VERSION >= VERSION_GC_2_0
+#if VERSION >= VERSION_GC_2_0 && VERSION != VERSION_WII_1_0RC1
 exit:
     if (preprocessing_only) {
         CPrep_PreprocessDumpDirectiveEnd();
@@ -5300,6 +5357,11 @@ void preprocessor(void) {
     short t;
 
     gDirectiveStart = pos - prep_file_start;
+#if VERSION == VERSION_WII_1_0RC1
+    if (preprocessing_only) {
+        CPrep_PreprocessDiscardSpace();
+    }
+#endif
     t = prepskipnextchar();
     pos = nextcharpos;
 
@@ -5311,6 +5373,11 @@ void preprocessor(void) {
     }
 
     pos = ReadIdentifier(pos - 1);
+#if VERSION == VERSION_WII_1_0RC1
+    if (preprocessing_only && CPrep_PreprocessRecordsDirective(tkidentifier->name)) {
+        CPrep_PreprocessDumpDirective(prep_file_start + gDirectiveStart, tkidentifier->name);
+    }
+#endif
 #ifdef MWCC_PERSIST
     if (!strcmp("define", tkidentifier->name) && CPrep_IsPersistMarker()) {
         CPrep_Define();

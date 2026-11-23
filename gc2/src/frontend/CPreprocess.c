@@ -10,6 +10,264 @@
 #include <stdio.h>
 #include <string.h>
 
+#if VERSION == VERSION_WII_1_0RC1
+static SInt32 pp_output_line;
+static const char* pp_output_file;
+static GList pp_space;
+static enum { PP_NoPrefix, PP_EnteringPrefix, PP_InPrefix } pp_prefix;
+
+void CPrep_PreprocessSetup(void) {
+    if (InitGList(&pplist, 10000)) {
+        CError_NoMem();
+    }
+    pp_output_line = 1;
+    pp_output_file = NULL;
+    pp_prefix = PP_NoPrefix;
+    pp_space.data = NULL;
+    nlflag = FALSE;
+    spaceskip = FALSE;
+}
+
+void CPrep_PreprocessCleanup(void) {
+    FreeGList(&pp_space);
+}
+
+void CPrep_PreprocessEnterPrefix(void) {
+    pp_prefix = PP_EnteringPrefix;
+}
+
+static Boolean CPrep_PreprocessAtLineStart(void) {
+    return !pplist.size || (*pplist.data)[pplist.size - 1] == '\n';
+}
+
+void CPrep_PreprocessDumpNewLine(void) {
+    if (!CPrep_PreprocessAtLineStart()) {
+        AppendGListData(&pplist, "\r\n", 2);
+        ++pp_output_line;
+    }
+}
+
+static void CPrep_PreprocessPosition(SInt32 line) {
+    if (copts.simple_prepdump || !copts.line_prepdump) {
+        if (nlflag) {
+            CPrep_PreprocessDumpNewLine();
+        }
+        return;
+    }
+    if (line == pp_output_line) {
+        return;
+    }
+    CPrep_PreprocessDumpNewLine();
+    if (line < pp_output_line || (UInt32)line - (UInt32)pp_output_line >= 8) {
+        char marker[32];
+        int length = sprintf(marker, "#line %ld\r\n", (long)line);
+        AppendGListData(&pplist, marker, length);
+        pp_output_line = line;
+    }
+    while (pp_output_line < line) {
+        AppendGListData(&pplist, "\r\n", 2);
+        ++pp_output_line;
+    }
+}
+
+void CPrep_PreprocessKeepSpace(const char* text, SInt32 size) {
+    if (!pp_space.data && InitGList(&pp_space, 64)) {
+        CError_NoMem();
+    }
+    if (!pp_space.size) {
+        AppendGListData(&pp_space, text, size);
+    }
+}
+
+void CPrep_PreprocessDiscardSpace(void) {
+    pp_space.size = 0;
+}
+
+static void CPrep_PreprocessDumpSpace(void) {
+    if (pp_space.size) {
+        if (copts.space_prepdump) {
+            AppendGListData(&pplist, *pp_space.data, pp_space.size);
+        } else if (!CPrep_PreprocessAtLineStart()) {
+            AppendGListByte(&pplist, ' ');
+        }
+    } else if (spaceskip && !CPrep_PreprocessAtLineStart()) {
+        AppendGListByte(&pplist, ' ');
+    }
+    CPrep_PreprocessDiscardSpace();
+}
+
+void CPrep_PreprocessDumpComment(const char* start, const char* end, SInt32 line) {
+    CPrep_PreprocessPosition(line);
+    if (pp_space.size) {
+        CPrep_PreprocessDumpSpace();
+    }
+    for (; start < end; ++start) {
+        if (*start == '\r' || *start == '\n') {
+            AppendGListData(&pplist, "\r\n", 2);
+            if (*start == '\r' && start + 1 < end && start[1] == '\n') {
+                ++start;
+            }
+        } else {
+            AppendGListByte(&pplist, *start);
+        }
+    }
+    nlflag = FALSE;
+    spaceskip = FALSE;
+}
+
+static Boolean CPrep_PreprocessHorizontalSpace(char c) {
+    return c == ' ' || c == '\t' || c == '\v';
+}
+
+static Boolean CPrep_PreprocessNewline(char c) {
+    return c == '\r' || c == '\n';
+}
+
+static Boolean CPrep_PreprocessSplice(const char* text) {
+    return *text == '\\' && CPrep_PreprocessNewline(text[1]);
+}
+
+static const char* CPrep_PreprocessAfterSplice(const char* text) {
+    text += text[1] == '\r' && text[2] == '\n' ? 3 : 2;
+    while (CPrep_PreprocessHorizontalSpace(*text)) {
+        ++text;
+    }
+    return text;
+}
+
+Boolean CPrep_PreprocessRecordsDirective(const char* name) {
+    return (copts.pragma_prepdump && !strcmp(name, "pragma")) ||
+           (copts.macro_prepdump && (!strcmp(name, "define") || !strcmp(name, "undef")));
+}
+
+void CPrep_PreprocessDumpDirective(const char* text, const char* name) {
+    const char* scan;
+    Boolean asComment = strcmp(name, "pragma") != 0;
+    SInt32 line = linenumber + 1;
+    char quote = 0;
+    for (scan = text; *scan && !CPrep_PreprocessNewline(*scan); ) {
+        if (CPrep_PreprocessSplice(scan)) {
+            ++line;
+            scan = CPrep_PreprocessAfterSplice(scan);
+        } else {
+            ++scan;
+        }
+    }
+    CPrep_PreprocessDumpNewLine();
+    if (asComment) {
+        AppendGListData(&pplist, "/*", 2);
+    }
+    if (!copts.simple_prepdump && copts.line_prepdump) {
+        CPrep_PreprocessPosition(line);
+    }
+    AppendGListByte(&pplist, '#');
+    while (*text && !CPrep_PreprocessNewline(*text)) {
+        if (CPrep_PreprocessSplice(text)) {
+            text = CPrep_PreprocessAfterSplice(text);
+            continue;
+        }
+        char c = *text++;
+        if (quote) {
+            AppendGListByte(&pplist, c);
+            if (c == '\\' && *text && *text != '\r' && *text != '\n') {
+                AppendGListByte(&pplist, *text++);
+            } else if (c == quote) {
+                quote = 0;
+            }
+        } else if (CPrep_PreprocessHorizontalSpace(c)) {
+            while (CPrep_PreprocessHorizontalSpace(*text)) {
+                ++text;
+            }
+            if (!CPrep_PreprocessSplice(text)) {
+                AppendGListByte(&pplist, ' ');
+            }
+        } else if (c == '/' && *text == '/') {
+            break;
+        } else if (c == '/' && *text == '*') {
+            ++text;
+            while (*text && *text != '\r' && *text != '\n') {
+                if (*text++ == '*' && *text == '/') {
+                    ++text;
+                    break;
+                }
+            }
+        } else {
+            if (c == '"' || c == '\'') {
+                quote = c;
+            }
+            AppendGListByte(&pplist, c);
+        }
+    }
+    if (asComment) {
+        AppendGListData(&pplist, "*/", 2);
+    }
+    CPrep_PreprocessDumpNewLine();
+}
+
+static void CPrep_PreprocessFileMarker(const char* name, SInt32 line, SInt32 depth) {
+    char marker[64];
+    int length;
+
+    CPrep_PreprocessDumpNewLine();
+    length = sprintf(marker, copts.line_prepdump ? "#line %ld \"" : "/* #line %ld \"", (long)line);
+    AppendGListData(&pplist, marker, length);
+    for (; *name; ++name) {
+        if (*name == '\\' || *name == '"') {
+            AppendGListByte(&pplist, '\\');
+        }
+        AppendGListByte(&pplist, *name);
+    }
+    length = sprintf(marker, "\"%s\t/* stack depth %ld */\r\n",
+                     copts.line_prepdump ? "" : " */", (long)depth);
+    AppendGListData(&pplist, marker, length);
+    pp_output_line = line;
+    nlflag = TRUE;
+}
+
+void CPrep_PreprocessDumpFileInfo(Boolean newLine) {
+    const char* name;
+    const char* end;
+    SInt32 depth = filesp;
+
+    if (!pplist.data || filesp < 0) {
+        return;
+    }
+    if (pp_prefix != PP_NoPrefix) {
+        if (!copts.simple_prepdump && (!filesp || pp_prefix == PP_EnteringPrefix)) {
+            CPrep_PreprocessFileMarker("(C-C++ Preprocessor Panel)", 1, 1);
+            pp_prefix = PP_InPrefix;
+        }
+        if (filesp) {
+            ++depth;
+        } else {
+            pp_prefix = PP_NoPrefix;
+        }
+    }
+    if (copts.simple_prepdump) {
+        return;
+    }
+    name = CPrep_GetSourceFilePath(prep_file)->name;
+    if (!newLine && pp_output_file && !strcmp(name, pp_output_file)) {
+        CPrep_PreprocessPosition(linenumber + 1);
+        return;
+    }
+    pp_output_file = name;
+    if (!copts.fullpath_prepdump) {
+        for (end = name; *end; ++end) {
+            if (strchr("/\\:", *end)) {
+                name = end + 1;
+            }
+        }
+    }
+    CPrep_PreprocessFileMarker(name, linenumber + !newLine, depth);
+}
+
+static Boolean CPrep_PreprocessWouldFormDigraph(char before, short token) {
+    return (before == '<' && (token == ':' || token == '%')) ||
+           (before == '%' && (token == ':' || token == '>')) ||
+           (before == ':' && (token == '>' || token == '%'));
+}
+#else
 #if VERSION >= VERSION_GC_2_0
 static SInt32 pp_text_depth;
 static char* pp_text_start;
@@ -81,6 +339,7 @@ void CPrep_PreprocessDumpFileInfo(Boolean newLine) {
         nlflag = TRUE;
     }
 }
+#endif
 
 #if VERSION == VERSION_WII_1_0RC1
 static void CPrep_DumpOctal(UInt8 value) {
@@ -229,7 +488,7 @@ static void CPrep_DumpString(UInt8* str, short len) {
     }
 }
 
-#if VERSION >= VERSION_GC_2_0
+#if VERSION >= VERSION_GC_2_0 && VERSION != VERSION_WII_1_0RC1
 void CPrep_PreprocessDumpDirective(char* directive, char* name) {
     if (!copts.line_prepdump && nlflag && pplist.size > 0) {
         AppendGListName(&pplist, "\r\n");
@@ -283,19 +542,25 @@ void CPrep_Preprocess(void) {
     startToken = 0;
     depth = 0;
 
-#if VERSION == VERSION_WII_1_0RC1
-    if (!pplist.data && InitGList(&pplist, 10000)) {
-#else
+#if VERSION != VERSION_WII_1_0RC1
     if (InitGList(&pplist, 10000)) {
-#endif
         CError_NoMem();
     }
+#endif
 
     nlflag = FALSE;
     spaceskip = FALSE;
 
     if ((token = lex())) {
         do {
+#if VERSION == VERSION_WII_1_0RC1
+            CPrep_PreprocessPosition(CPrep_CurStreamElement()->tokenline);
+            CPrep_PreprocessDumpSpace();
+            if (!copts.cplusplus && !copts.c9x && pplist.size &&
+                CPrep_PreprocessWouldFormDigraph((*pplist.data)[pplist.size - 1], token)) {
+                AppendGListByte(&pplist, ' ');
+            }
+#else
             if (nlflag) {
                 if (!copts.line_prepdump) {
                     AppendGListData(&pplist, "\r\n", 2);
@@ -305,9 +570,20 @@ void CPrep_Preprocess(void) {
                     AppendGListByte(&pplist, ' ');
                 }
             }
+#endif
 
             while (1) {
                 switch ((innertoken = token)) {
+#if VERSION == VERSION_WII_1_0RC1
+                    case '#':
+                        p = tokenstacklevel ? macropos : prep_file_start + ts_current[-1].tokenoffset;
+                        if (p[0] == '%' && p[1] == ':') {
+                            AppendGListData(&pplist, "%:", 2);
+                        } else {
+                            AppendGListByte(&pplist, '#');
+                        }
+                        break;
+#endif
                     case '(':
                     case ')':
                     case '{':

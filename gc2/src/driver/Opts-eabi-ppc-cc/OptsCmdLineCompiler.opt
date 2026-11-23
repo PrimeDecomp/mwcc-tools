@@ -128,6 +128,23 @@ Option optlstCmdLineCompiler_103 = {"precompile", 0x40100, (PARAM_T *)&optlstCmd
 GENERIC_T optlstCmdLineCompiler_104 = {13, 0x01, 0, 0, (void *)Opt_SetStage, (void *)"Pp", 0};
 SET_T optlstCmdLineCompiler_105 = {11, 0x01, 0, (PARAM_T *)&optlstCmdLineCompiler_104, 2, 0x2, (void *)&pCmdLine.state};
 Option optlstCmdLineCompiler_106 = {"preprocess", 0x101, (PARAM_T *)&optlstCmdLineCompiler_105, 0, 0, "preprocess source files"};
+#if VERSION == VERSION_WII_1_0RC1
+#define PREPROCESS_OPTION(id, names, mask, description) \
+    static MASK_T id##Setting = {9, 0x01, 0, 0, 1, PreprocessBreaks | (mask), 0, \
+                                (void *)&pFrontEndC.preprocess_options}; \
+    static Option id = {names, OTF_TOOL_COMPILER | OTF_NO_PREFIX, (PARAM_T *)&id##Setting, \
+                        0, 0, description}
+PREPROCESS_OPTION(ppBreak, "break", 0, "emit file/line breaks");
+PREPROCESS_OPTION(ppLine, "line", PreprocessLines, "emit #line directives, else comments");
+PREPROCESS_OPTION(ppFull, "full|fullpath", PreprocessFullPaths, "emit full path of file, else base filename");
+PREPROCESS_OPTION(ppPragma, "pragma", PreprocessPragmas, "keep #pragma directives, else strip them");
+PREPROCESS_OPTION(ppComment, "comment", PreprocessComments, "keep comments, else strip them");
+PREPROCESS_OPTION(ppSpace, "space", PreprocessSpace, "keep whitespace, else strip it");
+#undef PREPROCESS_OPTION
+static Option* ppOptions[] = {&ppBreak, &ppLine, &ppFull, &ppPragma, &ppComment, &ppSpace, 0};
+static OptionList ppOptionList = {0, 0x100, ppOptions};
+static Option ppOpt = {"ppopt", 0xA100, 0, &ppOptionList, 0, "specify options affecting the preprocessed output"};
+#endif
 GENERIC_T optlstCmdLineCompiler_107 = {13, 0x00, "file", 0, (void *)Opt_AddPrefixFile, 0, 0};
 Option optlstCmdLineCompiler_108 = {"prefix", 0x100, (PARAM_T *)&optlstCmdLineCompiler_107, 0, 0, "prefix text file or precompiled header onto all source files"};
 GENERIC_T optlstCmdLineCompiler_109 = {13, 0x01, 0, 0, (void *)Opt_SetStage, (void *)"Ds", 0};
@@ -172,6 +189,9 @@ Option *optlstCmdLineCompiler_117[] = {
     &optlstCmdLineCompiler_098,
     &optlstCmdLineCompiler_103,
     &optlstCmdLineCompiler_106,
+#if VERSION == VERSION_WII_1_0RC1
+    &ppOpt,
+#endif
     &optlstCmdLineCompiler_108,
     &optlstCmdLineCompiler_112,
     &optlstCmdLineCompiler_114,
