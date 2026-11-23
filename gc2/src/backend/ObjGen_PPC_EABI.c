@@ -1343,7 +1343,11 @@ void InitElfSections(void) {
 
     default_sdata_section = copts.sdataSection;
     section = Initialize_Input(".sdata2", ".sbss2", AM_SDATA2, AM_CODE_PC_REL, 0x10);
+#if VERSION == VERSION_WII_1_0RC1
+    DoElfContentSection(section, SectionKind_Content, 8, 1000, 1000, SHF_ALLOC, 0, 1);
+#else
     DoElfContentSection(section, SectionKind_Content, 8, 1000, 1000, 3, 0, 1);
+#endif
 
     default_sconst_section = copts.sconstSection;
     section = Initialize_Input(".PPC.EMB.sdata0", ".PPC.EMB.sbss0", AM_SDATA0, AM_CODE_PC_REL, 0);

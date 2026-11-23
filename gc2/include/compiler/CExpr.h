@@ -231,6 +231,7 @@ extern ENode* CExpr_AssignmentPromotion(
 extern Boolean CExpr_CanImplicitlyConvert(ENode* expr, Type* type2, UInt32 qual2);
 #if VERSION == VERSION_WII_1_0RC1
 extern int CExpr_IsReferenceCompatible(Type* typeA, UInt32 qualA, Type* typeB, UInt32 qualB);
+extern ENode* CExpr_DirectBindToReference(ENode* expr, Type* reference, UInt32 qual);
 #endif
 extern ENode* CExpr_Convert(
     ENode* expr, Type* type, UInt32 qual, Boolean isExplicit, Boolean checkAccess

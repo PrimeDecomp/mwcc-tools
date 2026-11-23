@@ -1896,6 +1896,27 @@ int read_local() { Tag tag = Tag(); return accept(tag); }
 Tiny result() { return Tiny(); }
 void assign(Block* target) { *target = Block(); }
 """,
+        "global_object_data.cpp": """\
+struct Value { int data; };
+Value empty = Value();
+Value zero = {0};
+Value nonzero = {1};
+extern const Value read_only_zero = {0};
+""",
+        "global_runtime_data.cpp": """\
+extern int source();
+struct Value { int data; };
+Value runtime = {source()};
+""",
+        "overloaded_function_reference.cpp": """\
+void target();
+int target(int);
+int (&global)(int) = target;
+int local(int value) {
+    int (&reference)(int) = target;
+    return reference(value);
+}
+""",
     }
 
     results = {}
@@ -1909,11 +1930,33 @@ void assign(Block* target) { *target = Block(); }
             modes.append(("-O4,p", "off", ()))
         if name == "file_ipa_branch.cpp":
             modes.append(("-O4,p", "file", ("-inline", "off")))
+        if name in {"global_object_data.cpp", "global_runtime_data.cpp"}:
+            modes.append(("-O4,p", "file", ("-pragma", "explicit_zero_data on")))
         for opt, ipa, options in modes:
             output = run(compiler, *FLAGS, opt, "-ipa", ipa, *options, "-msgstyle", "parseable",
                          "-c", source.name, "-o", obj, cwd=work)
             run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
             results[" ".join((name, opt, "-ipa", ipa, *options))] = (output, normalized.read_bytes())
+
+    source = work / "invalid_reference_initializers.cpp"
+    source.write_text(
+        "int& global = 1;\n"
+        "struct Value { int data; };\n"
+        "void local() { Value& reference = Value(); }\n",
+        encoding="ascii",
+    )
+    process = subprocess.run(
+        (compiler, *FLAGS, "-maxerrors", "8", "-msgstyle", "parseable", "-c", source.name,
+         "-o", source.with_suffix(".o")),
+        cwd=work, capture_output=True, text=True, timeout=30,
+    )
+    output = process.stdout + process.stderr
+    messages = [line for line in output.splitlines() if line.startswith(">")]
+    if process.returncode != 1 or messages != [
+        ">(10228) non-const '&' reference initialized to temporary"
+    ] * 3:
+        raise ValueError(f"{compiler}: unexpected reference initializer diagnostics\n{output}")
+    results[source.name] = output
     return results
 
 

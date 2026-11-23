@@ -2880,29 +2880,40 @@ static ENode* CInit_BindReference(Object* obj, ENode* value, Boolean isLocal) {
     Type* target = TPTR_TARGET(obj->type);
     UInt32 qual = obj->qual & Q_CV;
     UInt32 cv = CParser_GetCVTypeQualifiers(target, qual);
-    Boolean lvalue = CExpr_IsLValue(value);
+    ENode* address = CExpr_DirectBindToReference(value, obj->type, qual);
 
-    if (cv & Q_CONST) {
-        if (!lvalue && IS_TYPE_CLASS(target) && IS_TYPE_CLASS(value->rtype) &&
-            CExpr_IsReferenceCompatible(target, qual, value->rtype, ENODE_QUALS(value))) {
-            if (cv & Q_VOLATILE) {
-                CError_Error(ERR_ILLEGAL_CONST_VOLATILE_AMPERSAND_REFERENCE_INITIALIZATION);
-                CError_ResetErrorSkip();
-            }
-            if (!CInit_CanBindClassRValue(value)) {
-                Type* actual = value->rtype;
-                ENode* address = CInit_MaterializeReferenceTemp(obj, actual, value, isLocal);
-                return CClass_ClassPointerCast(
-                    address, TYPE_CLASS(actual), TYPE_CLASS(target), TRUE, TRUE, TRUE
-                );
-            }
-        } else if (!(cv & Q_VOLATILE) && !IS_TYPE_CLASS(value->rtype) &&
-                   !IS_TYPE_CLASS(target) && !IS_TYPE_ARRAY(target) && !IS_TYPE_FUNC(target) &&
-                   (!lvalue || !CExpr_IsReferenceCompatible(
-                       target, qual, value->rtype, ENODE_QUALS(value)
-                   ))) {
-            return CInit_MaterializeReferenceTemp(obj, target, value, isLocal);
+    if (address) {
+        if (isLocal) {
+            CInit_RefTempTransform(obj->type, address);
         }
+        return address;
+    }
+    if (!(cv & Q_CONST)) {
+        if (IS_TYPE_FUNC(target)) {
+            return CExpr_AssignmentPromotion(pointer_generation(value), target, qual, TRUE);
+        }
+        if (IS_TYPE_ARRAY(target)) {
+            return CExpr_AssignmentPromotion(value, target, qual, TRUE);
+        }
+        return CInit_MaterializeReferenceTemp(obj, target, value, isLocal);
+    }
+
+    Boolean lvalue = CExpr_IsLValue(value);
+    if (!lvalue && IS_TYPE_CLASS(target) && IS_TYPE_CLASS(value->rtype) &&
+        CExpr_IsReferenceCompatible(target, qual, value->rtype, ENODE_QUALS(value))) {
+        if (!CInit_CanBindClassRValue(value)) {
+            Type* actual = value->rtype;
+            address = CInit_MaterializeReferenceTemp(obj, actual, value, isLocal);
+            return CClass_ClassPointerCast(
+                address, TYPE_CLASS(actual), TYPE_CLASS(target), TRUE, TRUE, TRUE
+            );
+        }
+    } else if (!(cv & Q_VOLATILE) && !IS_TYPE_CLASS(value->rtype) &&
+               !IS_TYPE_CLASS(target) && !IS_TYPE_ARRAY(target) && !IS_TYPE_FUNC(target) &&
+               (!lvalue || !CExpr_IsReferenceCompatible(
+                   target, qual, value->rtype, ENODE_QUALS(value)
+               ))) {
+        return CInit_MaterializeReferenceTemp(obj, target, value, isLocal);
     }
 
     value = CExpr_AssignmentPromotion(value, obj->type, qual, TRUE);
@@ -2917,13 +2928,20 @@ static Boolean CInit_RelocateReference(Object* obj, ENode* expr) {
     UInt32 qual = obj->qual & Q_CV;
     Object* source;
     CInt64 offset;
+    ENode* address;
 
-    if (IS_TYPE_CLASS(target) || !CExpr_IsLValue(expr) ||
-        !CExpr_IsReferenceCompatible(target, qual, expr->rtype, ENODE_QUALS(expr))) {
+    if (IS_TYPE_CLASS(target)) {
         return FALSE;
     }
-    ENode* address = getnodeaddress(expr, FALSE);
-    if (!CInit_RelocInitCheck(address, &source, &offset, FALSE)) {
+    if (!cscope_currentfunc) {
+        address = CExpr_DirectBindToReference(expr, obj->type, qual);
+    } else if (CExpr_IsLValue(expr) &&
+               CExpr_IsReferenceCompatible(target, qual, expr->rtype, ENODE_QUALS(expr))) {
+        address = getnodeaddress(expr, FALSE);
+    } else {
+        return FALSE;
+    }
+    if (!address || !CInit_RelocInitCheck(address, &source, &offset, FALSE)) {
         return FALSE;
     }
 
@@ -3181,6 +3199,11 @@ static void CInit_GlobalObject(Object* obj) {
     obj_expr = create_objectrefnode(obj);
 
     IsCompleteType(obj->type);
+#if VERSION == VERSION_WII_1_0RC1
+    if (db.buffer && !db.list && CInit_IsAllZero(db.buffer, db.size)) {
+        db.buffer = NULL;
+    }
+#endif
 
     if (!db.nonconst && is_const_object(obj)) {
         CInit_DeclareReadOnlyData(obj, db.buffer, db.list, db.size);

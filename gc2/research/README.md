@@ -550,6 +550,22 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   bytes, a store sequence through 16 bytes (64 outside size optimization),
   or a counted loop. For an empty class, local initialization evaluates the
   initializer without copying it into the destination (`0x543770`).
+- The global aggregate initializer at `0x54a6f0` discards an all-zero
+  data buffer with no relocations unless `explicit_zero_data` is enabled.
+  Runtime initialization is independent of this choice. The data emitter
+  selects BSS from the null buffer and still emits the initializer code.
+  The default small constant section and its BSS partner are read-only
+  in `InitElfSections` (`0x4c6153` supplies `SHF_ALLOC`).
+  With `-O4,p -ipa file`, combining `Value empty = Value();` and
+  `Value runtime = {source()};` for a one-member aggregate still diverges
+  in exception-table symbol numbers. Stock delinearization of the non-void
+  comma expression at `0x5dc800` takes the branch through
+  `create_temp_object` at `0x50ff40`.
+- `CExpr_DirectBindToReference` at `0x5f9330` resolves overloaded functions
+  against the referenced function type and diagnoses invalid non-const
+  bindings before constructing a recovery temporary. Global non-class
+  references try this binding during relocation analysis at `0x542673`,
+  then try again for runtime initialization if a relocation is unavailable.
 - The `AND` case of constant propagation (`0x6462f1`) follows `LI` and
   `LIS` definitions. Contiguous masks become `RLWINM` with a zero shift.
   Disjoint masks use `ANDI` or `ANDIS` and define CR0. The stock formatter

@@ -1493,14 +1493,13 @@ static ENode* CExpr_ClassReferenceConversion(
     return NULL;
 }
 
-static ENode* CExpr_BindToReference(ENode* expr, Type* type2, UInt32 qual2) {
-    UInt32 cv;
+static ENode* CExpr_TryBindReference(
+    ENode* expr, Type* type2, UInt32 qual2, Boolean allowClassRValue
+) {
     int refcompat;
-    ENode* converted;
 
-    cv = CParser_GetCVTypeQualifiers(type2, qual2);
-
-    if (CExpr_IsLValue(expr)) {
+    if (CExpr_IsLValue(expr) ||
+        (allowClassRValue && IS_TYPE_CLASS(type2) && IS_TYPE_CLASS(expr->rtype))) {
         if ((refcompat =
                  CExpr_IsReferenceCompatible(type2, qual2, expr->rtype, ENODE_QUALS(expr))) > 0) {
             if (refcompat == 2) {
@@ -1509,20 +1508,52 @@ static ENode* CExpr_BindToReference(ENode* expr, Type* type2, UInt32 qual2) {
             }
             return getnodeaddress(expr, FALSE);
         }
-    } else if (IS_TYPE_CLASS(type2) && IS_TYPE_CLASS(expr->rtype)) {
-        if ((refcompat =
-                 CExpr_IsReferenceCompatible(type2, qual2, expr->rtype, ENODE_QUALS(expr))) > 0) {
-            if (refcompat == 2) {
-                expr = CExpr_DerivedToBase(expr, type2, qual2, TRUE, FALSE, TRUE);
-            }
-            return getnodeaddress(expr, FALSE);
-        }
     }
 
     if (IS_TYPE_CLASS(expr->rtype)) {
-        if ((converted = CExpr_UserConversion(expr, type2, qual2, NULL, TRUE, FALSE, TRUE))) {
+        ENode* converted = CExpr_UserConversion(expr, type2, qual2, NULL, TRUE, FALSE, TRUE);
+        if (converted) {
             return getnodeaddress(converted, FALSE);
         }
+    }
+    return NULL;
+}
+
+#if VERSION == VERSION_WII_1_0RC1
+ENode* CExpr_DirectBindToReference(ENode* expr, Type* reference, UInt32 qual) {
+    Type* target = TPTR_TARGET(reference);
+    if (IS_TYPE_FUNC(target) && ENODE_IS(expr, EOBJLIST)) {
+        ENode* address = NULL;
+        CExpr_OverloadFuncMatch(
+            expr->data.objlist.list, expr->data.objlist.templargs,
+            CDecl_NewPointerType(target), &address
+        );
+        return address;
+    }
+
+    ENode* address = CExpr_TryBindReference(expr, target, qual, FALSE);
+    if (address) {
+        return address;
+    }
+
+    UInt32 cv = CParser_GetCVTypeQualifiers(target, qual);
+    if (!(cv & Q_CONST)) {
+        CError_Error(ERR_NON_CONST_AMPERSAND_REFERENCE_INITIALIZED_TEMPORARY);
+        CError_ResetErrorSkip();
+    }
+    if (cv & Q_VOLATILE) {
+        CError_Error(ERR_ILLEGAL_CONST_VOLATILE_AMPERSAND_REFERENCE_INITIALIZATION);
+        CError_ResetErrorSkip();
+    }
+    return NULL;
+}
+#endif
+
+static ENode* CExpr_BindToReference(ENode* expr, Type* type2, UInt32 qual2) {
+    UInt32 cv = CParser_GetCVTypeQualifiers(type2, qual2);
+    ENode* address = CExpr_TryBindReference(expr, type2, qual2, TRUE);
+    if (address) {
+        return address;
     }
 
     if (!(cv & Q_CONST)) {
@@ -1834,6 +1865,12 @@ ENode* CExpr_AssignmentPromotion(ENode* expr, Type* type2, UInt32 qual2, Boolean
     }
 
     if (!CExpr_ImplicitConversionMatch(expr, type2, qual2, &result)) {
+#if VERSION == VERSION_WII_1_0RC1
+        if (ENODE_IS(expr, EOBJLIST) && expr->data.objlist.list &&
+            expr->data.objlist.list->object->otype == OT_OBJECT) {
+            expr = CExpr_MakeObjRefNode(OBJECT(expr->data.objlist.list->object), FALSE);
+        }
+#endif
         CError_Error(
             ERR_ILLEGAL_IMPLICIT_CONVERSION_FROM, expr->rtype, ENODE_QUALS(expr), type2, qual2
         );
