@@ -262,7 +262,7 @@ pub fn parse(text: &str) -> Result<Vec<CompileRule>> {
             }
             for line in body {
                 if let Some((k, v)) = line.split_once(" = ") {
-                    if matches!(k, "cflags" | "mw_version") {
+                    if matches!(k, "cflags" | "mw_version") || k.starts_with("mw_version__") {
                         let value = expand(v, &variables, 0)?;
                         variables.insert(k.into(), value.replace('$', "$$"));
                     } else {
@@ -288,12 +288,15 @@ pub fn parse(text: &str) -> Result<Vec<CompileRule>> {
                 .map_or((None, None, false), |command| {
                     command_parts(command, &variables)
                 });
+            let version = rule
+                .rsplit_once("__")
+                .and_then(|(_, suffix)| variables.get(&format!("mw_version__{suffix}")))
+                .or_else(|| variables.get("mw_version"));
             out.push(CompileRule {
                 outputs: ninja_words(&build[..colon], &variables)?,
                 source,
                 rule: rule.clone(),
-                mw_version: variables
-                    .get("mw_version")
+                mw_version: version
                     .map(|v| expand(v, &variables, 0))
                     .transpose()?
                     .map(|v| v.replace('\\', "/")),
@@ -386,6 +389,22 @@ mod tests {
         assert_eq!(rules[0].mw_version.as_deref(), Some("GC/1.3.2"));
         assert_eq!(rules[1].mw_version.as_deref(), Some("GC/2.7"));
         assert_eq!(rules[1].source, "F:/src.cpp");
+    }
+    #[test]
+    fn merged_rules_use_their_version_variable() {
+        let text = r"mw_version = GC/1.3.2
+rule mwcc_sjis__R3ME01_00
+  command = build\tools\sjiswrap.exe build\compilers\${mw_version__R3ME01_00}\mwcceppc.exe $cflags -c $in
+build float.o: mwcc_sjis__R3ME01_00 float.c
+  mw_version__R3ME01_00 = Wii\1.0RC1
+  cflags = -lang=c
+";
+        let rules = parse(text).unwrap();
+        assert_eq!(rules[0].mw_version.as_deref(), Some("Wii/1.0RC1"));
+        assert_eq!(
+            rules[0].compiler.as_deref(),
+            Some(r"build\compilers\Wii\1.0RC1\mwcceppc.exe")
+        );
     }
     #[test]
     fn rule_commands_give_the_compiler_and_its_wrappers() {
