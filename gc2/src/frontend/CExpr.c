@@ -1927,25 +1927,23 @@ static ENode* primary_expression(Boolean isAddressOf) {
             tk = lex();
             return expr;
         case TK_STRING:
-            expr = CExpr_NewENode(ESTRINGCONST);
-            expr->rtype =
-                CDecl_NewArrayType(ispascalstring ? TYPE(&stunsignedchar) : TYPE(&stchar), tksize);
-            expr->data.string.size = tksize;
-            expr->data.string.data = tkstring;
-            expr->data.string.ispascal = ispascalstring;
-            if (copts.const_strings) {
-                expr->flags = ENODE_FLAG_CONST;
-            }
-            expr = makemonadicnode(expr, EINDIRECT);
-            expr->data.monadic->rtype = CDecl_NewPointerType(expr->rtype);
-            tk = lex();
-            return expr;
         case TK_STRING_WIDE:
             expr = CExpr_NewENode(ESTRINGCONST);
-            expr->rtype = CDecl_NewArrayType(CParser_GetWCharType(), tksize);
+            expr->rtype = CDecl_NewArrayType(
+                tk == TK_STRING_WIDE ? CParser_GetWCharType()
+                                    : (ispascalstring ? TYPE(&stunsignedchar) : TYPE(&stchar)),
+                tksize
+            );
             expr->data.string.size = tksize;
             expr->data.string.data = tkstring;
             expr->data.string.ispascal = ispascalstring;
+#if VERSION == VERSION_WII_1_0RC1
+            if (cscope_currentfunc && !CParser_HasInternalLinkage(cscope_currentfunc) &&
+                ((cscope_currentfunc->qual & Q_INLINE) ||
+                 (TYPE_FUNC(cscope_currentfunc->type)->flags & FUNC_IS_TEMPL))) {
+                expr->data.string.sequence = ++cparser_stringseqnum;
+            }
+#endif
             if (copts.const_strings) {
                 expr->flags = ENODE_FLAG_CONST;
             }

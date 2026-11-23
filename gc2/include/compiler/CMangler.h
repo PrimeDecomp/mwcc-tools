@@ -29,6 +29,8 @@ extern HashNameNode* CMangler_GetCovariantFunctionName(Object* dobj, TypeClass* 
 extern HashNameNode* CMangler_GetLinkName(Object* obj);
 #if VERSION == VERSION_WII_1_0RC1
 extern void CMangler_SetupLocalVarName(Object* obj, Object* func, SInt32 index);
+extern void CMangler_SetupLocalStringName(Object* obj, Object* func, SInt32 index);
+extern Boolean CMangler_IsLocalString(const Object* obj);
 #endif
 
 #ifdef __cplusplus

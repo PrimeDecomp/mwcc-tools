@@ -541,6 +541,19 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   so on, regardless of whether the variable names repeat. The frontend
   keeps the source identifier. Hidden function-name strings keep private
   numbered symbols and use the ordinary unique ID counter.
+- The narrow and wide literal branches at `0x53e16d` and `0x53e1d3`
+  assign a per-function sequence in externally linked inline and template
+  bodies. Folded expressions can leave gaps in that sequence. The body
+  walk at `0x55b2c0` runs after simple optimization, before inline packing.
+  For each surviving literal, `0x541ae0` allocates a numbered weak array
+  and `0x56a060` gives it an `@STRING@` name based on the enclosing function.
+  Subsequent literals append `@0`, `@1`, and so on. Distinct occurrences
+  keep their own arrays even when their contents are equal. Referenced
+  arrays are emitted in reverse definition order after ordinary data.
+  The IR writer at `0x52cc45` packs the sequence after the literal bytes.
+  A stock `.irobj` puts the referenced arrays at the end of its graph in
+  emission order. During replay each input retains its own data order.
+  The raw PCH payload stores the expression sequence at offset `+8`.
 - RC1's `CParser_ParseDeclaration` calls `CMid_GlobalDeclarationActions`
   (`0x47c120`) at the common exit at `0x44f43e`, including after the
   template, namespace, using and linkage branches. This runs deferred

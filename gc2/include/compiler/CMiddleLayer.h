@@ -23,12 +23,14 @@ Boolean CMid_LoadPrecompiledFunction(
     const struct CIRStreamFunctionHeader* header
 );
 void CMid_DefineData(
-    Object* object, const void* data, OLinkList* references, SInt32 size, Boolean readOnly
+    Object* object, const void* data, OLinkList* references, SInt32 size, Boolean readOnly,
+    Boolean deferSequentialString
 );
 void CMid_DefineThunkObject(
     Object* object, Object* target, SInt32 thisDelta, SInt32 returnDelta, SInt32 ctorOffset
 );
 void CMid_Finish(void);
+void CMid_FinishSequentialStrings(void);
 Boolean CMid_IsIRFile(const struct FSSpec* spec);
 void CMid_CompileEnded(void);
 

@@ -832,16 +832,20 @@ HashNameNode* CMangler_GetCovariantFunctionName(Object* dobj, TypeClass* theclas
 }
 
 #if VERSION == VERSION_WII_1_0RC1
-void CMangler_SetupLocalVarName(Object* obj, Object* func, SInt32 index) {
+static void CMangler_SetupLocalName(
+    Object* obj, Object* func, SInt32 index, const char* prefix, Boolean includeObjectName
+) {
     if (func->u.func.inst) {
         CMangler_CheckTemplateArguments(func->u.func.inst->args);
     }
 
     name_mangle_list.size = 0;
-    AppendGListName(&name_mangle_list, "@LOCAL@");
+    AppendGListName(&name_mangle_list, prefix);
     CMangler_MangleFunction(func, func->nspace);
-    AppendGListByte(&name_mangle_list, '@');
-    AppendGListName(&name_mangle_list, obj->name->name);
+    if (includeObjectName) {
+        AppendGListByte(&name_mangle_list, '@');
+        AppendGListName(&name_mangle_list, obj->name->name);
+    }
     if (index > 0) {
         char suffix[16];
         sprintf(suffix, "@%ld", (long)(index - 1));
@@ -852,6 +856,19 @@ void CMangler_SetupLocalVarName(Object* obj, Object* func, SInt32 index) {
     COS_LockHandle(name_mangle_list.data);
     obj->u.data.linkname = GetHashNameNodeExport(*name_mangle_list.data);
     COS_UnlockHandle(name_mangle_list.data);
+}
+
+void CMangler_SetupLocalVarName(Object* obj, Object* func, SInt32 index) {
+    CMangler_SetupLocalName(obj, func, index, "@LOCAL@", TRUE);
+}
+
+void CMangler_SetupLocalStringName(Object* obj, Object* func, SInt32 index) {
+    CMangler_SetupLocalName(obj, func, index, "@STRING@", FALSE);
+}
+
+Boolean CMangler_IsLocalString(const Object* obj) {
+    return obj->datatype == DDATA && obj->u.data.linkname &&
+        !strncmp(obj->u.data.linkname->name, "@STRING@", 8);
 }
 #endif
 

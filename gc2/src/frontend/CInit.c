@@ -11,6 +11,7 @@
 #include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
 #include "compiler/CInline.h"
+#include "compiler/CMangler.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMachine.h"
 #include "compiler/CodeGen.h"
@@ -3749,6 +3750,30 @@ PooledString* CInit_DeclarePooledWString(char* data, SInt32 size) {
 #undef CError_LINE_DELTA
 #define CError_LINE_DELTA -6
 #endif
+#if VERSION == VERSION_WII_1_0RC1
+void CInit_RewriteSeqString(ENode* expr) {
+    Object* obj = CParser_NewCompilerDefDataObject();
+    char* data = expr->data.string.data;
+    SInt32 size = expr->data.string.size;
+
+    obj->name = CParser_GetUniqueName();
+    obj->type = CDecl_NewArrayType(TYPE_POINTER(expr->rtype)->target, size);
+    obj->qual = Q_CONST | Q_IMPLICIT_WEAK;
+    CMangler_SetupLocalStringName(obj, cscope_currentfunc, expr->data.string.sequence - 1);
+    if (cparamblkptr->precompile == 1) {
+        if (copts.readonly_strings) {
+            CInit_DeclareReadOnlyData(obj, data, NULL, size);
+        } else {
+            CInit_DeclareData(obj, data, NULL, size);
+        }
+    } else {
+        CMid_DefineData(obj, data, NULL, size, copts.readonly_strings, TRUE);
+    }
+    expr->type = EOBJREF;
+    expr->data.objref = obj;
+}
+#endif
+
 void CInit_RewriteString(ENode* expr, Boolean unused) {
     PooledString* str;
     Boolean is_wide;
@@ -3860,8 +3885,9 @@ static void declaredata(
             CInline_ObjectAddrRef(scan->obj);
         }
 #if VERSION == VERSION_WII_1_0RC1
-        if (CMid_InIPA()) {
-            CMid_DefineData(obj, data, list, size, is_readonly);
+        Boolean sequentialString = CMangler_IsLocalString(obj);
+        if (CMid_InIPA() || sequentialString) {
+            CMid_DefineData(obj, data, list, size, is_readonly, sequentialString);
             return;
         }
 #endif

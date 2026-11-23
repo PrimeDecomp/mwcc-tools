@@ -486,6 +486,9 @@ extern Boolean is_volatile_object(Object* obj);
 extern Boolean CParserIsConstExpr(ENode* expr);
 extern Boolean CParserIsVolatileExpr(ENode* expr);
 extern Boolean CParser_HasInternalLinkage(const Object* obj);
+#if VERSION == VERSION_WII_1_0RC1
+extern SInt32 cparser_stringseqnum;
+#endif
 extern Boolean CParser_HasInternalLinkage2(const Object* obj);
 extern Boolean CParser_IsVirtualFunction(Object* obj, TypeClass** tclass, SInt32* index);
 extern Boolean is_pascal_object(Object* obj);

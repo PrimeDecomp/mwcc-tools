@@ -735,6 +735,14 @@ def check_stock_pch_functions(compiler, reference, objcopy, nm, work):
             "inline int even(int x) { return x == 0 || odd(x - 1); }\n",
             "int run(int x) { return even(x) + upstream(x); }\n",
         ),
+        (
+            "strings", ("off",), {"observe__FPCc"},
+            {"strings__Fv", "@STRING@strings__Fv", "@STRING@strings__Fv@0"},
+            "extern void observe(const char*);\n"
+            "inline void unused() { observe(\"unused\"); }\n"
+            "inline void strings() { observe(\"first\"); observe(\"second\"); }\n",
+            "void (*anchor())() { return &strings; }",
+        ),
     )
     flags = (*FLAGS, "-lang=c++", "-O2", "-Cpp_exceptions", "on")
     stub = work / "stock-functions-repack.h"
@@ -746,6 +754,8 @@ def check_stock_pch_functions(compiler, reference, objcopy, nm, work):
         obj, dump = source.with_suffix(".o"), source.with_suffix(".text")
         repacked = work / f"source-functions-{name}.mch"
         sections = (".text", "extab") if name == "exceptions" else (".text",)
+        if name == "strings":
+            sections += (".sdata",)
         source.write_text(consumer, encoding="ascii")
 
         def compile_with(tool, include):
@@ -756,6 +766,10 @@ def check_stock_pch_functions(compiler, reference, objcopy, nm, work):
             names = {line.split()[-1] for line in run(nm, "--defined-only", obj, cwd=work).splitlines()}
             if mode == "off" and out_of_line - names:
                 raise ValueError(f"{tool}: {include.name} lost definitions {sorted(out_of_line - names)}")
+            if name == "strings" and {symbol for symbol in names if symbol.startswith("@STRING@")} != {
+                "@STRING@strings__Fv", "@STRING@strings__Fv@0",
+            }:
+                raise ValueError(f"{tool}: {include.name} emitted an unexpected inline literal")
             saved = []
             for section in sections:
                 run(objcopy, f"--dump-section={section}={dump}", obj, cwd=work)
@@ -768,7 +782,9 @@ def check_stock_pch_functions(compiler, reference, objcopy, nm, work):
             expected = compile_with(compiler, header)
             run(reference, *mode_flags, "-precompile", prefix, header, cwd=work)
             header.unlink()
-            compile_with(reference, prefix)
+            stock_sections = compile_with(reference, prefix)
+            if name == "strings" and stock_sections != expected:
+                raise ValueError(f"{compiler}: {header.name} changed the inline literal layout")
             repack_mode = "off" if mode == "on" else "on"
             run(compiler, *flags, "-inline", repack_mode, "-prefix", prefix.name, "-precompile", repacked, stub, cwd=work)
             if not all(expected) or (
@@ -2396,6 +2412,28 @@ int call_scope(int x) { return with_scope(x); }
         "    Wrapper<int>::first(value);\n"
         "    Wrapper<char>::second(value);\n"
         "}\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for mode in ("off", "file"):
+        run(
+            compiler, *FLAGS, "-O4,p", "-inline", "noauto", "-ipa", mode,
+            "-func_align", "4", "-Cpp_exceptions", "off", "-c", source, "-o", obj, cwd=work,
+        )
+        results[f"{source.name} -ipa {mode}"] = obj.read_bytes()
+
+    source = work / "inline_string_sequence.cpp"
+    source.write_text(
+        "extern void observe(const char*);\n"
+        "extern void wide(const wchar_t*);\n"
+        "extern void observe_int(const int&);\n"
+        "inline void unused() { observe(\"unused\"); }\n"
+        "inline void used() {\n"
+        "    sizeof(\"discarded\");\n"
+        "    observe(\"one\"); wide(L\"wide\"); observe(\"one\");\n"
+        "}\n"
+        "void (*anchor)() = used;\n"
+        "void entry() { observe_int(0); }\n",
         encoding="ascii",
     )
     obj = source.with_suffix(".o")

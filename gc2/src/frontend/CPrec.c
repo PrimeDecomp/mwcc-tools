@@ -28,6 +28,7 @@
 #include "compiler/CExpr.h"
 #include "compiler/CIRStreamCode.h"
 #include "compiler/CIRStreamTools.h"
+#include "compiler/CMangler.h"
 #include "compiler/CMiddleLayer.h"
 #include "compiler/CPrecTransport.h"
 #include "compiler/ObjGen_PPC_EABI.h"
@@ -292,6 +293,25 @@ static void CPrec_DeclareStaticData(const StaticData* entry) {
         );
     } else {
         CInit_DeclareData(entry->object, entry->buffer, entry->links, entry->size);
+    }
+}
+
+static void CPrec_DeclareSourceStaticData(StaticData* entry) {
+    StaticData* sequence = NULL;
+    StaticData* next;
+
+    for (; entry; entry = next) {
+        next = entry->next;
+        if (CMangler_IsLocalString(entry->object)) {
+            // The source header stores definitions in reverse order.
+            entry->next = sequence;
+            sequence = entry;
+        } else {
+            CPrec_DeclareStaticData(entry);
+        }
+    }
+    for (; sequence; sequence = sequence->next) {
+        CPrec_DeclareStaticData(sequence);
     }
 }
 #endif
@@ -6401,6 +6421,7 @@ static Boolean CPrec_ReadStockExpressionData(
             node->data.string.data = galloc(first);
             memcpy(node->data.string.data, text, first);
             node->data.string.ispascal = data[0x0c];
+            node->data.string.sequence = (SInt32)CIRStream_ReadWord(data + 8);
             return TRUE;
         }
         case ECOND:
@@ -7867,13 +7888,13 @@ void PrecompilerRead(short refnum, void* buffer) {
     if (cparamblkptr->precompile != 1) {
         record = cprec_staticdata;
         cprec_staticdata = NULL;
-        for (; record != NULL; record = record->next) {
 #if VERSION == VERSION_WII_1_0RC1
-            CPrec_DeclareStaticData(record);
+        CPrec_DeclareSourceStaticData(record);
 #else
+        for (; record != NULL; record = record->next) {
             CInit_DeclareData(record->object, record->buffer, record->links, record->size);
-#endif
         }
+#endif
     }
 #if VERSION == VERSION_WII_1_0RC1
     return FALSE;

@@ -244,6 +244,9 @@ extern void CInline_Init(void);
 extern SInt32 CInline_GetLocalID(Object* object);
 extern Boolean CInline_ExpressionHasSideEffect(ENode* expr);
 extern ENode* CInline_CopyExpression(ENode* expr, CInlineCopyMode mode);
+#if VERSION == VERSION_WII_1_0RC1
+extern void CInline_ReferenceSequentialStrings(Statement* stmt);
+#endif
 extern void CInline_SerializeStatement(Statement* stmt);
 extern Object* CInline_GetLocalObj(SInt32 id, Boolean inlineCopy);
 extern SInt16 CInline_GetStatementNumber(Statement* first, Statement* stmt);

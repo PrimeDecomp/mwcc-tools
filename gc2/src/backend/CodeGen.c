@@ -7,6 +7,7 @@
 #include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
 #include "compiler/CInit.h"
+#include "compiler/CInline.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMachine.h"
 #include "compiler/CMangler.h"
@@ -1698,6 +1699,9 @@ void CodeGen_Generator(
     }
 
     gFunction = func;
+#if VERSION == VERSION_WII_1_0RC1
+    CInline_ReferenceSequentialStrings(statements);
+#endif
     ORACLE_PROBE(OracleProbe_Counter(6, 0, func));
     has_varargs = has_vararglist(func);
     init_endian();

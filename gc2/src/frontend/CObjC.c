@@ -3118,6 +3118,9 @@ ENode* CObjC_ParseEncodeExpression(void) {
     expr->data.string.size = expr->rtype->size;
     expr->data.string.data = str;
     expr->data.string.ispascal = FALSE;
+#if VERSION == VERSION_WII_1_0RC1
+    expr->data.string.sequence = 0;
+#endif
 
     expr = makemonadicnode(expr, EINDIRECT);
     expr->data.monadic->rtype = CDecl_NewPointerType(expr->rtype);

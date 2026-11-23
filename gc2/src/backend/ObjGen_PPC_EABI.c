@@ -751,6 +751,9 @@ Boolean CodeGen_ReadPrecompilerData(const UInt8* data, UInt32 size, PrecompilerS
 void ObjGen_Finish(void) {
     BufferUpdate* update;
 
+#if VERSION == VERSION_WII_1_0RC1
+    CMid_FinishSequentialStrings();
+#endif
     CInit_DeclarePooledStrings();
     DeclarePooledConstants();
     if (copts.create_file_object) {

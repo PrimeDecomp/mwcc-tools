@@ -3018,6 +3018,9 @@ NameSpace* CFunc_FuncGenSetup(Statement* stmt, Object* func) {
 
     localcount = 0;
     cfunc_staticvarcount = 0;
+#if VERSION == VERSION_WII_1_0RC1
+    cparser_stringseqnum = 0;
+#endif
 
     CExcept_Setup();
 

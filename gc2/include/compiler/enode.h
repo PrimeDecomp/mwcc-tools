@@ -252,6 +252,9 @@ union ENodeUnion {
         SInt32 size;
         char* data;
         unsigned char ispascal;
+#if VERSION == VERSION_WII_1_0RC1
+        SInt32 sequence;
+#endif
     } string;
     struct {
         Object* objref;

@@ -263,7 +263,6 @@ static CIRStreamExpressionInfo* remember_expression_info(CodeReader* reader, ENo
 }
 
 static Boolean unpack_string(CodeReader* reader, ENode* expr) {
-    SInt32 units;
     CIRStreamReader bytes;
     UInt32 index;
     UInt8 kind;
@@ -271,8 +270,8 @@ static Boolean unpack_string(CodeReader* reader, ENode* expr) {
     if (!CIRStream_UnpackInt32(&reader->stream, &expr->data.string.size) ||
         expr->data.string.size < 0 ||
         !CIRStream_UnpackData(&reader->stream, expr->data.string.size, &bytes) ||
-        !CIRStream_UnpackInt32(&reader->stream, &units) ||
-        units < 0 ||
+        !CIRStream_UnpackInt32(&reader->stream, &expr->data.string.sequence) ||
+        expr->data.string.sequence < 0 ||
         !CIRStream_UnpackByte(&reader->stream, &expr->data.string.ispascal) ||
         !CIRStream_UnpackByte(&reader->stream, &kind)) {
         return FALSE;
@@ -281,9 +280,8 @@ static Boolean unpack_string(CodeReader* reader, ENode* expr) {
     for (index = 0; index < bytes.size; ++index) {
         expr->data.string.data[index] = (char)bytes.bytes[index];
     }
-    if (units || kind) {
+    if (kind) {
         CIRStreamExpressionInfo* info = remember_expression_info(reader, expr);
-        info->stringUnits = units;
         info->stringKind = kind;
     }
     return TRUE;
@@ -1370,7 +1368,7 @@ ENODE_CASE_DIADIC_ALL:
                 CIRStream_PackData(
                        &writer->stream, (const UInt8*)expr->data.string.data, expr->data.string.size
                 ) &&
-                CIRStream_WriteInt32(&writer->stream, info ? info->stringUnits : 0) &&
+                CIRStream_WriteInt32(&writer->stream, expr->data.string.sequence) &&
                 CIRStream_PackByte(&writer->stream, expr->data.string.ispascal) &&
                 CIRStream_PackByte(&writer->stream, info ? info->stringKind : 0);
         case ECOND:

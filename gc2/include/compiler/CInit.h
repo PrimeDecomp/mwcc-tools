@@ -57,6 +57,9 @@ extern void CInit_RemoveDeadStrings(void);
 #endif
 extern PooledString* CInit_DeclarePooledString(char* data, SInt32 size, Boolean ispascal);
 extern void CInit_RewriteString(ENode* expr, Boolean unused);
+#if VERSION == VERSION_WII_1_0RC1
+extern void CInit_RewriteSeqString(ENode* expr);
+#endif
 extern void CInit_DeclarePooledStrings(void);
 extern void CInit_DeclareData(Object* obj, void* data, OLinkList* list, SInt32 size);
 extern void CInit_DeclareReadOnlyData(Object* obj, void* data, OLinkList* list, SInt32 size);

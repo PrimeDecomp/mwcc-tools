@@ -95,6 +95,9 @@ jmp_buf errorreturn;
 char string[256];
 static HashNameNode* uniquenamespacename;
 static SInt32 uniqueid;
+#if VERSION == VERSION_WII_1_0RC1
+SInt32 cparser_stringseqnum;
+#endif
 
 struct ClassAction {
     struct ClassAction* next;
@@ -465,6 +468,9 @@ void CParser_Setup(void) {
     in_assembler = FALSE;
     in_func_arglist = FALSE;
     CParser_SetUniqueID(1);
+#if VERSION == VERSION_WII_1_0RC1
+    cparser_stringseqnum = 0;
+#endif
     dont_set_references = FALSE;
 
     copts.sideeffects = TRUE;

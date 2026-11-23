@@ -285,3 +285,27 @@ void CCallGraph_RemoveDeadNodes(void) {
         }
     }
 }
+
+void CCallGraph_MoveSequentialStringsToEnd(void) {
+    CallGraphNode** link = &ccallgraph;
+    CallGraphNode* strings = NULL;
+    CallGraphNode* lastString = NULL;
+
+    while (*link) {
+        CallGraphNode* node = *link;
+        if (node->kind == CGData && node->definition.data.sequentialString) {
+            *link = node->next;
+            node->next = strings;
+            strings = node;
+            if (!lastString) {
+                lastString = node;
+            }
+        } else {
+            link = &node->next;
+        }
+    }
+    if (strings) {
+        *link = strings;
+        graphTail = lastString;
+    }
+}

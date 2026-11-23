@@ -33,10 +33,12 @@ enum {
 };
 
 static UInt8 cmid_ipa_mode;
+static CallGraphNode* sequentialStrings;
 
 void CMid_Setup(void) {
     cmid_ipa_mode =
         cparamblkptr->precompile != 1 && !cparamblkptr->preprocess ? copts.ipa_mode : IPAOff;
+    sequentialStrings = NULL;
     CCallGraph_Setup();
 }
 
@@ -67,11 +69,17 @@ void CMid_DefineFunction(Object* object, CI_FuncData* body, UInt8 oldStyleParame
 }
 
 void CMid_DefineData(
-    Object* object, const void* data, OLinkList* references, SInt32 size, Boolean readOnly
+    Object* object, const void* data, OLinkList* references, SInt32 size, Boolean readOnly,
+    Boolean deferSequentialString
 ) {
     CallGraphNode* node = CCallGraph_NewNode(object, CGData);
     OLinkList** tail = &node->definition.data.references;
 
+    if (deferSequentialString && !node->definition.data.sequentialString) {
+        node->definition.data.sequentialString = TRUE;
+        node->nextSequentialString = sequentialStrings;
+        sequentialStrings = node;
+    }
     node->definition.data.bytes = NULL;
     node->definition.data.qualifiers = object->qual;
     node->definition.data.size = size;
@@ -650,8 +658,10 @@ void CMid_Finish(void) {
         CCallGraph_RemoveDeadNodes();
         CInit_RemoveDeadStrings();
         if (cmid_ipa_mode == IPAProgram) {
+            CCallGraph_MoveSequentialStringsToEnd();
             export_program_graph();
             cmid_ipa_mode = IPAOff;
+            sequentialStrings = NULL;
             return;
         }
         CInline_CallGraphInlining();
@@ -665,11 +675,26 @@ void CMid_Finish(void) {
 
     cmid_ipa_mode = IPAOff;
     for (node = ccallgraph; node && !anyerrors; node = node->next) {
+        if (node->kind == CGData && node->definition.data.sequentialString) {
+            continue;
+        }
         CMid_GenerateCGNode(node);
         if (CInline_CanFreeLHeap()) {
             freelheap();
         }
     }
+}
+
+void CMid_FinishSequentialStrings(void) {
+    CallGraphNode* node;
+
+    for (node = sequentialStrings; node && !anyerrors; node = node->nextSequentialString) {
+        if (CCallGraph_IsDefined(node->object) &&
+            (node->marked || node->forceActive || (node->object->flags & OBJECT_REFERENCED))) {
+            CMid_GenerateCGNode(node);
+        }
+    }
+    sequentialStrings = NULL;
 }
 
 Boolean CMid_IsIRFile(const FSSpec* spec) {
@@ -925,7 +950,7 @@ static Boolean import_data(const CIRStreamImportedGraph* graph, const CIRStreamN
         *tail = entry;
         tail = &entry->next;
     }
-    CMid_DefineData(node->object, data->initializer.bytes, head, data->size, data->flags & 1);
+    CMid_DefineData(node->object, data->initializer.bytes, head, data->size, data->flags & 1, FALSE);
     definition = CCallGraph_NewNode(node->object, CGData);
     definition->forceActive = (node->decl.flags & IRForceActive) != 0;
     definition->root |= definition->forceActive;

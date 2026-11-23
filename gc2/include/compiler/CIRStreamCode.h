@@ -38,7 +38,6 @@ typedef struct CIRStreamExpressionInfo {
     struct CIRStreamExpressionInfo* next;
     ENode* expression;
     UInt32 extraFlags;
-    SInt32 stringUnits;
     UInt8 stringKind;
 } CIRStreamExpressionInfo;
 

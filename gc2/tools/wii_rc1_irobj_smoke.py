@@ -434,6 +434,50 @@ def check_live_program(codec, compiler, reference, work, compiler_flags):
         ) == linked_program_text(reference, work, "assembly_replay", ["assembly_replay.o"], no_exceptions, ipa="off")
 
 
+def check_program_inline_strings(compiler, reference, work):
+    fixtures = {
+        "alpha": (
+            "const char* volatile sink;\n"
+            "extern void branch();\n"
+            'inline void alpha() { sink = "alpha1"; sink = "alpha2"; }\n'
+            'inline void unused() { sink = "unused"; }\n'
+            "void (*volatile anchorA)() = alpha;\n"
+            'extern "C" int __start() { anchorA(); branch(); return *sink; }\n'
+        ),
+        "bravo": (
+            "extern const char* volatile sink;\n"
+            'inline void bravo() { sizeof("gone"); sink = "bravo1"; sink = "bravo2"; }\n'
+            "void (*volatile anchorB)() = bravo;\n"
+            "void branch() { anchorB(); }\n"
+        ),
+    }
+    flags = ("-inline", "noauto", "-func_align", "4", "-Cpp_exceptions", "off")
+    for name, source in fixtures.items():
+        (work / f"{name}.cpp").write_text(source, "ascii")
+
+    sidecars = {}
+    for prefix, producer in (("stock", reference), ("source", compiler)):
+        sidecars[prefix] = []
+        for name in fixtures:
+            stem = f"{prefix}_{name}"
+            run(producer, *FLAGS, "-O4,p", *flags, "-ipa", "program", "-c", f"{name}.cpp", "-o", f"{stem}.o", cwd=work)
+            sidecars[prefix].append(f"{stem}.irobj")
+
+    linker_path = os.pathsep.join((str(reference.parent), os.environ.get("PATH", "")))
+    with patch.dict(os.environ, PATH=linker_path):
+        for name, tool, inputs in (
+            ("stock_inline_strings", reference, sidecars["stock"]),
+            ("source_inline_strings", reference, sidecars["source"]),
+            ("import_inline_strings", compiler, sidecars["stock"]),
+        ):
+            linked_program_text(tool, work, name, inputs, (*flags, "-nostdlib"))
+            run("llvm-objcopy", "-O", "binary", "--only-section=.sdata", f"{name}.elf", f"{name}.data", cwd=work)
+            data = (work / f"{name}.data").read_bytes()
+            # Two function address relocations surround the first unit's strings.
+            assert data[4:20] == b"alpha2\0\0alpha1\0\0", name
+            assert data[24:] == b"bravo2\0\0bravo1\0\0", name
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("reference", type=Path, help="path to stock Wii 1.0RC1")
@@ -570,6 +614,7 @@ def main():
                 if args.compiler:
                     compiler = args.compiler.resolve(strict=True)
                     check_live_program(codec, compiler, reference, work, compiler_flags)
+                    check_program_inline_strings(compiler, reference, work)
                     check_spe_program(compiler, reference, work)
         finally:
             # Windows keeps a loaded DLL open until its last reference is released.

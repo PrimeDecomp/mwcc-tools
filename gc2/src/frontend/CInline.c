@@ -856,6 +856,12 @@ static ENode* CInline_CopyNodes(ENode* node) {
     }
 
     while (1) {
+#if VERSION == VERSION_WII_1_0RC1
+        if (node->type == ESTRINGCONST && node->data.string.sequence &&
+            enode_copymode == CopyModeUnpack && cscope_currentfunc) {
+            CInit_RewriteSeqString(node);
+        }
+#endif
         *copy = *node;
         switch (copy->type) {
             case ETEMPLDEP:
@@ -5019,6 +5025,49 @@ static Boolean CInline_NoFPLocals(void) {
     return TRUE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void CInline_VisitStatementExpressions(Statement* stmt, ENodeType type, CExprSearchCB visit) {
+    for (; stmt; stmt = stmt->next) {
+        switch (stmt->type) {
+            case ST_EXPRESSION:
+            case ST_RETURN:
+            case ST_SWITCH:
+            case ST_IFGOTO:
+            case ST_IFNGOTO:
+            case ST_GOTOEXPR:
+                if (stmt->expr) {
+                    CExpr_SearchExprTree(stmt->expr, visit, 1, type);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+static void CInline_SeqStringRewriteExpr(ENode* expr) {
+    if (expr->data.string.sequence) {
+        CInit_RewriteSeqString(expr);
+    }
+}
+
+static void CInline_SeqStringRewrite(Statement* stmt) {
+    CInline_VisitStatementExpressions(stmt, ESTRINGCONST, CInline_SeqStringRewriteExpr);
+}
+
+static void CInline_ReferenceSequentialString(ENode* expr) {
+    Object* obj = expr->data.objref;
+
+    if (CMangler_IsLocalString(obj)) {
+        obj->flags |= OBJECT_REFERENCED;
+    }
+}
+
+void CInline_ReferenceSequentialStrings(Statement* stmt) {
+    CInline_VisitStatementExpressions(stmt, EOBJREF, CInline_ReferenceSequentialString);
+}
+#endif
+
 void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) {
     CI_FuncData* funcdata;
     CI_Export* export;
@@ -5047,6 +5096,9 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) 
 
     if (isInline) {
         COpt_SimpleOptimizer(object, stmt);
+#if VERSION == VERSION_WII_1_0RC1
+        CInline_SeqStringRewrite(stmt);
+#endif
 
         funcdata = galloc(sizeof(CI_FuncData));
         CInline_PackIFunctionData(funcdata, stmt, object);
@@ -5075,6 +5127,7 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) 
             funcdata = object->u.func.u.ifuncdata;
         } else {
             COpt_SimpleOptimizer(object, stmt);
+            CInline_SeqStringRewrite(stmt);
             funcdata = galloc(sizeof(CI_FuncData));
             CInline_PackIFunctionData(funcdata, stmt, object);
         }
