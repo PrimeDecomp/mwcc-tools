@@ -3893,6 +3893,32 @@ extern void sink(int);
         run(compiler, *FLAGS, "-inline", "auto", "-O4,p", "-func_align", "4", "-c", source, "-o", obj, cwd=work)
         results[f"{name} -O4,p"] = obj.read_bytes()
 
+    source = work / "array_member_address.c"
+    source.write_text(
+        """\
+struct Entry { int first, second; };
+struct Pool { int prefix; struct Entry entries[16]; };
+extern void touch(struct Pool*, int);
+static const int sizes[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+
+int member_address(struct Pool* pool, int size) {
+    struct Entry* entry;
+    int i = 0;
+    while (size > sizes[i])
+        ++i;
+    entry = &pool->entries[i];
+    if (!entry->first)
+        touch(pool, i);
+    return entry->second + pool->entries[i].first;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O2", "-O4,p"):
+        run(compiler, *FLAGS, "-inline", "auto", opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     source = work / "memory_references.c"
     source.write_text(
         """\

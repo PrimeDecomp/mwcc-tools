@@ -481,10 +481,12 @@ static ENode* padd(ENode* left, ENode* right) {
         return left;
     }
 
+#if VERSION != VERSION_WII_1_0RC1
     if (ENODE_IS(left, EADD) && ENODE_IS(left->data.diadic.right, EINTCONST)) {
         left->data.diadic.left = makediadicnode(left->data.diadic.left, expr, EADD);
         return left;
     }
+#endif
 
     expr = makediadicnode(left, expr, EADD);
     expr->rtype = left->rtype;
