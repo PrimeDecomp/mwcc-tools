@@ -1244,7 +1244,7 @@ static IROLinear* LinearizeExpr(ENode* enode) {
             linear = IRO_NewLinear(IROLinearOp1Arg);
             linear->u.monadic = LinearizeExpr(enode->data.monadic);
             linear->nodetype = enode->type;
-            linear->rtype = enode->rtype;
+            linear->rtype = IRO_CopyType(enode->rtype);
             linear->nodeflags = enode->flags;
             if (IRO_IsAssignOp[linear->nodetype]) {
                 MarkAssigned(linear->u.monadic, TRUE);
@@ -1293,7 +1293,7 @@ static IROLinear* LinearizeExpr(ENode* enode) {
                 linear->u.diadic.right = LinearizeExpr(enode->data.diadic.right);
             }
             linear->nodetype = enode->type;
-            linear->rtype = enode->rtype;
+            linear->rtype = IRO_CopyType(enode->rtype);
             if (IRO_IsAssignOp[linear->nodetype]) {
                 MarkAssigned(linear->u.diadic.left, IRO_IsModifyOp[linear->nodetype]);
             }
@@ -1317,7 +1317,7 @@ static IROLinear* LinearizeExpr(ENode* enode) {
             linear->u.diadic.left = LinearizeExpr(enode->data.diadic.left);
             linear->flags |= IROLF_RightFirst;
             linear->nodetype = enode->type;
-            linear->rtype = enode->rtype;
+            linear->rtype = IRO_CopyType(enode->rtype);
             MarkAssigned(linear->u.diadic.left, IRO_IsModifyOp[linear->nodetype]);
             break;
         case EINTCONST:
@@ -1378,7 +1378,7 @@ static IROLinear* LinearizeExpr(ENode* enode) {
             linear->u.funccall.args = (IROLinear**)arr;
             linear->u.funccall.callee = LinearizeExpr(enode->data.funccall.funcref);
             linear->u.funccall.functype = enode->data.funccall.functype;
-            linear->rtype = enode->rtype;
+            linear->rtype = IRO_CopyType(enode->rtype);
             break;
         }
         default:

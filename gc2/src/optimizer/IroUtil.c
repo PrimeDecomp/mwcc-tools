@@ -201,6 +201,38 @@ static Boolean IRO_OperandsSame(ENode* a, ENode* b) {
     return FALSE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+Type* IRO_CopyType(Type* type) {
+    const UInt32 pointerQualifiers = 0x1F200003;
+
+    if (!type) {
+        return NULL;
+    }
+
+    switch (type->type) {
+        case TYPEPOINTER:
+        case TYPEARRAY: {
+            TypePointer* copy = galloc(sizeof(TypePointer));
+            *copy = *TYPE_POINTER(type);
+            copy->target = IRO_CopyType(copy->target);
+            if (type->type == TYPEPOINTER) {
+                copy->qual &= pointerQualifiers;
+            }
+            return TYPE(copy);
+        }
+        case TYPEMEMBERPOINTER: {
+            TypeMemberPointer* copy = galloc(sizeof(TypeMemberPointer));
+            *copy = *TYPE_MEMBER_POINTER(type);
+            copy->ty1 = IRO_CopyType(copy->ty1);
+            copy->qual &= pointerQualifiers;
+            return TYPE(copy);
+        }
+        default:
+            return type;
+    }
+}
+#endif
+
 Boolean IRO_TypesEqual(Type* a, Type* b) {
     TypeBitfield* ba;
     TypeBitfield* bb;

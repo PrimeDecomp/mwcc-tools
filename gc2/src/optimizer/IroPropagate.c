@@ -189,7 +189,11 @@ static Boolean IsPropagatable(IROLinear* linear) {
 
     if (IS_LINEAR_DIADIC(linear, EASS) &&
         (obj = IRO_IsVariable(linear->u.diadic.left)) &&
+#if VERSION == VERSION_WII_1_0RC1
+        (obj->type == linear->rtype || IRO_TypesEqual(obj->type, linear->rtype)) &&
+#else
         obj->type == linear->rtype &&
+#endif
         !is_volatile_object(obj)) {
 #if VERSION == VERSION_WII_1_0RC1
         if (IRO_ExprHasFloatingPointEffects(linear)) {
@@ -211,7 +215,11 @@ static Boolean IsPropagatable(IROLinear* linear) {
         if ((srcObj = IRO_IsVariable(linear->u.diadic.right)) &&
             !is_volatile_object(srcObj) &&
             IRO_TypesEqual(obj->type, linear->rtype)) {
-            if (!Inline_IsObjectData(linear->u.diadic.right->u.monadic->u.node->data.objref)) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (srcObj->datatype == DLOCAL) {
+#else
+            if (!Inline_IsObjectData(srcObj)) {
+#endif
 #if VERSION == VERSION_GC_2_0P2
                 if (obj->datatype == DLOCAL && obj->u.var.info && obj->u.var.info->noregister) {
                     return FALSE;

@@ -54,6 +54,9 @@ extern Boolean IRO_TypesEqual(Type* a, Type* b);
 extern Type* IRO_UnsignedType(Type* type);
 #if VERSION == VERSION_WII_1_0RC1
 extern Type* IRO_LogicalType(void);
+extern Type* IRO_CopyType(Type* type);
+#else
+#define IRO_CopyType(type) (type)
 #endif
 extern Boolean IRO_is_CPtypeequal(Type* a, Type* b);
 extern Boolean IRO_ExprsSame(IROLinear* a, IROLinear* b);

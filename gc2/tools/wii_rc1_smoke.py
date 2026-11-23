@@ -3779,6 +3779,35 @@ double run_indexed_float(char *base, Word offset) {
         run(compiler, *FLAGS, *options, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {' '.join(options)}"] = obj.read_bytes()
 
+    source = work / "pointer_expression_types.c"
+    source.write_text(
+        """\
+typedef unsigned long Word;
+typedef struct Header { struct Header *prev, *next; Word size, total; } Header;
+typedef struct Record { Header *owner; Word size; } Record;
+extern void link_records(Header *, Record *);
+static inline void attach(Record *record, Header *header, Word size) {
+    record->owner = (Header *)((Word)header | 1);
+    record->size = size;
+    *(Word *)((char *)record + size - sizeof(Word)) = size;
+}
+void construct(Header *header, Word size) {
+    Record *record = (Record *)((char *)header + sizeof(Header));
+    header->size = size | 3;
+    *(Word *)((char *)header + size - 8) = header->size;
+    attach(record, header, size - sizeof(Header) - 8);
+    header->total = size - sizeof(Header) - 8;
+    *(Record **)((char *)header + (header->size & ~7u) - sizeof(Word)) = 0;
+    link_records(header, record);
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O2", "-O4,p"):
+        run(compiler, *FLAGS, "-inline", "auto", opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     source = work / "memory_references.c"
     source.write_text(
         """\
