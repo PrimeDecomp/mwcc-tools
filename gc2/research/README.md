@@ -765,6 +765,15 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   reach the global optimizer at `0x5b33f0`. Stock deletes the earlier store
   at `0x5ba1a4` before local value numbering. The source `buffer_io.c`
   object now matches stock.
+- The late peephole at `0x65bbd0` converts a zero-displacement access
+  fed by an `ADD` into an indexed access if both inputs still reach it.
+  If the add overwrites one input, the access can absorb the add and
+  update the base when that register remains live. Otherwise other uses
+  can retain their separate address calculation. At `0x65c56e` the
+  displacement rule can retarget the base producer, then fold an
+  `ADDI` into the memory instruction. The `Block_link` body in
+  `Runtime/alloc.c` and the Echoes `CDisplayListReader.cpp`
+  object now match stock.
 - RC1's aggressive copy propagation checks each use at `0x644630`,
   substitutes the source register when it still reaches that use, and
   tracks rejected uses for the removal callback at `0x6445f0`. Static zero

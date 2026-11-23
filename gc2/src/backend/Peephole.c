@@ -845,6 +845,33 @@ static int LI_L_S(PCode* instr, UInt32* masks) {
     return FALSE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean retarget_addi_base(PCode* instr, PCode* add, UInt32 live) {
+    PCodeArg* dst = &add->args[0];
+    PCodeArg* src = &add->args[1];
+    short dstReg = dst->data.reg.reg;
+    short srcReg = src->data.reg.reg;
+    PCode* base = defininginstruction[add->defID + 1];
+    Boolean overwritten = (instr->flags & fIsRead) &&
+        PC_OP_IS_WRITE_REGISTER(&instr->args[0], RegClass_GPR, srcReg);
+
+    if (add->args[2].kind != PCOp_IMMEDIATE || !dstReg ||
+        (!overwritten && (live & (1u << srcReg))) ||
+        usedbetween(instr, add, src) || base->block != add->block ||
+        !PC_OP_IS_WRITE_REGISTER(&base->args[0], RegClass_GPR, srcReg) ||
+        (base->args[0].data.reg.effect & EffectRead) ||
+        (base->flags & (fIsVolatile | fSideEffects | fRecordBit)) ||
+        usedbetween(add, base, dst) || definedbetween(add, base, dst) ||
+        usedbetween(add, base, &base->args[0])) {
+        return FALSE;
+    }
+
+    base->args[0].data.reg.reg = dstReg;
+    src->data.reg.reg = dstReg;
+    return TRUE;
+}
+#endif
+
 static int ADDI_L_S(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
     SInt32 addleft;
@@ -854,9 +881,16 @@ static int ADDI_L_S(PCode* instr, UInt32* masks) {
     if (defInstr->op == PC_ADDI && instr->args[2].kind == PCOp_IMMEDIATE) {
         if (!PC_OP_IS_REGISTER(&instr->args[0], RegClass_GPR, instr->args[1].data.reg.reg)) {
             if (instr->args[2].data.imm.value == 0 &&
+#if VERSION != VERSION_WII_1_0RC1
                 defInstr->args[0].data.reg.reg == defInstr->args[1].data.reg.reg &&
+#endif
                 !usedbetween(instr, defInstr, &defInstr->args[0]) &&
-#ifdef __MWERKS__
+#if VERSION == VERSION_WII_1_0RC1
+                (!(masks[RegClass_GPR] & (1u << defInstr->args[0].data.reg.reg)) ||
+                 canuseupdate(instr)) &&
+                (defInstr->args[0].data.reg.reg == defInstr->args[1].data.reg.reg ||
+                 retarget_addi_base(instr, defInstr, masks[RegClass_GPR]))) {
+#elif defined(__MWERKS__)
                 (!(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg)) ||
                  canuseupdate(instr))) {
 #else
@@ -868,7 +902,11 @@ static int ADDI_L_S(PCode* instr, UInt32* masks) {
                     instr->args[2] = defInstr->args[2];
                 } else {
                     PCode* t = instr;
+#if VERSION == VERSION_WII_1_0RC1
+                    change_opcode(t, t->op + 1);
+#else
                     t->op++;
+#endif
                     t->args[1].data.reg.effect |= EffectWrite;
                     t->args[2] = defInstr->args[2];
                 }
@@ -969,6 +1007,61 @@ static int ADDI_L_S(PCode* instr, UInt32* masks) {
 
     return FALSE;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static int ADD_L_S(PCode* instr, UInt32* masks) {
+    PCode* add = defininginstruction[instr->defID + 1];
+    short address = instr->args[1].data.reg.reg;
+    int base = 1;
+    int index = 2;
+    Boolean replacesAdd;
+    Boolean update = FALSE;
+
+    if (instr->args[2].kind != PCOp_IMMEDIATE || instr->args[2].data.imm.value != 0 ||
+        add->op != PC_ADD || add->block != instr->block ||
+        (add->flags & (fIsVolatile | fSideEffects | fRecordBit)) ||
+        PC_OP_IS_REGISTER(&instr->args[0], RegClass_GPR, address) ||
+        definedbetween(instr, add, &add->args[1]) || definedbetween(instr, add, &add->args[2])) {
+        return FALSE;
+    }
+
+    replacesAdd = address == add->args[1].data.reg.reg || address == add->args[2].data.reg.reg;
+    if (replacesAdd) {
+        if (usedbetween(instr, add, &add->args[0])) {
+            return FALSE;
+        }
+        update = (masks[RegClass_GPR] & (1u << address)) != 0;
+        if (update && !canuseupdate(instr)) {
+            return FALSE;
+        }
+        if (address != add->args[1].data.reg.reg) {
+            base = 2;
+            index = 1;
+        }
+    } else if (!add->args[1].data.reg.reg) {
+        if (!add->args[2].data.reg.reg) {
+            return FALSE;
+        }
+        base = 2;
+        index = 1;
+    }
+
+    change_opcode(instr, instr->op + (update ? 3 : 2));
+    if (!replacesAdd) {
+        instr->args[1] = add->args[base];
+    }
+    instr->args[2] = add->args[index];
+    defininginstruction[instr->defID + 1] = defininginstruction[add->defID + base];
+    defininginstruction[instr->defID + 2] = defininginstruction[add->defID + index];
+    if (update) {
+        instr->args[1].data.reg.effect |= EffectWrite;
+    }
+    if (replacesAdd) {
+        deletepcode(add);
+    }
+    return TRUE;
+}
+#endif
 
 static int ADDI_LU_SU(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
@@ -3445,6 +3538,19 @@ static void installpeepholepatterns(void) {
     installpattern(PC_LFD, L_S_ADDI);
     installpattern(PC_STFS, L_S_ADDI);
     installpattern(PC_STFD, L_S_ADDI);
+#if VERSION == VERSION_WII_1_0RC1
+    installpattern(PC_LBZ, ADD_L_S);
+    installpattern(PC_LHZ, ADD_L_S);
+    installpattern(PC_LHA, ADD_L_S);
+    installpattern(PC_LWZ, ADD_L_S);
+    installpattern(PC_STB, ADD_L_S);
+    installpattern(PC_STH, ADD_L_S);
+    installpattern(PC_STW, ADD_L_S);
+    installpattern(PC_LFS, ADD_L_S);
+    installpattern(PC_LFD, ADD_L_S);
+    installpattern(PC_STFS, ADD_L_S);
+    installpattern(PC_STFD, ADD_L_S);
+#endif
     installpattern(PC_STB, L_S);
     installpattern(PC_STH, L_S);
     installpattern(PC_STW, L_S);

@@ -3723,6 +3723,49 @@ int check_byte_order(void) {
         run(compiler, *FLAGS, *options, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {' '.join(options)}"] = obj.read_bytes()
 
+    source = work / "address_update.c"
+    source.write_text(
+        """\
+typedef unsigned int Word;
+extern void use(void *);
+extern Word visit(Word **, Word *);
+void run_update(Word *base, Word *p, Word *q) {
+    Word **slot = (Word **)((char *)base + (base[1] & ~7u) - 4);
+    Word *current = *slot;
+    if (current) {
+        *current = p[2];
+        *slot = q;
+        *slot = (Word *)visit(slot, current);
+        use(slot);
+    } else {
+        *slot = p;
+    }
+}
+void run_indexed(char *base, Word offset) {
+    char *p = base + offset;
+    *(Word *)p &= ~4u;
+    *(Word *)(p - 4) = offset;
+}
+Word run_indexed_live(char *base, Word offset) {
+    char *p = base + offset;
+    *(Word *)p |= 4u;
+    return *(Word *)p + *(Word *)base;
+}
+double run_indexed_float(char *base, Word offset) {
+    double *slot = (double *)(base + offset);
+    double value = *slot;
+    *slot = value + 1.0;
+    use(slot);
+    return value;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for options in (("-O2",), ("-O4,p",), ("-O4,p", "-pragma", "opt_common_subs off")):
+        run(compiler, *FLAGS, *options, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {' '.join(options)}"] = obj.read_bytes()
+
     source = work / "memory_references.c"
     source.write_text(
         """\
