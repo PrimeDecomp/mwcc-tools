@@ -67,7 +67,7 @@ SInt32 IRO_VarTerms;
 Boolean IRO_IsModifyOp[MAXEXPR];
 Boolean IRO_IsAssignOp[MAXEXPR];
 #if VERSION == VERSION_WII_1_0RC1
-BitVector* IRO_CallKills;
+BitVector* IRO_IndirectKills;
 #endif
 
 static int CheckAddress(IROLinear* nd, Boolean* resultFlag);
@@ -384,8 +384,8 @@ static void BuildFunctionKillSets(void) {
     Bv_AllocVector(&IRO_FuncKills, IRO_NumVars + 1);
     Bv_SetBit(0, IRO_FuncKills);
 #if VERSION == VERSION_WII_1_0RC1
-    Bv_AllocVector(&IRO_CallKills, IRO_NumVars + 1);
-    Bv_SetBit(0, IRO_CallKills);
+    Bv_AllocVector(&IRO_IndirectKills, IRO_NumVars + 1);
+    Bv_SetBit(0, IRO_IndirectKills);
 #endif
 
     for (var = IRO_FirstVar; var; var = var->next) {
@@ -396,7 +396,7 @@ static void BuildFunctionKillSets(void) {
             if (!CParser_IsReadOnly(type, var->object->qual) ||
                 (IS_TYPE_CLASS(type) &&
                  (CClass_Constructor(TYPE_CLASS(type)) || CClass_Destructor(TYPE_CLASS(type))))) {
-                Bv_SetBit(var->index, IRO_CallKills);
+                Bv_SetBit(var->index, IRO_IndirectKills);
             }
 #endif
         }
@@ -673,7 +673,7 @@ static void GetKillsByIndirectAssignment(IROLinear* linear) {
     }
 
     if (result) {
-        Bv_Or(IRO_FuncKills, IRO_VarKills);
+        Bv_Or(IRO_IndirectKills, IRO_VarKills);
     }
 }
 
@@ -785,7 +785,7 @@ static void GetKillsByFunctionCall(IROLinear* linear) {
     }
 
     if (result) {
-        Bv_Or(IRO_CallKills, IRO_VarKills);
+        Bv_Or(IRO_IndirectKills, IRO_VarKills);
     }
 }
 

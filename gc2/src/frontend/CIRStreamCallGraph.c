@@ -477,6 +477,7 @@ Boolean CIRStream_UnpackFunctionHeader(CIRStreamReader* stream, CIRStreamFunctio
     X(0x2a, opt_pointer_analysis_mode) \
     X(0x2b, unrollfactor) \
     X(0x35, removeemptyloops) \
+    X(0x4d, opt_marknonregtemps) \
     X(0x5a, opt_optimizecontrolflow) \
     X(0x67, optimize_tail_call) \
     X(0x6a, scheduling) \
@@ -537,6 +538,8 @@ Boolean CIRStream_UnpackFunctionOptions(
 #undef READ_BYTE
     options->function_align = (UInt8)(1U << bytes[0x78]);
     options->peephole = bytes[0x12] ? CInlinePeepholeOn : CInlinePeepholeOff;
+    options->opt_optimizenonregaccess =
+        bytes[0x38] ? CInlineNonRegAccessOn : CInlineNonRegAccessOff;
     options->opt_bcc_lr_ctr = bytes[0x9e];
     conditionalRange = CIRStream_ReadWord(bytes + 0xa8);
     unconditionalRange = CIRStream_ReadWord(bytes + 0xac);
@@ -577,6 +580,9 @@ Boolean CIRStream_PackFunctionOptions(
 #undef WRITE_SHORT
 #undef WRITE_BYTE
     bytes[0x12] = options->peephole ? options->peephole == CInlinePeepholeOn : defaultPeephole;
+    bytes[0x38] = options->opt_optimizenonregaccess
+        ? options->opt_optimizenonregaccess == CInlineNonRegAccessOn
+        : options->optimizationlevel >= 3;
     bytes[0x9e] = options->opt_bcc_lr_ctr;
     CIRStream_WriteWord(bytes + 0xa8, conditionalRange == CInlineExplicitZeroConditionalBranchRange ? 0 : conditionalRange);
     CIRStream_WriteWord(bytes + 0xac, unconditionalRange == CInlineExplicitZeroUnconditionalBranchRange ? 0 : unconditionalRange);

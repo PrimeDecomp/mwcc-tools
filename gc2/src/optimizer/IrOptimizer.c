@@ -240,6 +240,7 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
         (copts.optimizationlevel > 0
 #if VERSION == VERSION_WII_1_0RC1
          || copts.removeemptyloops || copts.opt_optimizecontrolflow
+         || copts.opt_optimizenonregaccess || copts.opt_marknonregtemps
 #endif
         )) {
         passCount = copts.multiplepasses ? 2 : 1;
@@ -323,7 +324,12 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
 
             VectorPhaseCalledFromUnroll = FALSE;
 
-            if (pass == 0 && (copts.loopinvariants || copts.strengthreduction)) {
+            if (pass == 0 &&
+                (copts.loopinvariants || copts.strengthreduction
+#if VERSION == VERSION_WII_1_0RC1
+                 || copts.opt_optimizenonregaccess || copts.opt_marknonregtemps
+#endif
+                )) {
                 IRO_DumpAfterPhase("Before IRO_FindLoops", FALSE);
                 IRO_FindLoops();
                 LoopOptimizerRun = TRUE;
@@ -485,6 +491,8 @@ void CodeGen_UpdateOptimizerOptions(void) {
     copts.multiplepasses = copts.optimizationlevel >= 4;
 #if VERSION == VERSION_WII_1_0RC1
     copts.removeemptyloops = copts.optimizationlevel >= 3;
+    copts.opt_optimizenonregaccess = copts.removeemptyloops;
+    copts.opt_marknonregtemps = FALSE;
     copts.opt_optimizecontrolflow = copts.optimizationlevel >= 1;
 #endif
 }

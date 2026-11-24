@@ -21,6 +21,10 @@ enum {
     CInlinePeepholeOff = 1,
     CInlinePeepholeOn
 };
+enum {
+    CInlineNonRegAccessOff = 1,
+    CInlineNonRegAccessOn
+};
 #endif
 
 struct CInlineBackendOptions {
@@ -100,9 +104,18 @@ struct CInlineBackendOptions {
 #else
     UInt8 report_heap_info;
 #endif
+#if VERSION == VERSION_WII_1_0RC1
+    // These two bytes were unused in source PCH options. Zero uses the level default.
+    UInt8 opt_optimizenonregaccess;
+#else
     UInt8 misaligned_mem_access;
+#endif
     UInt8 switch_tables;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean opt_marknonregtemps;
+#else
     UInt8 prepare_compress;
+#endif
     UInt8 min_struct_alignment;
 #if VERSION == VERSION_WII_1_0RC1
     Boolean legacy_struct_alignment;

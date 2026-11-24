@@ -1470,7 +1470,7 @@ static Boolean KeepScopeMarkers(void) {
         !(copts.multiplepasses || copts.removeemptyloops || copts.loopinvariants ||
           copts.strengthreduction || copts.lifetimes || copts.unrolling || copts.vectorizeloops ||
           copts.deadstore || copts.commonsubs || copts.propagation || copts.deadcode ||
-          copts.opt_optimizecontrolflow);
+          copts.opt_optimizecontrolflow || copts.opt_optimizenonregaccess || copts.opt_marknonregtemps);
 }
 #endif
 

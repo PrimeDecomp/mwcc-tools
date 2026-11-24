@@ -594,7 +594,7 @@ static void GetExprKillsByIndirectAssignment(IROLinear* linear) {
 
     if (result) {
         for (expr = IRO_FirstExpr; expr; expr = expr->next) {
-            if (Bv_BitsInCommon(expr->depends, IRO_FuncKills)) {
+            if (Bv_BitsInCommon(expr->depends, IRO_IndirectKills)) {
                 Bv_SetBit(expr->index, IRO_ExprKills);
             }
         }
@@ -715,7 +715,7 @@ static void GetExprKillsByFunctionCall(IROLinear* funccall) {
 
     if (result) {
         for (expr = IRO_FirstExpr; expr; expr = expr->next) {
-            if (Bv_BitsInCommon(expr->depends, IRO_CallKills)) {
+            if (Bv_BitsInCommon(expr->depends, IRO_IndirectKills)) {
                 Bv_SetBit(expr->index, IRO_ExprKills);
             }
         }

@@ -3398,6 +3398,33 @@ unsigned after_kill(unsigned a, unsigned b, int condition) {
         run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    for qualifier in ("", "const "):
+        name = "cse_const_store.c" if qualifier else "cse_mutable_store.c"
+        source = work / name
+        source.write_text(
+            """\
+struct Link { struct Link *prev, *next; unsigned long size; };
+static QUALIFIERunsigned long table[] = {4, 8, 12, 16, 20, 24, 32};
+
+unsigned long link(struct Link *p, struct Link *q, unsigned i) {
+    unsigned long stride = table[i] + 4;
+    p->prev = q;
+    q->next = p;
+    return stride * table[i];
+}
+
+int later(void) {
+    static int marker;
+    return ++marker;
+}
+""".replace("QUALIFIER", qualifier),
+            encoding="ascii",
+        )
+        obj = source.with_suffix(".o")
+        run(compiler, *FLAGS, "-inline", "auto", "-O4,p", "-func_align", "4",
+            "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} -O4,p"] = obj.read_bytes()
+
     source = work / "cse_materialization.c"
     source.write_text(
         """\
@@ -3913,6 +3940,44 @@ int sum_values(int i, unsigned count) {
     obj = source.with_suffix(".o")
     run(compiler, *FLAGS, "-inline", "auto", "-O4,p", "-func_align", "4", "-c", source, "-o", obj, cwd=work)
     results[f"{source.name} -O4,p"] = obj.read_bytes()
+
+    source = work / "loop_unroll_shared_exit.c"
+    source.write_text(
+        """\
+struct Link { void *owner; struct Link *next; };
+
+void construct(struct Link *p, unsigned long n, unsigned long stride, void *buffer) {
+    unsigned long count = n / stride;
+    unsigned long i = 0;
+    char *cursor = (char *)buffer;
+    for (; i < count - 1; ++i) {
+        char *next = cursor + stride;
+        ((struct Link *)cursor)->owner = p;
+        ((struct Link *)cursor)->next = (struct Link *)next;
+        cursor = next;
+    }
+    ((struct Link *)cursor)->next = 0;
+}
+
+int later(void) {
+    static int marker;
+    return ++marker;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for options in (
+        ("-O4,p",),
+        ("-O4,s",),
+        ("-O4,p", "-pragma", "opt_optimizenonregaccess off"),
+        ("-O4,p", "-pragma", "opt_optimizenonregaccess off", "-pragma", "opt_marknonregtemps on"),
+    ):
+        run(
+            compiler, *FLAGS, "-inline", "auto", "-func_align", "4", *options,
+            "-c", source, "-o", obj, cwd=work,
+        )
+        results[f"{source.name} {' '.join(options)}"] = obj.read_bytes()
 
     for name, modes, contents in (
         (

@@ -2699,6 +2699,9 @@ void CMach_GetBackEndOptions(struct CInlineBackendOptions* options) {
     options->deadcode = copts.deadcode;
 #if VERSION == VERSION_WII_1_0RC1
     options->removeemptyloops = copts.removeemptyloops;
+    options->opt_optimizenonregaccess =
+        copts.opt_optimizenonregaccess ? CInlineNonRegAccessOn : CInlineNonRegAccessOff;
+    options->opt_marknonregtemps = copts.opt_marknonregtemps;
     options->opt_optimizecontrolflow = copts.opt_optimizecontrolflow;
     options->optimize_tail_call = copts.optimize_tail_call;
 #endif
@@ -2790,6 +2793,10 @@ void CMach_SetBackEndOptions(struct CInlineBackendOptions* options) {
     copts.deadcode = options->deadcode;
 #if VERSION == VERSION_WII_1_0RC1
     copts.removeemptyloops = options->removeemptyloops;
+    copts.opt_optimizenonregaccess = options->opt_optimizenonregaccess
+        ? options->opt_optimizenonregaccess == CInlineNonRegAccessOn
+        : copts.optimizationlevel >= 3;
+    copts.opt_marknonregtemps = options->opt_marknonregtemps;
     copts.opt_optimizecontrolflow = options->opt_optimizecontrolflow;
     copts.optimize_tail_call = options->optimize_tail_call;
 #endif

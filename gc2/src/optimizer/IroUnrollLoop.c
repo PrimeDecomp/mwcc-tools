@@ -1010,32 +1010,99 @@ void IRO_LinearizeForLoopPostLoop(
     UpdateInductionIncrement(loop, unrollFactor, newfnode->last);
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static IRONode* IRO_CopyLoopTestToLoopPreheaderAndBranchToSuccNode(
+    IRONode* header, IRONode* preheader, IROLinear** exitTest
+) {
+    IRONode* exit = header->nextnode;
+    IRONode* testBlock = IRO_NewFlowGraphNode();
+    IRONode* unrollBlock = IRO_NewFlowGraphNode();
+    IROLinear* jump = preheader->last;
+    IROLinear* condition = header->last->u.label.cond;
+    IROLinear* loopJump;
+    IROList list;
+    CLabel* exitLabel;
+
+    IRO_InitList(&list);
+    if (exit->first->type == IROLinearLabel) {
+        exitLabel = exit->first->u.label.label;
+    } else {
+        exitLabel = BuildLabel(&list);
+        IRO_Paste(list.head, list.tail, exit->first);
+        exitLabel->stmt = (Statement*)exit;
+    }
+
+    IRO_InitList(&list);
+    BuildLabel(&list)->stmt = (Statement*)testBlock;
+    testBlock->first = list.head;
+
+    loopJump = IRO_NewLinear(IROLinearGoto);
+    loopJump->index = ++IRO_NumLinear;
+    loopJump->u.label.label = jump->u.label.label;
+    jump->u.label.label = list.head->u.label.label;
+
+    IRO_InitList(&list);
+    BuildLabel(&list)->stmt = (Statement*)unrollBlock;
+    unrollBlock->first = list.head;
+    unrollBlock->last = loopJump;
+    list.tail->next = loopJump;
+
+    IRO_InitList(&list);
+    IRO_DuplicateExprRange(header->first->next, condition, &list);
+    condition = IRO_DuplicateExpr(condition, &list);
+    *exitTest = BuildEarlyLoopExitTest(header->last->type, &list);
+    (*exitTest)->u.label.label = exitLabel;
+    (*exitTest)->u.label.cond = condition;
+    (*exitTest)->rtype = header->last->rtype;
+    condition->flags |= IROLF_Reffed;
+    testBlock->last = *exitTest;
+
+    loopJump->next = jump->next;
+    jump->next = testBlock->first;
+    testBlock->first->next = list.head;
+    testBlock->last->next = unrollBlock->first;
+
+    unrollBlock->nextnode = preheader->nextnode;
+    testBlock->nextnode = unrollBlock;
+    preheader->nextnode = testBlock;
+    return unrollBlock;
+}
+#endif
+
 static UInt32 UnrollForLoop(
     IRONode* header, IRONode* fnode2, IRONode* fnode3, IROLoop* loop, UInt32 unrollFactor
 ) {
     IROLinear* saveTail2;
     IROLinear* earlyLoopExitTest;
     IROLinear* origIterationCount;
+#if VERSION != VERSION_WII_1_0RC1
     IROLinear* lastlabelnode;
     IROLinear* saveHead1;
+#endif
     IROLinear* unrolledBodyEntryTest;
     IROLinear* saveHead2;
     IROLinear* updIndInc;
     IROLinear* newFinalValue;
     CLabel* label2;
+#if VERSION != VERSION_WII_1_0RC1
     CLabel* earlyLoopExitTestLabel;
+#endif
     CLabel* lastlabel;
     CLabel* label;
     IROLinear* labelNd;
     IROLinear* gotoNd;
     IROLinear* ndCopy;
+#if VERSION != VERSION_WII_1_0RC1
     IROLinear* labelnode;
+#endif
     IROLinear* saveTail3;
     IROLinear* loopExitTest;
     IROLinear* lastnd;
     IROLinear* labelNd2;
     IROLinear* saveTail4;
+#if VERSION != VERSION_WII_1_0RC1
     IROLinear* labelNd3;
+#endif
     IROLinear* scan;
     IRONode* oldNext;
     IRONode* newfnode1;
@@ -1043,7 +1110,9 @@ static UInt32 UnrollForLoop(
     IRONode* newfnode3;
     IRONode* newfnode4;
     IRONode* newfnode5;
+#if VERSION != VERSION_WII_1_0RC1
     IRONode* newfnode6;
+#endif
     SInt32 i;
     IROList list;
     int isConstant;
@@ -1055,6 +1124,10 @@ static UInt32 UnrollForLoop(
     CInt64 iterCount;
     CInt64 val;
 
+#if VERSION == VERSION_WII_1_0RC1
+    fnode2 = IRO_CopyLoopTestToLoopPreheaderAndBranchToSuccNode(header, fnode2, &earlyLoopExitTest);
+    lastlabel = IRO_NewLabel();
+#else
     labelnode = IRO_FindLabelNode(fnode2->last->u.label.label, fnode2->last);
     lastlabel = IRO_NewLabel();
 
@@ -1072,6 +1145,7 @@ static UInt32 UnrollForLoop(
     earlyLoopExitTest->u.label.cond->flags |= IROLF_Reffed;
     earlyLoopExitTest->rtype = LoopNode->last->rtype;
     IRO_Paste(list.head, list.tail, fnode2->last);
+#endif
 
     isConstant = IsIterationCountConstant(loop, &iterCount);
     needOrigLoop = TRUE;
@@ -1093,7 +1167,9 @@ static UInt32 UnrollForLoop(
     IRO_InitList(&list);
     origIterationCount = BuildOrigIterationCount(&list, loop);
     IRO_Paste(list.head, list.tail, fnode2->last);
+#if VERSION != VERSION_WII_1_0RC1
     saveHead1 = list.head;
+#endif
 
     IRO_InitList(&list);
     newFinalValue = BuildNewFinalvalue(origIterationCount, unrollFactor, &list, loop);
@@ -1178,12 +1254,16 @@ static UInt32 UnrollForLoop(
 
     lastnd = fnode2->last;
     oldNext = fnode2->nextnode;
+#if VERSION == VERSION_WII_1_0RC1
+    newfnode1 = fnode2;
+    newfnode1->last = unrolledBodyEntryTest;
+#else
     fnode2->last = earlyLoopExitTest;
-
     newfnode1 = IRO_NewFlowGraphNode();
     newfnode1->first = saveHead1;
     newfnode1->last = unrolledBodyEntryTest;
     fnode2->nextnode = newfnode1;
+#endif
 
     newfnode2 = IRO_NewFlowGraphNode();
     newfnode2->first = gotoNd;
@@ -1221,6 +1301,7 @@ static UInt32 UnrollForLoop(
     (void)guardedBodyEntry;
 #endif
 
+#if VERSION != VERSION_WII_1_0RC1
     newfnode6 = oalloc(sizeof(IRONode));
     memset(newfnode6, 0, sizeof(IRONode));
     newfnode6->index = IRO_NumNodes;
@@ -1241,6 +1322,7 @@ static UInt32 UnrollForLoop(
 
     newfnode6->nextnode = LoopNode->nextnode;
     LoopNode->nextnode = newfnode6;
+#endif
 
     if (!needOrigLoop) {
         NoOpBlock(newfnode5);

@@ -1907,6 +1907,15 @@ static IRONode* MyHandleLoop_Motion(IRONode* fnode) {
     LoopTailNum = 0;
     LoopTail = NULL;
     IRO_FindLoopTailsAndExits(fnode);
+#if VERSION == VERSION_WII_1_0RC1
+    if (!(copts.opt_optimizenonregaccess || copts.opt_marknonregtemps)) {
+        return preheader;
+    }
+    // RC1 gives the loop its own exit before looking for memory references to move.
+    if (LoopExitNumber == 1 && LoopExitSuccessor->numpred > 1) {
+        LoopExitSuccessor = CreateNewLoopExitSuccessor(LoopExitSuccessor);
+    }
+#endif
     FindMustReach1(fnode);
 
     loop = NULL;
@@ -1966,9 +1975,11 @@ static IRONode* MyHandleLoop_Motion(IRONode* fnode) {
                         CError_FATAL(3631);
                     }
 
+#if VERSION != VERSION_WII_1_0RC1
                     if (LoopExitSuccessor->numpred != 1) {
                         LoopExitSuccessor = CreateNewLoopExitSuccessor(LoopExitSuccessor);
                     }
+#endif
 
                     IRO_InitList(&list);
                     ass = IRO_NewLinear(IROLinearOp2Arg);
