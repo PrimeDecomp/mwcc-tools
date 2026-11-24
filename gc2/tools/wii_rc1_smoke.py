@@ -2543,6 +2543,43 @@ def check_unrolled_loop_guard(compiler, work):
     return results
 
 
+def check_pointer_arithmetic(compiler, work):
+    source = work / "pointer_arithmetic.c"
+    source.write_text(
+        "typedef int Callback(int);\n"
+        "int signed_index(const int* p, int n) { return p[n - 1]; }\n"
+        "int unsigned_index(const int* p, unsigned n) { return p[n + 1]; }\n"
+        "int long_index(const int* p, long n) { return p[n - 1]; }\n"
+        "int reversed_index(int n, const short* p) { return (n - 1)[p]; }\n"
+        "void* byte_add(void* p, int n) { return p + n; }\n"
+        "long byte_difference(void* p, void* q) { return p - q; }\n"
+        "Callback* function_add(Callback* p, int n) { return p + n; }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    results = {}
+    for mode in ("-O0", "-O4,p", "-O4,s"):
+        run(compiler, *FLAGS, mode, "-func_align", "4", "-gcc_extensions", "on",
+            "-c", source.name, "-o", obj, cwd=work)
+        results[f"{source.name} {mode}"] = obj.read_bytes()
+
+    source = work / "invalid_pointer_arithmetic.cpp"
+    source.write_text(
+        "void* void_add(void* p, int n) { return p + n; }\n"
+        "int float_index(const int* p, float n) { return p[n]; }\n"
+        "int reversed_subtraction(int n, int* p) { return (n - p) != 0; }\n",
+        encoding="ascii",
+    )
+    proc = subprocess.run(
+        (compiler, *FLAGS, "-gcc_extensions", "on", "-c", source.name, "-o", obj),
+        cwd=work, text=True, capture_output=True, timeout=30,
+    )
+    if proc.returncode != 1 or proc.stdout.count("(10377) illegal operands") != 3:
+        raise ValueError(f"{compiler}: unexpected pointer diagnostics\n{proc.stdout}{proc.stderr}")
+    results[source.name] = (proc.stdout, proc.stderr)
+    return results
+
+
 def check(compiler, objcopy, nm, objdump, work):
     if "Version 4.2 build 140" not in run(compiler, "-version", cwd=work):
         raise ValueError(f"{compiler}: incorrect version banner")
@@ -4980,6 +5017,7 @@ bool same(const Values& a, const Values& b) {
     results.update(check_unconditional_branch_ranges(compiler, objcopy, work))
     results.update(check_auto_aggregate_initialization(compiler, work))
     results.update(check_unrolled_loop_guard(compiler, work))
+    results.update(check_pointer_arithmetic(compiler, work))
     return results
 
 

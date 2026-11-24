@@ -455,10 +455,53 @@ static ENode* integralpointerpromote(ENode* expr) {
     return expr;
 }
 
-static ENode* padd(ENode* left, ENode* right) {
+#if VERSION == VERSION_WII_1_0RC1
+static SInt32 CExpr_PointerElementSize(Type* pointerType) {
+    Type* target = TPTR_TARGET(pointerType);
+
+    if (target->size == 0) {
+        if (IS_TYPE_VOID(target) || IS_TYPE_FUNC(target)) {
+            return copts.gcc_extensions && !copts.cplusplus ? 1 : 0;
+        }
+        CDecl_CompleteType(target);
+    }
+    return target->size;
+}
+
+static ENode* CExpr_PointerArithmeticScale(Type* pointerType, Type* indexType) {
+    SInt32 size;
+
+    if (!IS_TYPE_INT(indexType) && !IS_TYPE_ENUM(indexType)) {
+        return NULL;
+    }
+    size = CExpr_PointerElementSize(pointerType);
+    return size ? intconstnode(CABI_GetPtrDiffTType(), size) : NULL;
+}
+
+static void CExpr_ReportIllegalOperands(ENode* left, ENode* right, const char* operation) {
+    CError_Error(
+        ERR_ILLEGAL_OPERANDS_TYPES,
+        left->rtype,
+        ENODE_QUALS(left),
+        operation,
+        right->rtype,
+        ENODE_QUALS(right)
+    );
+}
+#endif
+
+static ENode* CExpr_NewPointerAdd(ENode* left, ENode* right) {
+    ENode* expr;
+#if VERSION == VERSION_WII_1_0RC1
+    ENode* scale = CExpr_PointerArithmeticScale(left->rtype, right->rtype);
+    if (!scale) {
+        CExpr_ReportIllegalOperands(left, right, "+");
+        return nullnode();
+    }
+    expr = makemultnode(integralpointerpromote(right), scale);
+#else
     Type* innertype;
     SInt32 innersize;
-    ENode* expr;
 
     right = integralpointerpromote(right);
     innertype = TPTR_TARGET(left->rtype);
@@ -476,6 +519,7 @@ static ENode* padd(ENode* left, ENode* right) {
         right,
         intconstnode((innersize > 0x7FFF) ? TYPE(&stsignedlong) : TYPE(&stsignedint), innersize)
     );
+#endif
 
     if (ENODE_IS(expr, EINTCONST) && canadd2(left, expr->data.intval)) {
         return left;
@@ -494,12 +538,21 @@ static ENode* padd(ENode* left, ENode* right) {
     return expr;
 }
 
-static ENode* psub(ENode* left, ENode* right) {
+static ENode* CExpr_NewPointerSub(ENode* left, ENode* right) {
+#if VERSION != VERSION_WII_1_0RC1
     Type* innertype;
+#endif
     SInt32 innersize;
     ENode* expr;
 
     if (IS_TYPE_POINTER(right->rtype)) {
+#if VERSION == VERSION_WII_1_0RC1
+        innersize = CExpr_PointerElementSize(left->rtype);
+        if (!innersize) {
+            CExpr_ReportIllegalOperands(left, right, "-");
+            return left;
+        }
+#else
         innersize = TPTR_TARGET(left->rtype)->size;
         if (innersize == 0) {
             CDecl_CompleteType(TPTR_TARGET(left->rtype));
@@ -509,6 +562,7 @@ static ENode* psub(ENode* left, ENode* right) {
                 return left;
             }
         }
+#endif
 
         if (!is_typeequal(left->rtype, right->rtype)) {
             CError_Error(
@@ -537,6 +591,14 @@ static ENode* psub(ENode* left, ENode* right) {
         return expr;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    ENode* scale = CExpr_PointerArithmeticScale(left->rtype, right->rtype);
+    if (!scale) {
+        CExpr_ReportIllegalOperands(left, right, "-");
+        return left;
+    }
+    expr = makemultnode(integralpointerpromote(right), scale);
+#else
     right = integralpointerpromote(right);
     innertype = TPTR_TARGET(left->rtype);
     innersize = innertype->size;
@@ -550,6 +612,7 @@ static ENode* psub(ENode* left, ENode* right) {
     }
 
     expr = makemultnode(right, intconstnode(CABI_GetPtrDiffTType(), innersize));
+#endif
     if (ENODE_IS(expr, EINTCONST) && canadd2(left, CInt64_Neg(expr->data.intval))) {
         return left;
     }
@@ -570,10 +633,10 @@ static void CExpr_ClearArithmeticQualifiers(ENode* expr) {
 
 static ENode* makeaddnode(ENode* left, ENode* right) {
     if (IS_TYPE_POINTER(left->rtype)) {
-        return padd(left, right);
+        return CExpr_NewPointerAdd(left, right);
     }
     if (IS_TYPE_POINTER(right->rtype)) {
-        return padd(right, left);
+        return CExpr_NewPointerAdd(right, left);
     }
 
     CExpr_ArithmeticConversion(&left, &right);
@@ -627,8 +690,14 @@ static ENode* makesubnode(ENode* left, ENode* right) {
     }
 
     if (IS_TYPE_POINTER(left->rtype)) {
-        return psub(left, right);
+        return CExpr_NewPointerSub(left, right);
     }
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_TYPE_POINTER(right->rtype)) {
+        CExpr_ReportIllegalOperands(left, right, "-");
+        right = nullnode();
+    }
+#endif
 
     CExpr_ArithmeticConversion(&left, &right);
     if (iszero(right)) {
@@ -2216,6 +2285,30 @@ parsed:
     return expr;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static ENode* CExpr_New_EARRAY_Node(ENode* left, ENode* right) {
+    ENode* address;
+    ENode* expr;
+
+    right = pointer_generation(right);
+    if (IS_TYPE_POINTER(left->rtype)) {
+        address = CExpr_NewPointerAdd(left, right);
+    } else if (IS_TYPE_POINTER(right->rtype)) {
+        address = CExpr_NewPointerAdd(right, left);
+    } else {
+        CExpr_ReportIllegalOperands(left, right, "[");
+        return nullnode();
+    }
+
+    if (!IS_TYPE_POINTER(address->rtype)) {
+        return address;
+    }
+    expr = makemonadicnode(address, EINDIRECT);
+    expr->rtype = TPTR_TARGET(address->rtype);
+    return expr;
+}
+#endif
+
 #if VERSION == VERSION_GC_1_3_2
 #undef CError_LINE_DELTA
 #define CError_LINE_DELTA -2
@@ -2299,10 +2392,13 @@ loop:
                 CError_ASSERT(2756, subexpr = conv.right);
             }
 
+#if VERSION == VERSION_WII_1_0RC1
+            expr = CExpr_New_EARRAY_Node(expr, subexpr);
+#else
             if (IS_TYPE_POINTER(expr->rtype)) {
-                expr = padd(expr, subexpr);
+                expr = CExpr_NewPointerAdd(expr, subexpr);
             } else if (IS_TYPE_POINTER(subexpr->rtype)) {
-                expr = padd(subexpr, expr);
+                expr = CExpr_NewPointerAdd(subexpr, expr);
             } else {
                 CError_Error(ERR_POINTER_ARRAY_REQUIRED);
                 goto dont_do_indirect;
@@ -2310,6 +2406,7 @@ loop:
             expr = makemonadicnode(expr, EINDIRECT);
             expr->rtype = TPTR_TARGET(expr->rtype);
 dont_do_indirect:
+#endif
             if (tk != ']') {
                 CError_ErrorSkip(ERR_RBRACKET_EXPECTED);
             } else {
@@ -5602,12 +5699,12 @@ static ENode* makepassignmentnode(ENode* left, ENodeType nt, short token) {
     if (IS_TYPE_POINTER_ONLY(left->rtype)) {
         if (IS_TYPE_INT(right->rtype)) {
             if (nt == ESUBASS) {
-                left = psub(left, right);
+                left = CExpr_NewPointerSub(left, right);
                 if (ENODE_IS(left, ESUB)) {
                     left->type = ESUBASS;
                 }
             } else {
-                left = padd(left, right);
+                left = CExpr_NewPointerAdd(left, right);
                 if (ENODE_IS(left, EADD)) {
                     left->type = EADDASS;
                 }
