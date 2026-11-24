@@ -2559,7 +2559,11 @@ void CInit_ExportConst(Object* obj) {
             CError_FATAL(2810);
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (CParser_IsReadOnly(obj->type, obj->qual)) {
+#else
     if (is_const_object(obj)) {
+#endif
         CInit_DeclareReadOnlyData(obj, buffer, NULL, obj->type->size);
     } else {
         CInit_DeclareData(obj, buffer, NULL, obj->type->size);
@@ -4034,9 +4038,12 @@ static void declaredata(
             CInline_ObjectAddrRef(scan->obj);
         }
 #if VERSION == VERSION_WII_1_0RC1
-        Boolean sequentialString = CMangler_IsLocalString(obj);
-        if (CMid_InIPA() || sequentialString) {
-            CMid_DefineData(obj, data, list, size, is_readonly, sequentialString);
+        Boolean inIPA = CMid_InIPA();
+        // IPA inserts exported constants into its data graph before emitting objects.
+        Boolean defer = CMangler_IsLocalString(obj) ||
+            (!inIPA && obj->sclass == TK_STATIC && (obj->qual & Q_INLINE_DATA));
+        if (inIPA || defer) {
+            CMid_DefineData(obj, data, list, size, is_readonly, defer);
             return;
         }
 #endif

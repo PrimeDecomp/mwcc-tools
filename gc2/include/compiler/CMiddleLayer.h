@@ -24,13 +24,13 @@ Boolean CMid_LoadPrecompiledFunction(
 );
 void CMid_DefineData(
     Object* object, const void* data, OLinkList* references, SInt32 size, Boolean readOnly,
-    Boolean deferSequentialString
+    Boolean deferData
 );
 void CMid_DefineThunkObject(
     Object* object, Object* target, SInt32 thisDelta, SInt32 returnDelta, SInt32 ctorOffset
 );
 void CMid_Finish(void);
-void CMid_FinishSequentialStrings(void);
+void CMid_FinishDeferredData(void);
 Boolean CMid_IsIRFile(const struct FSSpec* spec);
 void CMid_CompileEnded(void);
 

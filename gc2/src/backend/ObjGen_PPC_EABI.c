@@ -752,7 +752,7 @@ void ObjGen_Finish(void) {
     BufferUpdate* update;
 
 #if VERSION == VERSION_WII_1_0RC1
-    CMid_FinishSequentialStrings();
+    CMid_FinishDeferredData();
 #endif
     CInit_DeclarePooledStrings();
     DeclarePooledConstants();

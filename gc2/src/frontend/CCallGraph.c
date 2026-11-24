@@ -286,26 +286,26 @@ void CCallGraph_RemoveDeadNodes(void) {
     }
 }
 
-void CCallGraph_MoveSequentialStringsToEnd(void) {
+void CCallGraph_MoveDeferredDataToEnd(void) {
     CallGraphNode** link = &ccallgraph;
-    CallGraphNode* strings = NULL;
-    CallGraphNode* lastString = NULL;
+    CallGraphNode* deferred = NULL;
+    CallGraphNode* lastDeferred = NULL;
 
     while (*link) {
         CallGraphNode* node = *link;
-        if (node->kind == CGData && node->definition.data.sequentialString) {
+        if (node->kind == CGData && node->definition.data.deferred) {
             *link = node->next;
-            node->next = strings;
-            strings = node;
-            if (!lastString) {
-                lastString = node;
+            node->next = deferred;
+            deferred = node;
+            if (!lastDeferred) {
+                lastDeferred = node;
             }
         } else {
             link = &node->next;
         }
     }
-    if (strings) {
-        *link = strings;
-        graphTail = lastString;
+    if (deferred) {
+        *link = deferred;
+        graphTail = lastDeferred;
     }
 }

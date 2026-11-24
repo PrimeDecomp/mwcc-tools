@@ -23,7 +23,7 @@ struct CallGraphEdge {
 struct CallGraphNode {
     CallGraphNode* next;
     CallGraphNode* hashNext;
-    CallGraphNode* nextSequentialString;
+    CallGraphNode* nextDeferredData;
     Object* object;
     CallGraphEdge* uses;
     CallGraphEdge* usedBy;
@@ -55,7 +55,7 @@ struct CallGraphNode {
             FileOffsetInfo file;
             Boolean readOnly;
             Boolean filesyminfo;
-            Boolean sequentialString;
+            Boolean deferred;
         } data;
     } definition;
 };
@@ -73,6 +73,6 @@ void CCallGraph_Compute(void);
 void CCallGraph_Renumber(void);
 void CCallGraph_ResolveReferences(void);
 void CCallGraph_RemoveDeadNodes(void);
-void CCallGraph_MoveSequentialStringsToEnd(void);
+void CCallGraph_MoveDeferredDataToEnd(void);
 
 #endif

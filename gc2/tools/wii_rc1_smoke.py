@@ -3914,10 +3914,10 @@ int sum_values(int i, unsigned count) {
     run(compiler, *FLAGS, "-inline", "auto", "-O4,p", "-func_align", "4", "-c", source, "-o", obj, cwd=work)
     results[f"{source.name} -O4,p"] = obj.read_bytes()
 
-    for name, ipa, contents in (
+    for name, modes, contents in (
         (
             "block_static_order.c",
-            "off",
+            ("off",),
             """\
 extern void touch(int*);
 int f(void) {
@@ -3932,21 +3932,21 @@ int f(void) {
 """,
         ),
         (
-            "block_static_file_ipa.c",
-            "file",
+            "block_static_data.c",
+            ("off", "file"),
             """\
 extern void touch(int*);
 int f(int i) {
     static unsigned char initialized;
     static int buffer[14];
-    static const int zero = 0;
+    static const int zero = 0, folded = 2;
     static const int values[4];
     static int unused;
     if (!initialized) {
         touch(buffer);
         initialized = 1;
     }
-    return initialized + zero + values[i];
+    return initialized + zero + folded + values[i];
 }
 """,
         ),
@@ -3954,11 +3954,12 @@ int f(int i) {
         source = work / name
         source.write_text(contents, encoding="ascii")
         obj = source.with_suffix(".o")
-        run(
-            compiler, *FLAGS, "-inline", "auto", "-O4,p", "-func_align", "4",
-            "-sdata", "4", "-sdata2", "4", "-ipa", ipa, "-c", source, "-o", obj, cwd=work
-        )
-        results[f"{name} -ipa {ipa}"] = obj.read_bytes()
+        for ipa in modes:
+            run(
+                compiler, *FLAGS, "-inline", "auto", "-O4,p", "-func_align", "4",
+                "-sdata", "4", "-sdata2", "4", "-ipa", ipa, "-c", source, "-o", obj, cwd=work
+            )
+            results[f"{name} -ipa {ipa}"] = obj.read_bytes()
 
     source = work / "array_member_address.c"
     source.write_text(
