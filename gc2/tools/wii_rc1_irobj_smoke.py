@@ -448,6 +448,7 @@ def check_program_vla(compiler, reference, work):
             "    return sum; }\n"
         ),
     }
+    fixtures["raw_depth"] = "#pragma opt_returnloopdepthinstatementvalue on\n" + fixtures["heap"]
     (work / "vla_runtime.c").write_text(
         "void fill(int* p, int n) { p[n-1] = 7; }\n"
         "static int storage[64];\n"

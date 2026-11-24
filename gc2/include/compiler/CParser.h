@@ -304,6 +304,7 @@ struct CompilerLinkerOptions {
 #if VERSION == VERSION_WII_1_0RC1
     UInt8 removeemptyloops;
     Boolean opt_optimizenonregaccess;
+    Boolean opt_returnloopdepthinstatementvalue;
     Boolean opt_marknonregtemps;
     UInt8 opt_optimizecontrolflow;
     Boolean e500_floatingpoint;

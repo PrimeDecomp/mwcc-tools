@@ -2684,6 +2684,7 @@ void CMach_GetBackEndOptions(struct CInlineBackendOptions* options) {
     options->inlinemaxsize = copts.inlinemaxsize;
     options->inlinemaxtotalsize = copts.inlinemaxtotalsize;
     options->peephole = copts.peephole ? CInlinePeepholeOn : CInlinePeepholeOff;
+    options->globaloptimizer = copts.globaloptimizer ? CInlineGlobalOptimizerOn : CInlineGlobalOptimizerOff;
     options->bc_range = copts.bc_range ? copts.bc_range : CInlineExplicitZeroConditionalBranchRange;
     options->b_range = copts.b_range ? copts.b_range : CInlineExplicitZeroUnconditionalBranchRange;
     options->gprfloatcopy = copts.gprfloatcopy;
@@ -2701,6 +2702,7 @@ void CMach_GetBackEndOptions(struct CInlineBackendOptions* options) {
     options->removeemptyloops = copts.removeemptyloops;
     options->opt_optimizenonregaccess =
         copts.opt_optimizenonregaccess ? CInlineNonRegAccessOn : CInlineNonRegAccessOff;
+    options->opt_returnloopdepthinstatementvalue = copts.opt_returnloopdepthinstatementvalue;
     options->opt_marknonregtemps = copts.opt_marknonregtemps;
     options->opt_optimizecontrolflow = copts.opt_optimizecontrolflow;
     options->optimize_tail_call = copts.optimize_tail_call;
@@ -2774,6 +2776,9 @@ void CMach_SetBackEndOptions(struct CInlineBackendOptions* options) {
     if (options->peephole) {
         copts.peephole = options->peephole == CInlinePeepholeOn;
     }
+    if (options->globaloptimizer) {
+        copts.globaloptimizer = options->globaloptimizer == CInlineGlobalOptimizerOn;
+    }
     if (options->bc_range) {
         copts.bc_range = options->bc_range == CInlineExplicitZeroConditionalBranchRange ? 0 : options->bc_range;
     }
@@ -2796,6 +2801,7 @@ void CMach_SetBackEndOptions(struct CInlineBackendOptions* options) {
     copts.opt_optimizenonregaccess = options->opt_optimizenonregaccess
         ? options->opt_optimizenonregaccess == CInlineNonRegAccessOn
         : copts.optimizationlevel >= 3;
+    copts.opt_returnloopdepthinstatementvalue = options->opt_returnloopdepthinstatementvalue;
     copts.opt_marknonregtemps = options->opt_marknonregtemps;
     copts.opt_optimizecontrolflow = options->opt_optimizecontrolflow;
     copts.optimize_tail_call = options->optimize_tail_call;

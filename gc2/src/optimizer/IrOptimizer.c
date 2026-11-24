@@ -446,6 +446,9 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
 
     IRO_DumpAfterPhase("After IRO_Optimizer", FALSE);
 
+#if VERSION == VERSION_WII_1_0RC1
+    IRO_SetLoopDepth();
+#endif
     statements = IRO_Delinearize(IRO_FirstNode, NULL);
 
     IRO_ZapVarPtrs();

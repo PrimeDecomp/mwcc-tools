@@ -3219,11 +3219,13 @@ static Statement* CInline_InlineFunctionStatement(Statement* stmt, Boolean* chan
         return stmt;
     }
 #if VERSION == VERSION_WII_1_0RC1
+    // The expression walker extracts statement-bodied calls from returns and conditions.
     if (funcdata->can_inline >= CI_CanInlineExpression ||
-        (stmt->type == ST_EXPRESSION && !IS_TYPE_VOID(TYPE_FUNC(object->type)->functype))) {
+        stmt->type != ST_EXPRESSION || !IS_TYPE_VOID(TYPE_FUNC(object->type)->functype)) {
         return stmt;
     }
-#endif
+    label = newlabel();
+#else
 
     if (stmt->type != ST_EXPRESSION) {
         short i;
@@ -3241,6 +3243,7 @@ static Statement* CInline_InlineFunctionStatement(Statement* stmt, Boolean* chan
     } else {
         label = newlabel();
     }
+#endif
 
     *changed = TRUE;
     return CInline_ExpandStatements(object, stmt, funcdata, stmt->expr, label, NULL, FALSE);

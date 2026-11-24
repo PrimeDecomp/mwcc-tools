@@ -1804,7 +1804,13 @@ Statement* IRO_Delinearize(IRONode* node, IROLinear* linear) {
                 }
 
                 if (stmt) {
+#if VERSION == VERSION_WII_1_0RC1
+                    if (copts.opt_returnloopdepthinstatementvalue) {
+                        stmt->value = scan->loopdepth;
+                    } else {
+#else
                     if (LoopOptimizerRun) {
+#endif
                         SInt32 i;
                         SInt32 value = 1;
                         for (i = 0; i < scan->loopdepth; i++) {

@@ -25,6 +25,10 @@ enum {
     CInlineNonRegAccessOff = 1,
     CInlineNonRegAccessOn
 };
+enum {
+    CInlineGlobalOptimizerOff = 1,
+    CInlineGlobalOptimizerOn
+};
 #endif
 
 struct CInlineBackendOptions {
@@ -129,8 +133,14 @@ struct CInlineBackendOptions {
     SInt32 inlinemaxsize;
     SInt32 inlinemaxtotalsize;
 #endif
+#if VERSION == VERSION_WII_1_0RC1
+    // These slots were zero in older source PCHs.
+    Boolean opt_returnloopdepthinstatementvalue;
+    UInt8 globaloptimizer;
+#else
     UInt8 unsafe_global_reg_vars;
     UInt8 ignore_global_reg_vars;
+#endif
     UInt32 bc_range;
     UInt8 gprfloatcopy;
 #if VERSION >= VERSION_GC_2_5

@@ -477,6 +477,7 @@ Boolean CIRStream_UnpackFunctionHeader(CIRStreamReader* stream, CIRStreamFunctio
     X(0x2a, opt_pointer_analysis_mode) \
     X(0x2b, unrollfactor) \
     X(0x35, removeemptyloops) \
+    X(0x4c, opt_returnloopdepthinstatementvalue) \
     X(0x4d, opt_marknonregtemps) \
     X(0x5a, opt_optimizecontrolflow) \
     X(0x67, optimize_tail_call) \
@@ -538,6 +539,7 @@ Boolean CIRStream_UnpackFunctionOptions(
 #undef READ_BYTE
     options->function_align = (UInt8)(1U << bytes[0x78]);
     options->peephole = bytes[0x12] ? CInlinePeepholeOn : CInlinePeepholeOff;
+    options->globaloptimizer = bytes[0x13] ? CInlineGlobalOptimizerOn : CInlineGlobalOptimizerOff;
     options->opt_optimizenonregaccess =
         bytes[0x38] ? CInlineNonRegAccessOn : CInlineNonRegAccessOff;
     options->opt_bcc_lr_ctr = bytes[0x9e];
@@ -580,6 +582,10 @@ Boolean CIRStream_PackFunctionOptions(
 #undef WRITE_SHORT
 #undef WRITE_BYTE
     bytes[0x12] = options->peephole ? options->peephole == CInlinePeepholeOn : defaultPeephole;
+    bytes[0x13] = options->globaloptimizer != CInlineGlobalOptimizerOff;
+    // Keep the stock replay pipeline in step with the passes enabled in the source optimizer.
+    bytes[0x2f] = TRUE; // opt_prelinearize
+    bytes[0x32] = options->optimizationlevel > 0; // opt_rebuildconditionals
     bytes[0x38] = options->opt_optimizenonregaccess
         ? options->opt_optimizenonregaccess == CInlineNonRegAccessOn
         : options->optimizationlevel >= 3;
