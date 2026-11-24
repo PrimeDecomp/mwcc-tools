@@ -1040,6 +1040,20 @@ ENode* CExpr_MakeObjRefNode(Object* obj, Boolean markUsed) {
         return intconstnode(TYPE(&void_ptr), 0);
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (obj->datatype == DLOCAL) {
+        VLAInfo* info = CDecl_FindVLAInfo(obj->type);
+        if (info && info->addressObject) {
+            expr = create_objectnode(info->addressObject);
+            expr->rtype = CDecl_NewPointerType(obj->type);
+            expr->flags = obj->qual & ENODE_FLAG_QUALS;
+            if (markUsed) {
+                obj->flags |= OBJECT_USED;
+            }
+            return expr;
+        }
+    }
+#endif
     expr = lalloc(sizeof(ENode));
     memclrw(expr, sizeof(ENode));
     expr->type = EOBJREF;

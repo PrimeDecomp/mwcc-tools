@@ -109,6 +109,9 @@ extern ENode* s_expression(void);
 extern ENode* expression(void);
 extern CInt64 CExpr_IntegralConstExprType(Type** tint);
 extern ENode* CExpr_IntegralConstOrDepExpr(void);
+#if VERSION == VERSION_WII_1_0RC1
+extern ENode* CExpr_ComputeTypeExprFunc(Type* type);
+#endif
 extern CInt64 CExpr_IntegralConstExpr(void);
 extern void CExpr_CheckUnwantedAssignment(ENode* expr);
 

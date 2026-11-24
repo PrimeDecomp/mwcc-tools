@@ -1,5 +1,6 @@
 #include "compiler/CError.h"
 #include "compiler/CClass.h"
+#include "compiler/CDecl.h"
 #include "compiler/CFunc.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMangler.h"
@@ -80,6 +81,14 @@ void CError_ResetErrorSkip(void) {
 
 static void CError_GetErrorString(char* buf, short code) {
 #if VERSION == VERSION_WII_1_0RC1
+    if (code == ERR_ILLEGAL_ARRAY_DEFINITION) {
+        strcpy(buf, "illegal array declaration");
+        return;
+    }
+    if (code == ERR_VARIABLE_LENGTH_ARRAY_CONTEXT) {
+        strcpy(buf, "variable length array types can only be used in local or function prototype scope");
+        return;
+    }
     if (code == ERR_DELETING_VOID_POINTER) {
         strcpy(buf, "deleting a void pointer is undefined");
         return;
@@ -538,6 +547,11 @@ next_ptr:
 append_array_lengths:
             while (ty->type == TYPEARRAY) {
                 CError_BufferAppendChar(eb, '[');
+#if VERSION == VERSION_WII_1_0RC1
+                if (CDecl_FindVLAInfo(ty)) {
+                    CError_BufferAppendChar(eb, '*');
+                } else
+#endif
                 if (ty->size != 0 && TYPE_POINTER(ty)->target->size != 0) {
                     sprintf(buf, "%ld", ty->size / TYPE_POINTER(ty)->target->size);
                     CError_BufferAppendString(eb, buf);

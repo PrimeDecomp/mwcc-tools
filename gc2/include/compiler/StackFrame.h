@@ -15,6 +15,9 @@ extern Boolean frame_no_call;
 #endif
 extern Boolean uses_globals;
 extern Boolean dynamic_stack;
+#if VERSION == VERSION_WII_1_0RC1
+extern Boolean vla_alloca_notsafe;
+#endif
 extern Boolean StackFrame_has_vectors;
 extern Object* dummyvaparam;
 extern Object* dummyvalocal;

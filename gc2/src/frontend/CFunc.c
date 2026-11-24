@@ -416,6 +416,9 @@ static FuncArg* parameter_list(DeclInfo* declinfo) {
 
         my_di.name = NULL;
 
+#if VERSION == VERSION_WII_1_0RC1
+        my_di.allowVariableLengthArray = TRUE;
+#endif
         scandeclarator(&my_di);
 
         if (is_first) {
@@ -1068,10 +1071,14 @@ void CFunc_DestructorCleanup(Statement* first) {
     SwitchCase* c;
     Statement *stmt, *next;
 
+#if VERSION == VERSION_WII_1_0RC1
+    for (next = copts.cplusplus ? first : NULL; next; next = next->next) {
+#else
     if (!copts.cplusplus) {
         return;
     }
     for (next = first; next; next = next->next) {
+#endif
         switch (next->type) {
             case ST_SWITCH:
                 CFunc_CheckJump(next, ((SwitchInfo*)next->label)->defaultlabel->stmt);
@@ -1354,6 +1361,43 @@ static ENode* ainit_register_object(Type* type, Object* local, SInt32 offset, Bo
     );
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void CFunc_DefineVLASizeObjects(Type* type) {
+    if (IS_TYPE_ARRAY(type) || IS_TYPE_POINTER_ONLY(type)) {
+        CFunc_DefineVLASizeObjects(TPTR_TARGET(type));
+    }
+
+    VLAInfo* info = CDecl_FindVLAInfo(type);
+    if (info && info->bound && !info->sizeObject) {
+        ENode* size = CExpr_ComputeTypeExprFunc(type);
+        Object* object = create_temp_object(CABI_GetSizeTType());
+        CFunc_AppendLocalDeclarationInfo(object);
+        Statement* stmt = CFunc_AppendStatement(ST_EXPRESSION);
+        stmt->expr = makediadicnode(
+            create_objectnode(object), promote(size, object->type), EASS
+        );
+        info->sizeObject = object;
+    }
+}
+
+static void CFunc_DefineVLA(Object* object) {
+    CFunc_DefineVLASizeObjects(object->type);
+    Object* address = create_temp_object(CDecl_NewPointerType(TPTR_TARGET(object->type)));
+    address->name = object->name;
+    // Declarations sharing a VLA typedef also share its current address binding in RC1.
+    CDecl_FindVLAInfo(object->type)->addressObject = address;
+
+    ENode* size = CExpr_ComputeTypeExprFunc(object->type);
+    ENode* alloc = funccallexpr(vla_alloc_func, size, NULL, NULL, NULL);
+    alloc->rtype = address->type;
+    Statement* stmt = CFunc_AppendStatement(ST_EXPRESSION);
+    stmt->expr = makediadicnode(create_objectnode(address), alloc, EASS);
+    CExcept_RegisterDeleteObject(stmt, address, vla_free_func);
+    CFunc_AppendLocalDeclarationInfo(address);
+    CFunc_AppendStatement(ST_EXPRESSION)->expr = nullnode();
+}
+#endif
+
 static void CFunc_LocalDataDeclarator(
     DeclInfo* di, TStreamElement* deftoken, Boolean isParameterList, Boolean isCondition
 #if VERSION == VERSION_WII_1_0RC1
@@ -1372,6 +1416,11 @@ static void CFunc_LocalDataDeclarator(
     }
 
     CDecl_CompleteType(di->thetype);
+#if VERSION == VERSION_WII_1_0RC1
+    if (!isParameterList && !CDecl_FindVLAInfo(di->thetype)) {
+        CFunc_DefineVLASizeObjects(di->thetype);
+    }
+#endif
 
     object = NULL;
 
@@ -1515,8 +1564,14 @@ static void CFunc_LocalDataDeclarator(
                 object->u.var.uid = CParser_GetUniqueID();
 #endif
                 CFunc_SetupLocalVarInfo(object);
-
                 object->u.var.info->deftoken = *deftoken;
+#if VERSION == VERSION_WII_1_0RC1
+                if (!isParameterList && CDecl_FindVLAInfo(object->type)) {
+                    CScope_AddObject(cscope_current, object->name, OBJ_BASE(object));
+                    CFunc_DefineVLA(object);
+                    break;
+                }
+#endif
                 if (object->sclass == TK_REGISTER && isParameterList) {
                     object->u.var.info->usage = 100;
                 }
@@ -1593,6 +1648,9 @@ static ENode* CFunc_ParseLocalDeclarationList(
         memclrw(&di, sizeof(di));
         di.is_extern_c = cfunc_is_extern_c;
         CParser_GetDeclSpecs(&di, FALSE);
+#if VERSION == VERSION_WII_1_0RC1
+        di.allowVariableLengthArray = di.storageclass != TK_STATIC && di.storageclass != TK_EXTERN;
+#endif
 
         if (IS_TYPE_TEMPLATE(di.thetype)) {
             CError_Error(ERR_ILLEGAL_TYPE);
@@ -1625,6 +1683,9 @@ static ENode* CFunc_ParseLocalDeclarationList(
                             );
                         }
                     } else {
+#if VERSION == VERSION_WII_1_0RC1
+                        CFunc_DefineVLASizeObjects(di.thetype);
+#endif
                         CDecl_TypedefDeclarator(&di);
                     }
                 } else {
@@ -2224,14 +2285,26 @@ static void statement(DeclThing* thing) {
 
             block = NULL;
             if (tk != ';') {
+#if VERSION == VERSION_WII_1_0RC1
+                if ((!copts.cplusplus && !copts.c9x) || !isdeclaration(1, 0, 0, 0)) {
+#else
                 if (!copts.cplusplus || !isdeclaration(1, 0, 0, 0)) {
+#endif
                     expr = expression();
                     CExpr_CheckUnusedExpression(expr);
                 } else {
                     if (!copts.ARMscoping) {
                         block = CFunc_NewDeclBlock();
                     }
-                    expr = CFunc_ParseLocalDeclarationList(FALSE, TRUE, TRUE, FALSE);
+#if VERSION == VERSION_WII_1_0RC1
+                    if (copts.c9x && !copts.cplusplus) {
+                        CFunc_ParseLocalDeclarationList(FALSE, FALSE, FALSE, TRUE);
+                        expr = NULL;
+                    } else
+#endif
+                    {
+                        expr = CFunc_ParseLocalDeclarationList(FALSE, TRUE, TRUE, FALSE);
+                    }
                     if (block && CScope_IsEmptyNameSpace(cscope_current)) {
                         CFunc_RestoreBlock(block);
                         block = NULL;
@@ -2687,7 +2760,11 @@ static void statement(DeclThing* thing) {
             tk = TK_IDENTIFIER;
 
         default:
+#if VERSION == VERSION_WII_1_0RC1
+            if ((copts.cplusplus || copts.c9x || copts.gcc_extensions) && isdeclaration(1, 0, 0, 0)) {
+#else
             if (copts.cplusplus && isdeclaration(1, 0, 0, 0)) {
+#endif
                 CFunc_ParseLocalDeclarationList(FALSE, FALSE, FALSE, TRUE);
                 tk = lex();
                 return;
@@ -3549,6 +3626,11 @@ void CFunc_ParseFuncDef(
     }
 
     SetupFunctionArguments(func, di, &firstStmt);
+#if VERSION == VERSION_WII_1_0RC1
+    for (ObjectList* arg = arguments; arg; arg = arg->next) {
+        CFunc_DefineVLASizeObjects(arg->object->type);
+    }
+#endif
 
     beforebody = curstmt;
     CPrep_ResetFileInfo(cparser_fileoffset.file);

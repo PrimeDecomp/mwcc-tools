@@ -64,6 +64,7 @@ struct DeclInfo {
     Boolean firstDeclaration;
 #if VERSION == VERSION_WII_1_0RC1
     UInt16 interruptflags;
+    Boolean allowVariableLengthArray;
 #else
     UInt8 interruptflags;
 #endif
@@ -82,6 +83,18 @@ extern AccessType global_access;
 
 extern Type* CDecl_NewStructType(SInt32 size, SInt16 align);
 extern Type* CDecl_NewArrayType(Type* type, SInt32 size);
+#if VERSION == VERSION_WII_1_0RC1
+typedef struct VLAInfo {
+    struct VLAInfo* next;
+    Type* type;
+    ENode* bound;
+    Object* addressObject;
+    Object* sizeObject;
+} VLAInfo;
+
+extern VLAInfo* CDecl_FindVLAInfo(Type* type);
+extern void CDecl_DiscardVLAInfos(void);
+#endif
 extern Type* CDecl_NewPointerType(Type* type);
 extern Type* CDecl_NewRefPointerType(Type* type);
 extern TypeTemplDep* CDecl_NewTemplDepType(TypeTemplDepType tdt);

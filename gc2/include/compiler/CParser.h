@@ -356,6 +356,10 @@ extern Object* newh_func;
 extern Object* delh_func;
 extern Object* copy_func;
 extern Object* clear_func;
+#if VERSION == VERSION_WII_1_0RC1
+extern Object* vla_alloc_func;
+extern Object* vla_free_func;
+#endif
 extern Object* Rgtid_func;
 extern Object* Rdync_func;
 extern Object* rt_ptmf_cast;

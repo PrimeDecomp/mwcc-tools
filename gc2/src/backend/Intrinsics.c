@@ -2272,7 +2272,8 @@ int is_intrinsic_function_call(ENode* funccall) {
     }
     Object* object = funcref->data.objref;
 #if VERSION == VERSION_WII_1_0RC1
-    if (object == clear_func || object == copy_func) {
+    if (object == clear_func || object == copy_func ||
+        object == vla_alloc_func || object == vla_free_func) {
         return TRUE;
     }
 #endif
@@ -4014,6 +4015,22 @@ void call_intrinsic_function(ENode* funccall, short outputReg, Operand* output) 
     if (object == copy_func) {
         memcpy_intrinsic(args->node, args->next->node, args->next->next->node->data.intval.lo,
                          funccall->ignored, output);
+        return;
+    }
+    if (object == vla_alloc_func) {
+        if (vla_alloca_notsafe) {
+            call_function(funccall, output);
+        } else {
+            alloca_intrinsic(args->node, outputReg, output);
+        }
+        return;
+    }
+    if (object == vla_free_func) {
+        if (vla_alloca_notsafe) {
+            call_function(funccall, output);
+        } else {
+            output->optype = OpndType_Absolute;
+        }
         return;
     }
 #endif

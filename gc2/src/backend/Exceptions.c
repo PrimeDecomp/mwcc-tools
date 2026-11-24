@@ -476,6 +476,18 @@ static void allocateactioninfo(EANode* node) {
             case EAT_DELETEPOINTER:
             case EAT_DELETELOCALPOINTER: {
                 reg = OBJECT_REG(ea->data.delete_pointer.pointerobject);
+#if VERSION == VERSION_WII_1_0RC1
+                if (!vla_alloca_notsafe && ea->data.delete_pointer.deletefunc == vla_free_func) {
+                    AACC e = {0};
+                    e.a = lastFlag | 0x1E;
+                    e.b = (reg ? 1 : 0) << 7;
+                    e.c = CTool_EndianConvertWord32(
+                        reg ? reg : local_offset_32(ea->data.delete_pointer.pointerobject)
+                    );
+                    AppendGListData(&exceptmodule, &e, sizeof(e));
+                    break;
+                }
+#endif
                 if (reg || local_is_16bit_offset(ea->data.delete_pointer.pointerobject)) {
                     AABC e;
                     e.a = lastFlag | 0xA;

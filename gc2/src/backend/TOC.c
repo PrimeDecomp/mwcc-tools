@@ -1965,6 +1965,17 @@ static void expandTOCexpression(ENode* expr, Type* type, int ignored) {
         case EFUNCCALLP:
             if (is_intrinsic_function_call(expr)) {
                 expr->hascall = FALSE;
+#if VERSION == VERSION_WII_1_0RC1
+                if (expr->data.funccall.funcref->data.objref == vla_alloc_func) {
+                    if (copts.altivec_model) {
+                        update_frame_align(16);
+                    }
+                    dynamic_stack = TRUE;
+                    requires_frame = TRUE;
+                    frame_no_call = TRUE;
+                    vla_alloca_notsafe |= curstmtvalue > 1;
+                }
+#endif
                 if ((Intrinsics)expr->data.funccall.funcref->data.objref->u.func.u.intrinsicid ==
                     Intrinsic_alloca) {
                     if (copts.altivec_model) {

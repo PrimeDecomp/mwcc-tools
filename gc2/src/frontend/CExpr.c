@@ -456,6 +456,28 @@ static ENode* integralpointerpromote(ENode* expr) {
 }
 
 #if VERSION == VERSION_WII_1_0RC1
+ENode* CExpr_ComputeTypeExprFunc(Type* type) {
+    VLAInfo* info = CDecl_FindVLAInfo(type);
+    if (!info) {
+        return intconstnode(CABI_GetSizeTType(), type->size);
+    }
+    if (info->sizeObject) {
+        return create_objectnode(info->sizeObject);
+    }
+    if (!info->bound) {
+        CError_Error(ERR_ILLEGAL_TYPE);
+        return intconstnode(CABI_GetSizeTType(), 0);
+    }
+    ENode* elementSize = CExpr_ComputeTypeExprFunc(TPTR_TARGET(type));
+    if (!IS_TYPE_INT(info->bound->rtype) && !IS_TYPE_FLOAT(info->bound->rtype)) {
+        CError_Error(
+            ERR_ILLEGAL_OPERANDS_TYPES, elementSize->rtype, 0, "*", info->bound->rtype, 0
+        );
+        return elementSize;
+    }
+    return makemultnode(elementSize, info->bound);
+}
+
 static SInt32 CExpr_PointerElementSize(Type* pointerType) {
     Type* target = TPTR_TARGET(pointerType);
 
@@ -473,6 +495,9 @@ static ENode* CExpr_PointerArithmeticScale(Type* pointerType, Type* indexType) {
 
     if (!IS_TYPE_INT(indexType) && !IS_TYPE_ENUM(indexType)) {
         return NULL;
+    }
+    if (CDecl_FindVLAInfo(TPTR_TARGET(pointerType))) {
+        return CExpr_ComputeTypeExprFunc(TPTR_TARGET(pointerType));
     }
     size = CExpr_PointerElementSize(pointerType);
     return size ? intconstnode(CABI_GetPtrDiffTType(), size) : NULL;
@@ -2635,6 +2660,11 @@ static ENode* CExpr_ParseSizeof(void) {
         return expr;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (CDecl_FindVLAInfo(type)) {
+        return CExpr_ComputeTypeExprFunc(type);
+    }
+#endif
     if (type->size == 0) {
         if (copts.gcc_extensions && (IS_TYPE_FUNC(type) || IS_TYPE_VOID(type))) {
             return intconstnode(CABI_GetSizeTType(), 1);

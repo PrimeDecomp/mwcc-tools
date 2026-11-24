@@ -87,6 +87,9 @@ Boolean requires_frame;
 Boolean makes_call;
 Boolean uses_globals;
 Boolean dynamic_stack;
+#if VERSION == VERSION_WII_1_0RC1
+Boolean vla_alloca_notsafe;
+#endif
 Boolean large_stack;
 Boolean StackFrame_has_vectors;
 #if VERSION == VERSION_WII_1_0RC1
@@ -191,6 +194,9 @@ void init_stack_globals(Object* funcobj) {
 #endif
     uses_globals = FALSE;
     dynamic_stack = FALSE;
+#if VERSION == VERSION_WII_1_0RC1
+    vla_alloca_notsafe = FALSE;
+#endif
     large_stack = FALSE;
     StackFrame_has_vectors = FALSE;
     vrsave_register = -1;

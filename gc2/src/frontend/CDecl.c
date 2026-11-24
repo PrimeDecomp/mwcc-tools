@@ -60,6 +60,36 @@ Type* CDecl_NewArrayType(Type* type, SInt32 size) {
     return (Type*)tarray;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static VLAInfo* vlaInfos;
+
+VLAInfo* CDecl_FindVLAInfo(Type* type) {
+    if (!IS_TYPE_ARRAY(type) || type->size) {
+        return NULL;
+    }
+    for (VLAInfo* info = vlaInfos; info; info = info->next) {
+        if (info->type == type) {
+            return info;
+        }
+    }
+    return NULL;
+}
+
+static void CDecl_RegisterVLAInfo(Type* type, ENode* bound) {
+    VLAInfo* info = galloc(sizeof(VLAInfo));
+    info->next = vlaInfos;
+    info->type = type;
+    info->bound = bound;
+    info->addressObject = NULL;
+    info->sizeObject = NULL;
+    vlaInfos = info;
+}
+
+void CDecl_DiscardVLAInfos(void) {
+    vlaInfos = NULL;
+}
+#endif
+
 Type* CDecl_NewPointerType(Type* type) {
     TypePointer* tptr = galloc(sizeof(TypePointer));
     memclrw(tptr, sizeof(TypePointer));
@@ -213,6 +243,11 @@ Boolean IsCompleteType(Type* type) {
             }
             return TRUE;
         default:
+#if VERSION == VERSION_WII_1_0RC1
+            if (CDecl_FindVLAInfo(type)) {
+                return TRUE;
+            }
+#endif
             if (!type->size) {
                 CError_Error(ERR_DATA_TYPE_INCOMPLETE);
                 return FALSE;
@@ -422,20 +457,109 @@ void CDecl_ParseDirectFuncDecl(DeclInfo* declinfo) {
     declinfo->isType = FALSE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static UInt32 CDecl_ParseTypeQualifierList(void) {
+    UInt32 qual = 0;
+    for (;; tk = lex()) {
+        const char* name;
+        UInt32 bit;
+        switch (tk) {
+            case TK_CONST:
+                bit = Q_CONST;
+                name = "const";
+                break;
+            case TK_VOLATILE:
+                bit = Q_VOLATILE;
+                name = "volatile";
+                break;
+            case TK_RESTRICT:
+                bit = Q_RESTRICT;
+                name = "restrict";
+                break;
+            default:
+                return qual;
+        }
+        if (qual & bit) {
+            CError_Error(ERR_ILLEGAL_USE, name);
+        }
+        qual |= bit;
+    }
+}
+#endif
+
 static void scandirectdecl1(DeclInfo* declinfo) {
     Boolean unsized;
     CInt64 len;
     ENode* expr;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean variableLength = FALSE;
+    Boolean staticBound = FALSE;
+    ENode* bound = NULL;
+#endif
 
     unsized = FALSE;
     if (tk == '[') {
-        if ((tk = lex()) == ']') {
+        tk = lex();
+#if VERSION == VERSION_WII_1_0RC1
+        if (copts.c9x && !declinfo->isNewExpression) {
+            UInt32 arrayQual;
+            if (tk == TK_STATIC) {
+                staticBound = TRUE;
+                tk = lex();
+                arrayQual = CDecl_ParseTypeQualifierList();
+            } else {
+                arrayQual = CDecl_ParseTypeQualifierList();
+                if (tk == TK_STATIC) {
+                    staticBound = TRUE;
+                    tk = lex();
+                }
+            }
+            if ((arrayQual || staticBound) && !in_func_arglist) {
+                CError_Error(ERR_ILLEGAL_ARRAY_DEFINITION);
+            }
+            if (staticBound && declinfo->hasArrayDimension) {
+                CError_Error(ERR_ILLEGAL_USE, "static in VLA");
+            }
+        }
+#endif
+        if (tk == ']') {
             len = cint64_zero;
             tk = lex();
             unsized = TRUE;
         } else {
             if (!declinfo->isNewExpression || declinfo->hasArrayDimension) {
-                expr = CExpr_IntegralConstOrDepExpr();
+#if VERSION == VERSION_WII_1_0RC1
+                if (copts.c9x && !copts.cplusplus) {
+                    if (!staticBound && tk == '*' && lookahead() == ']') {
+                        tk = lex();
+                        if (in_func_arglist) {
+                            variableLength = TRUE;
+                        } else {
+                            CError_Error(ERR_ILLEGAL_ARRAY_DEFINITION);
+                        }
+                        expr = intconstnode(TYPE(&stsignedint), 1);
+                    } else {
+                        expr = assignment_expression();
+                        if (IS_TYPE_ENUM(expr->rtype)) {
+                            expr = forceintegral(expr);
+                        }
+                        if (!ENODE_IS(expr, EINTCONST)) {
+                            if (staticBound) {
+                                CError_Error(ERR_ILLEGAL_CONSTANT_EXPRESSION);
+                            } else if (!declinfo->allowVariableLengthArray) {
+                                CError_Error(ERR_VARIABLE_LENGTH_ARRAY_CONTEXT);
+                            } else {
+                                variableLength = TRUE;
+                                bound = expr;
+                            }
+                            expr = intconstnode(TYPE(&stsignedint), 1);
+                        }
+                    }
+                } else
+#endif
+                {
+                    expr = CExpr_IntegralConstOrDepExpr();
+                }
                 if (!ENODE_IS(expr, EINTCONST)) {
                     TypeTemplDep* ttempl;
                     if (tk != ']') {
@@ -505,6 +629,16 @@ static void scandirectdecl1(DeclInfo* declinfo) {
             return;
         }
 
+#if VERSION == VERSION_WII_1_0RC1
+        if (variableLength || (!unsized && CDecl_FindVLAInfo(declinfo->thetype))) {
+            declinfo->thetype = CDecl_NewArrayType(declinfo->thetype, 0);
+            CDecl_RegisterVLAInfo(
+                declinfo->thetype,
+                variableLength ? bound : intconstnode(CABI_GetSizeTType(), CInt64_GetULong(&len))
+            );
+            return;
+        }
+#endif
         declinfo->thetype =
             CDecl_NewArrayType(declinfo->thetype, declinfo->thetype->size * CInt64_GetULong(&len));
     } else if (tk == '(') {

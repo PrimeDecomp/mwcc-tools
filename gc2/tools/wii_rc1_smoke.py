@@ -2583,6 +2583,48 @@ def check_pointer_arithmetic(compiler, work):
     return results
 
 
+def check_c99_declarations(compiler, work):
+    fixtures = {
+        "c99_for_declaration": (
+            "-O0",
+            "int f(int n) { int out = 0; for (int i = 0; i < n; ++i) out += i; "
+            "int result = out; return result; }",
+        ),
+        "c99_vla_parameter": (
+            "-O4,p",
+            "int f(int rows, int cols, int a[rows][cols]) { return a[rows-1][cols-1]; }",
+        ),
+        "c99_vla_typedef": (
+            "-O2",
+            "int f(int cols, void* p) { typedef int Row[cols]; return ((Row*)p)[1][cols-1]; }",
+        ),
+        "c99_vla_automatic": (
+            "-O0",
+            "extern void fill(int*,int); int f(int n, int m) { "
+            "int row[n][m]; fill(row[0], m); return row[n-1][m-1]; }",
+        ),
+        "c99_vla_shared_typedef": (
+            "-O0",
+            "extern void fill(int*,int); int f(int n) { typedef int Row[n]; "
+            "Row a, b; fill(a, n); fill(b, n); return a[0] + b[0]; }",
+        ),
+        "c99_vla_in_loop": (
+            "-O0",
+            "extern void fill(int*,int); int f(int n) { int out = 0; "
+            "for (int j = 1; j < n; ++j) { int row[j]; fill(row, j); out += row[j-1]; } "
+            "return out; }",
+        ),
+    }
+    results = {}
+    for name, (mode, code) in fixtures.items():
+        source = work / f"{name}.c"
+        source.write_text(code, encoding="ascii")
+        obj = source.with_suffix(".o")
+        run(compiler, *FLAGS, "-lang", "c99", mode, "-c", source.name, "-o", obj, cwd=work)
+        results[source.name] = obj.read_bytes()
+    return results
+
+
 def check(compiler, objcopy, nm, objdump, work):
     if "Version 4.2 build 140" not in run(compiler, "-version", cwd=work):
         raise ValueError(f"{compiler}: incorrect version banner")
@@ -5021,6 +5063,7 @@ bool same(const Values& a, const Values& b) {
     results.update(check_auto_aggregate_initialization(compiler, work))
     results.update(check_unrolled_loop_guard(compiler, work))
     results.update(check_pointer_arithmetic(compiler, work))
+    results.update(check_c99_declarations(compiler, work))
     return results
 
 

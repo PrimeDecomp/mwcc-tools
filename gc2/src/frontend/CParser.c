@@ -55,6 +55,10 @@ Object* newh_func;
 Object* delh_func;
 Object* copy_func;
 Object* clear_func;
+#if VERSION == VERSION_WII_1_0RC1
+Object* vla_alloc_func;
+Object* vla_free_func;
+#endif
 Object* Rgtid_func;
 Object* Rdync_func;
 Object* rt_ptmf_cast;
@@ -324,6 +328,10 @@ Boolean CParser_ReInitRuntimeObjects(Boolean is_precompiler) {
     delh_func->name = GetHashNameNodeExport("__del_hdl");
     copy_func->name = GetHashNameNodeExport("__copy");
     clear_func->name = GetHashNameNodeExport("__clear");
+#if VERSION == VERSION_WII_1_0RC1
+    vla_alloc_func->name = GetHashNameNodeExport("__vla_alloc");
+    vla_free_func->name = GetHashNameNodeExport("__vla_free");
+#endif
     Rgtid_func->name = GetHashNameNodeExport("__get_typeid");
     Rdync_func->name = GetHashNameNodeExport("__dynamic_cast");
     rt_ptmf_cast->name = GetHashNameNodeExport("__ptmf_cast");
@@ -406,6 +414,11 @@ static void CParser_SetupRuntimeObjects(void) {
 
     copy_func = CParser_NewRTFunc(TYPE(&void_ptr), NULL, 2, 3, &void_ptr, &void_ptr, sizet);
     clear_func = CParser_NewRTFunc(TYPE(&void_ptr), NULL, 2, 2, &void_ptr, sizet);
+#if VERSION == VERSION_WII_1_0RC1
+    vla_alloc_func = CParser_NewRTFunc(TYPE(&void_ptr), NULL, 2, 1, sizet);
+    vla_free_func = CParser_NewRTFunc(&stvoid, NULL, 2, 1, &void_ptr);
+    TYPE_FUNC(vla_free_func->type)->flags |= FUNC_NOTHROW;
+#endif
 
     rt_ptmf_cast =
         CParser_NewRTFunc(TYPE(&void_ptr), NULL, 2, 3, &stsignedlong, &void_ptr, &void_ptr);
@@ -451,6 +464,9 @@ static void CParser_SetupRuntimeObjects(void) {
 
 void CParser_Setup(void) {
     CScope_Setup();
+#if VERSION == VERSION_WII_1_0RC1
+    CDecl_DiscardVLAInfos();
+#endif
 
     name_mangle_list.data = NULL;
     if (InitGList(&name_mangle_list, 256)) {
@@ -2240,7 +2256,11 @@ void TypedefDeclInfo(DeclInfo* declinfo, Type* type, UInt32 qual) {
     } else {
         declinfo->thetype = type;
         declinfo->qual |= qual & (Q_ALIGNED_MASK | Q_REFERENCE | Q_PASCAL | Q_VOLATILE | Q_CONST);
-        if (IS_TYPE_ARRAY(declinfo->thetype) && !declinfo->thetype->size) {
+        if (IS_TYPE_ARRAY(type) && !type->size
+#if VERSION == VERSION_WII_1_0RC1
+            && !CDecl_FindVLAInfo(type)
+#endif
+        ) {
             declinfo->thetype = galloc(sizeof(TypePointer));
             *TYPE_POINTER(declinfo->thetype) = *TYPE_POINTER(type);
         }
