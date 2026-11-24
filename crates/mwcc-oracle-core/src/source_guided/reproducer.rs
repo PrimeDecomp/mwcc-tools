@@ -1111,7 +1111,10 @@ pub fn verify(bundle: &Path) -> Result<Verification> {
             "compiler/build/{}/oracle/mwcceppc.exe",
             manifest.version.name()
         );
-        let stock = format!("compiler/{}/mwcceppc.exe", manifest.version.stock_directory());
+        let stock = format!(
+            "compiler/{}/mwcceppc.exe",
+            manifest.version.stock_directory()
+        );
         ensure!(
             assets
                 .get(oracle.as_str())

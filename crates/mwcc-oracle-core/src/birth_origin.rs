@@ -97,7 +97,9 @@ pub fn call_role(site: u32) -> Option<(u8, ResultPart)> {
         0x526cd4 | 0x527834 | 0x5286c4 | 0x5fcd80 => Some((2, ResultPart::Single)),
         0x526dc2 | 0x527922 | 0x5287b2 | 0x5fce22 | 0x5fd2a2 => Some((4, ResultPart::FirstWord)),
         0x526dd2 | 0x527932 | 0x5287c2 | 0x5fce37 | 0x5fd2b7 => Some((4, ResultPart::SecondWord)),
-        0x526e2d | 0x52798d | 0x52881d | 0x5fcebd | 0x5fd244 | 0x5fd314 => Some((4, ResultPart::Single)),
+        0x526e2d | 0x52798d | 0x52881d | 0x5fcebd | 0x5fd244 | 0x5fd314 => {
+            Some((4, ResultPart::Single))
+        }
         _ => None,
     }
 }

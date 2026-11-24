@@ -5,7 +5,11 @@ use mwcc_wasm::{Overlay, Run};
 use std::{fs, path::PathBuf, time::Duration};
 
 fn module(version: &str) -> Option<PathBuf> {
-    let name = if version == "Wii_1_0RC1" { "persist" } else { "mwcc" };
+    let name = if version == "Wii_1_0RC1" {
+        "persist"
+    } else {
+        "mwcc"
+    };
     let module = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join(format!("../../build/{version}/wasm/{name}.wasm"));
     if module.is_file() {

@@ -877,7 +877,7 @@ pub(crate) fn compile_hooks(build: HookBuild<'_>) -> Result<HookObjects> {
         .iter()
         .map(|path| {
             let text =
-                fs::read_to_string(root.join(&path)).with_context(|| format!("read {path}"))?;
+                fs::read_to_string(root.join(path)).with_context(|| format!("read {path}"))?;
             Ok((path, text))
         })
         .collect::<Result<_>>()?;

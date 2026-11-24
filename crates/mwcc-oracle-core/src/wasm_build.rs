@@ -436,7 +436,10 @@ pub fn edges(root: &Path, version: &str, has_oracle: bool) -> Result<Vec<String>
     let units = units(root, version)?;
     let mut out = vec![];
     let mut stock = vec![];
-    for oracle in [false, true].into_iter().filter(|oracle| !oracle || has_oracle) {
+    for oracle in [false, true]
+        .into_iter()
+        .filter(|oracle| !oracle || has_oracle)
+    {
         let directory = objects_directory(version, oracle);
         for unit in &units {
             let object = format!("{directory}/{}.o", unit.name);

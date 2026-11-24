@@ -54,7 +54,8 @@ fn main() -> Result<()> {
         .root
         .join(format!("build/{}/oracle/mwcceppc.exe", c.version.name()))
         .canonicalize()?;
-    let stock = mwcc_project::compilers::stock_executable(&request.root, c.version).canonicalize()?;
+    let stock =
+        mwcc_project::compilers::stock_executable(&request.root, c.version).canonicalize()?;
     ensure!(
         snapshot
             .runtime

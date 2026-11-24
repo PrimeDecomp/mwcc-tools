@@ -119,7 +119,7 @@ pub fn project_jobs_for(
     let mut edges = Vec::new();
     for r in ninja::parse(&contents)? {
         let Some(label) = &r.mw_version else { continue };
-        if Version::parse(&label).ok() != Some(version)
+        if Version::parse(label).ok() != Some(version)
             && !additional_versions
                 .iter()
                 .any(|v| &v.replace('\\', "/") == label)

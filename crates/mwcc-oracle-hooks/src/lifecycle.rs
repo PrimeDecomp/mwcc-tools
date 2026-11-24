@@ -1120,7 +1120,7 @@ unsafe fn increment_site(
                     let address = if let Some(aggregate_site) = aggregate_site {
                         let ty = ptr::addr_of!(BINDING).cast::<u32>().add(2).read() as *const u8;
                         match (expression::type_id(ty), expression::type_size(ty)) {
-                            (4 | 5, 1..=8) => aggregate_site, // Struct or class.
+                            (4 | 5, 1..=8) => aggregate_site,      // Struct or class.
                             (1 | 3, 1..=8) | (10 | 11, 4) => site, // Integer, enum or pointer.
                             // The source reaches a GPR allocation for ordinary floats only in soft-float mode.
                             (2, 4 | 8) if matches!(read::<u8>(ty, 6), 13..=16) => site,

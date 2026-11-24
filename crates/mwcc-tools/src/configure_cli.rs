@@ -159,10 +159,10 @@ fn parse(source: &str) -> Result<Ninja> {
 /// TEXT renamed: the references to the variables NAMES, with SUFFIX.
 fn rename(text: &mut Text, names: &HashSet<String>, suffix: &str) {
     for part in text {
-        if let EvalPart::VarRef(name) = part {
-            if names.contains(name.as_str()) {
-                name.push_str(suffix);
-            }
+        if let EvalPart::VarRef(name) = part
+            && names.contains(name.as_str())
+        {
+            name.push_str(suffix);
         }
     }
 }
@@ -347,10 +347,10 @@ fn merge(versions: &[(String, String)], configure: &str) -> Result<String> {
     }
     let pooled = |mut bindings: Vec<(String, Text)>, map: &HashMap<String, String>| {
         for (key, value) in &mut bindings {
-            if key == "pool" {
-                if let Some(new) = literal(value).and_then(|p| map.get(&p)) {
-                    *value = vec![EvalPart::Literal(new.clone())];
-                }
+            if key == "pool"
+                && let Some(new) = literal(value).and_then(|p| map.get(&p))
+            {
+                *value = vec![EvalPart::Literal(new.clone())];
             }
         }
         bindings
@@ -631,13 +631,13 @@ pub fn run(args: &[String]) -> Result<i32> {
     if versions.is_empty() {
         bail!("no versions: name them with --versions");
     }
-    if let Some(default) = &default {
-        if !versions.contains(default) {
-            bail!(
-                "--default {default} is not one of the versions ({})",
-                versions.join(", ")
-            );
-        }
+    if let Some(default) = &default
+        && !versions.contains(default)
+    {
+        bail!(
+            "--default {default} is not one of the versions ({})",
+            versions.join(", ")
+        );
     }
 
     // (the default version last, as its objdiff.json and compile_commands.json stay)
