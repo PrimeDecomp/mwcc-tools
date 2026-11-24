@@ -4,6 +4,7 @@
 import argparse
 import subprocess
 import tempfile
+from itertools import product
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -373,6 +374,8 @@ def check_vla_pch(compiler, reference, work, *, timeout=30):
         ("stack", "int a[n]; fill(a, n); return a[n - 1];", ""),
         ("loop", loop, ""),
         ("raw depth", loop, "#pragma opt_returnloopdepthinstatementvalue on\n"),
+        ("unused locals", "int unused; if (n) { int dead; int a[n]; "
+                          "fill(a, n); return a[n - 1]; } return 0;", ""),
         ("fixed size", "int a[8]; fill(a, n); return a[n - 1];", ""),
     ):
         header.write_text(
@@ -380,8 +383,8 @@ def check_vla_pch(compiler, reference, work, *, timeout=30):
             f"static inline int f(int n) {{ {body} }}\n#pragma pop\n",
             encoding="ascii",
         )
-        for inline in ("off", "on"):
-            flags = (*FLAGS, "-lang", "c99", "-O2", "-inline", inline)
+        for opt, inline in product(("-O0", "-O2"), ("off", "on")):
+            flags = (*FLAGS, "-lang", "c99", opt, "-inline", inline)
             precompile = (*flags, "-precompile", prefix.name, header.name)
             compile_body = (*flags, "-prefix", prefix.name, "-c", "use.c", "-o", obj.name)
             run(reference, *precompile, cwd=directory, timeout=timeout)
@@ -395,7 +398,7 @@ def check_vla_pch(compiler, reference, work, *, timeout=30):
                 run(*compiler, *compile_body, cwd=directory, timeout=timeout)
                 if obj.read_bytes() != expected:
                     raise ValueError(
-                        f"{compiler}: {case} object differs with {producer} PCH and -inline {inline}"
+                        f"{compiler}: {case} object differs with {producer} PCH at {opt} -inline {inline}"
                     )
             prefix.unlink()
 

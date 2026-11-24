@@ -439,7 +439,7 @@ def check_live_program(codec, compiler, reference, work, compiler_flags):
 
 
 def check_program_vla(compiler, reference, work):
-    compile_flags = ("-lang", "c99", "-O2", "-Cpp_exceptions", "off", "-use_lmw_stmw", "on")
+    flags = ("-lang", "c99", "-Cpp_exceptions", "off", "-use_lmw_stmw", "on")
     fixtures = {
         "stack": "int __start(int n) { int a[n]; fill(a, n); return a[n-1]; }\n",
         "heap": (
@@ -449,6 +449,7 @@ def check_program_vla(compiler, reference, work):
         ),
     }
     fixtures["raw_depth"] = "#pragma opt_returnloopdepthinstatementvalue on\n" + fixtures["heap"]
+    fixtures["unoptimized"] = fixtures["stack"]
     (work / "vla_runtime.c").write_text(
         "void fill(int* p, int n) { p[n-1] = 7; }\n"
         "static int storage[64];\n"
@@ -456,10 +457,11 @@ def check_program_vla(compiler, reference, work):
         "void __vla_free(void* p) {}\n",
         "ascii",
     )
-    run(reference, *FLAGS, *compile_flags, "-c", "vla_runtime.c", "-o", "vla_runtime.o", cwd=work)
+    run(reference, *FLAGS, *flags, "-O2", "-c", "vla_runtime.c", "-o", "vla_runtime.o", cwd=work)
     linker_path = os.pathsep.join((str(reference.parent), os.environ.get("PATH", "")))
     with patch.dict(os.environ, PATH=linker_path):
         for name, source in fixtures.items():
+            compile_flags = (*flags, "-O0" if name == "unoptimized" else "-O2")
             filename = f"vla_{name}.c"
             (work / filename).write_text("extern void fill(int*, int);\n" + source, "ascii")
             for producer, tool in (("stock", reference), ("source", compiler)):
@@ -587,6 +589,7 @@ def check_program_peephole(compiler, reference, work):
 def check_program_conditional_returns(compiler, reference, work):
     stock_text = {}
     flags = ("-inline", "noauto", "-func_align", "4", "-Cpp_exceptions", "off", "-opt", "nopeep")
+    linker_path = os.pathsep.join((str(reference.parent), os.environ.get("PATH", "")))
     for setting in ("on", "off"):
         (work / "conditional_return.cpp").write_text(
             f"#pragma ppc_opt_bclr_bcctr {setting}\n"
@@ -598,10 +601,18 @@ def check_program_conditional_returns(compiler, reference, work):
         stock = f"stock_return_{setting}"
         source = f"source_return_{setting}"
         for name, producer in ((stock, reference), (source, compiler)):
+            run(producer, *FLAGS, "-O4,p", *flags, "-c", "conditional_return.cpp",
+                "-o", f"{name}_direct.o", cwd=work)
             run(producer, *FLAGS, "-O4,p", *flags, "-ipa", "program",
                 "-c", "conditional_return.cpp", "-o", f"{name}.o", cwd=work)
+        assert (work / f"{source}_direct.o").read_bytes() == (work / f"{stock}_direct.o").read_bytes(), setting
         stock_text[setting] = linked_program_text(reference, work, stock, flags=(*flags, "-nostdlib"))
         assert linked_program_text(reference, work, source, flags=(*flags, "-nostdlib")) == stock_text[setting], setting
+        with patch.dict(os.environ, PATH=linker_path):
+            for producer in (stock, source):
+                actual = linked_program_text(compiler, work, f"{producer}_replay", [f"{producer}.irobj"],
+                                             (*flags, "-nostdlib"))
+                assert actual == stock_text[setting], producer
     assert stock_text["on"] != stock_text["off"]
 
 

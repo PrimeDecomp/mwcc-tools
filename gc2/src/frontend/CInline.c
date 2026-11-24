@@ -1479,25 +1479,27 @@ static ENode* CInline_SetupArgsExpression(Object* object, CI_FuncData* data, ENo
     local_aobjects = lalloc(sizeof(AObject) * data->numarguments);
 
     for (i = 0, var = data->locals; i < data->numlocals; i++, var++) {
-        if (var->used) {
-#if VERSION == VERSION_WII_1_0RC1
-            if (savedUIDs) {
-                obj = CInline_RestoreVariable(lalloc(sizeof(Object)), var, savedUIDs[data->numarguments + i]);
-            } else
-#endif
-            {
-                obj = CInline_NewLocalObject(var->type, var->qual, var->sflags, 0);
-            }
-            local_dobjects[i] = obj;
-            // Wii RC1 keeps the address-taken flag recorded in the local's sflags.
 #if VERSION != VERSION_WII_1_0RC1
-            if (!var->unmodified) {
-                obj->flags |= OBJECT_REFERENCED;
-            }
-#endif
-        } else {
+        if (!var->used) {
             local_dobjects[i] = NULL;
+            continue;
         }
+#else
+        // RC1 allocates and names the entire local list during inline expansion.
+        if (savedUIDs) {
+            obj = CInline_RestoreVariable(lalloc(sizeof(Object)), var, savedUIDs[data->numarguments + i]);
+        } else
+#endif
+        {
+            obj = CInline_NewLocalObject(var->type, var->qual, var->sflags, 0);
+        }
+        local_dobjects[i] = obj;
+        // Wii RC1 keeps the address-taken flag recorded in the local's sflags.
+#if VERSION != VERSION_WII_1_0RC1
+        if (!var->unmodified) {
+            obj->flags |= OBJECT_REFERENCED;
+        }
+#endif
     }
 
     for (i = 0, var = data->arguments, scan = list; i < data->numarguments; i++, var++) {
@@ -3064,7 +3066,13 @@ static Statement* CInline_ExpandStatements(
             case ST_EXPRESSION:
 #if VERSION == VERSION_WII_1_0RC1
                 if (packstmt->u.expr->type == ESCOPE) {
-                    stmt->type = ST_NOP;
+                    ENode* ref = packstmt->u.expr->data.scope.object;
+                    // An argument can be substituted directly without a local variable.
+                    if (ref && ref->type == EARGOBJ && !local_aobjects[ref->data.longval].object) {
+                        stmt->type = ST_NOP;
+                    } else {
+                        stmt->expr = CInline_CopyExpression(packstmt->u.expr, CopyModeExpand);
+                    }
                     break;
                 }
 #endif

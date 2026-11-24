@@ -1661,9 +1661,11 @@ Boolean TOC_use_isel(ENode* expr, Boolean force) {
     if (!opt) {
         return FALSE;
     }
+#if VERSION != VERSION_WII_1_0RC1
     if (!copts.peephole) {
         return FALSE;
     }
+#endif
     if (left->hascall) {
         return FALSE;
     }

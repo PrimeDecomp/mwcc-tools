@@ -814,6 +814,29 @@ static Boolean import_member_pointers(const CIRStreamFunctionCode* code) {
     return TRUE;
 }
 
+static void import_scope_markers(const CIRStreamFunctionCode* code) {
+    const CIRStreamCodeInfo* info;
+
+    for (info = code->info; info; info = info->next) {
+        ENode* scope;
+        if (info->kind < EScope_BlockStart || info->kind > EScope_LocalDeclaration ||
+            (info->kind == EScope_LocalDeclaration &&
+             (!info->operand || info->operand->type != EOBJREF))) {
+            continue;
+        }
+        scope = galloc(sizeof(*scope));
+        memclrw(scope, sizeof(*scope));
+        scope->type = ESCOPE;
+        scope->rtype = info->type;
+        scope->cost = info->cost;
+        scope->flags = info->flags;
+        scope->data.scope.kind = info->kind;
+        scope->data.scope.object = info->operand;
+        info->statement->type = ST_EXPRESSION;
+        info->statement->expr = scope;
+    }
+}
+
 Boolean CMid_LoadPrecompiledFunction(
     Object* object, CIRStreamFunctionCode* code, const CIRStreamFunctionHeader* header
 ) {
@@ -840,6 +863,7 @@ Boolean CMid_LoadPrecompiledFunction(
     locals = code->locals;
     import_local_info(arguments);
     import_local_info(locals);
+    import_scope_markers(code);
     head.next = code->statements->type == ST_NOP ? code->statements->next : code->statements;
     body = galloc(sizeof(*body));
     CInline_PackIFunctionData(body, &head, object);
@@ -889,6 +913,7 @@ static Boolean import_function(
     locals = code.locals;
     import_local_info(arguments);
     import_local_info(locals);
+    import_scope_markers(&code);
     for (location = code.sourceLocations; location; location = location->next) {
         const Statement* statement = location->statement;
         SInt32 line = (SInt32)location->location.line;
