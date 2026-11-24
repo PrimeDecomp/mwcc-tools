@@ -114,6 +114,11 @@ Boolean InlineAsm_LookupSymbolOrTag(HashNameNode* name, IALookupResult* result, 
                     return TRUE;
                 case OT_OBJECT:
                     object = OBJECT(list->object);
+#if VERSION == VERSION_WII_1_0RC1
+                    while (object->datatype == DALIAS) {
+                        object = object->u.alias.object;
+                    }
+#endif
                     if (object->datatype == DABSOLUTE) {
                         result->has_value = TRUE;
                         result->value = object->u.address;

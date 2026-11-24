@@ -2661,6 +2661,31 @@ def check_postincrement_assignment(compiler, work):
     return results
 
 
+def check_assembly_function_names(compiler, work):
+    source = work / "assembly_function_names.c"
+    source.write_text(
+        "asm const char* assembly_name(void) {\n"
+        "    nofralloc\n"
+        "    lis r3, __func__@ha\n"
+        "    addi r3, r3, __func__@l\n"
+        "    lis r4, __FUNCTION__@ha\n"
+        "    addi r4, r4, __FUNCTION__@l\n"
+        "    lis r5, __PRETTY_FUNCTION__@ha\n"
+        "    addi r5, r5, __PRETTY_FUNCTION__@l\n"
+        "    blr\n"
+        "}\n"
+        "const int* local_static(void) { static const int data = 141; return &data; }\n"
+        "const char* c_name(void) { return __func__; }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    results = {}
+    for mode in ("-O0", "-O4,p"):
+        run(compiler, *FLAGS, mode, "-func_align", "4", "-c", source.name, "-o", obj, cwd=work)
+        results[f"{source.name} {mode}"] = obj.read_bytes()
+    return results
+
+
 def check_mixed_rank_comparisons(compiler, work):
     source = work / "mixed_rank_comparisons.c"
     source.write_text(
@@ -5212,6 +5237,7 @@ bool same(const Values& a, const Values& b) {
     results.update(check_unrolled_loop_guard(compiler, work))
     results.update(check_pointer_arithmetic(compiler, work))
     results.update(check_postincrement_assignment(compiler, work))
+    results.update(check_assembly_function_names(compiler, work))
     results.update(check_mixed_rank_comparisons(compiler, work))
     results.update(check_c99_declarations(compiler, work))
     return results

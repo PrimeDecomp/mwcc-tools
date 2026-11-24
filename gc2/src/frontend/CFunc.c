@@ -3570,6 +3570,24 @@ static Object* CFunc_DeclareFuncName(char* str, HashNameNode* name) {
     return aliasobj;
 }
 
+typedef struct CFuncNameObjects {
+    Object* func;
+    Object* function;
+    Object* pretty;
+    char* prettyname;
+} CFuncNameObjects;
+
+static void CFunc_DeclareFuncNames(Object* func, CFuncNameObjects* names) {
+    if (func->name) {
+        names->func = CFunc_DeclareFuncName(func->name->name, GetHashNameNode("__func__"));
+        names->function = CFunc_DeclareFuncName(func->name->name, GetHashNameNode("__FUNCTION__"));
+        names->prettyname = CError_GetObjectName(func);
+        names->pretty = CFunc_DeclareFuncName(
+            names->prettyname, GetHashNameNode("__PRETTY_FUNCTION__")
+        );
+    }
+}
+
 void CFunc_ParseFuncDef(
     Object* func,
     DeclInfo* di,
@@ -3580,19 +3598,11 @@ void CFunc_ParseFuncDef(
 ) {
     Statement* beforebody;
     Boolean has_try;
-    Object* nameobj_func;
-    Object* nameobj_FUNCTION;
-    Object* nameobj_pretty;
+    CFuncNameObjects names = {0};
     CScopeSave scope;
     Statement* laststmt;
     Statement firstStmt;
     DeclThing thing;
-    char* prettyname;
-
-    nameobj_func = NULL;
-    nameobj_FUNCTION = NULL;
-    nameobj_pretty = NULL;
-    prettyname = NULL;
 
     CError_ASSERT(3373, func->type->type == TYPEFUNC);
 
@@ -3685,14 +3695,7 @@ void CFunc_ParseFuncDef(
             has_try = FALSE;
         }
 
-        if (func->name) {
-            nameobj_func = CFunc_DeclareFuncName(func->name->name, GetHashNameNode("__func__"));
-            nameobj_FUNCTION =
-                CFunc_DeclareFuncName(func->name->name, GetHashNameNode("__FUNCTION__"));
-            prettyname = CError_GetObjectName(func);
-            nameobj_pretty =
-                CFunc_DeclareFuncName(prettyname, GetHashNameNode("__PRETTY_FUNCTION__"));
-        }
+        CFunc_DeclareFuncNames(func, &names);
 
         if (!copts.cplusplus) {
             CFunc_ParseLocalDeclarationList(FALSE, FALSE, FALSE, FALSE);
@@ -3740,22 +3743,22 @@ void CFunc_ParseFuncDef(
 
         CheckCLabels();
 
-        if (nameobj_func && (nameobj_func->flags & OBJECT_USED)) {
+        if (names.func && (names.func->flags & OBJECT_USED)) {
             CInit_DeclareData(
-                nameobj_func->u.alias.object, func->name->name, NULL, strlen(func->name->name) + 1
+                names.func->u.alias.object, func->name->name, NULL, strlen(func->name->name) + 1
             );
         }
-        if (nameobj_FUNCTION && (nameobj_FUNCTION->flags & OBJECT_USED)) {
+        if (names.function && (names.function->flags & OBJECT_USED)) {
             CInit_DeclareData(
-                nameobj_FUNCTION->u.alias.object,
+                names.function->u.alias.object,
                 func->name->name,
                 NULL,
                 strlen(func->name->name) + 1
             );
         }
-        if (nameobj_pretty && (nameobj_pretty->flags & OBJECT_USED)) {
+        if (names.pretty && (names.pretty->flags & OBJECT_USED)) {
             CInit_DeclareData(
-                nameobj_pretty->u.alias.object, prettyname, NULL, strlen(prettyname) + 1
+                names.pretty->u.alias.object, names.prettyname, NULL, strlen(names.prettyname) + 1
             );
         }
 
@@ -3776,6 +3779,9 @@ void CFunc_ParseFuncDef(
             CFunc_Gen(&firstStmt, func, di->oldStyleParameters);
         }
     } else {
+#if VERSION == VERSION_WII_1_0RC1
+        CFunc_DeclareFuncNames(func, &names);
+#endif
         if (tk == '{') {
             in_assembler = TRUE;
             tk = lex();
