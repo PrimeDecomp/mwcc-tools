@@ -2914,7 +2914,7 @@ static ENode* CInit_MaterializeReferenceTemp(Object* owner, Type* type, ENode* v
     UInt32 qual = owner->qual & Q_CV;
 
     if (isLocal) {
-        temp = create_temp_object(type);
+        temp = ORACLE_TEMP(45, create_temp_object(type));
         temp->qual = qual;
     } else {
         temp = CParser_NewGlobalDataObject(NULL);

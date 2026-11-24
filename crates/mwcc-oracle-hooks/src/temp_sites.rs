@@ -18,7 +18,7 @@ pub const INLINED: u32 = 1;
 pub type Site = (u8, u8, &'static str, u32, u32, u32);
 
 #[rustfmt::skip]
-pub static SITES: [Site; 52] = [
+pub static SITES: [Site; 55] = [
     (1, 0, "src/backend/GCCInlineAsm.c", 0x57fab9, 0x57efb9, 0x57d529), // gcc_parse_name
     (2, 0, "src/frontend/CABI.c", 0x55b19d, 0x55a69d, 0x55925d), // CABI_InitVBaseCtorOffsets
     (3, 0, "src/frontend/CException.c", 0x52197c, 0x521a5c, 0x520aec), // CExcept_ScanThrowExpression
@@ -76,6 +76,9 @@ pub static SITES: [Site; 52] = [
     (40, 0, "src/optimizer/IROUseDef.c", 0x45dedf, 0x45dedf, 0x45d56f), // SplitOffRange
     (41, 0, "src/optimizer/IroUtil.c", 0x468721, 0x468721, 0x467b01), // IRO_GetTemp
     (42, 0, "src/optimizer/IroVars.c", 0x461748, 0x461748, 0x460b28), // IRO_ScalarizeClassDataMembers
+    (43, 0, "src/frontend/CFunc.c", NONE, NONE, NONE), // RC1 CFunc_DefineVLASizeObjects
+    (44, 0, "src/frontend/CFunc.c", NONE, NONE, NONE), // RC1 CFunc_DefineVLA
+    (45, 0, "src/frontend/CInit.c", NONE, NONE, NONE), // RC1 CInit_MaterializeReferenceTemp
 ];
 
 /// The return address of the original's call at SITE in COPY, in the version source_arenas::version() numbers

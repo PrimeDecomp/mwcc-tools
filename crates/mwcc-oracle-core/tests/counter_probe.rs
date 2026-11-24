@@ -1,6 +1,10 @@
 mod common;
 use common::collect;
-use mwcc_oracle_core::{coff::Object, counter_probe, executable};
+use mwcc_oracle_core::{
+    birth_origin::{ResultPart, call_role},
+    coff::Object,
+    counter_probe, executable,
+};
 use std::{
     collections::BTreeMap,
     env, fs,
@@ -62,8 +66,8 @@ fn rc1_counter_sites_still_name_source_allocations_and_native_writes() {
     let unit = wii_rc1_register_sites::CALL_RESULT_UNIT;
     let source = fs::read_to_string(root.join("gc2").join(unit)).unwrap();
     let source: Vec<_> = source.lines().collect();
+    let mut shared_writes = Vec::new();
     for &(line, class, binding, address, aggregate) in wii_rc1_register_sites::CALL_RESULT_WRITES {
-        use mwcc_oracle_core::birth_origin::{ResultPart, call_role};
         let part = match binding {
             2 => ResultPart::Single,
             3 => ResultPart::FirstWord,
@@ -72,11 +76,15 @@ fn rc1_counter_sites_still_name_source_allocations_and_native_writes() {
         };
         assert!(source[usize::from(line) - 1].contains("ALLOC_"));
         for address in std::iter::once(address).chain(aggregate) {
-            assert!(addresses.insert(address) || (line == 773 && address == 0x5fcd3e));
+            if !addresses.insert(address) {
+                shared_writes.push((address, class, part));
+            }
             assert_eq!(call_role(address), Some((class, part)));
             check_write(address, class, &(unit, line));
         }
     }
+    // Scalar float and packed aggregate returns share this FPR allocation in stock RC1.
+    assert_eq!(shared_writes, [(0x5fcd3e, 3, ResultPart::Single)]);
     if let Some(pe) = pe {
         let sites = wii_rc1_register_sites::STRUCTURAL;
         for &address in &sites[..4] {

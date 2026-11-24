@@ -1373,7 +1373,7 @@ static void CFunc_DefineVLASizeObjects(Type* type) {
             CError_Internal("CTemplateTools.c", 1726);
         }
         ENode* size = CExpr_ComputeTypeExprFunc(type);
-        Object* object = create_temp_object(CABI_GetSizeTType());
+        Object* object = ORACLE_TEMP(43, create_temp_object(CABI_GetSizeTType()));
         CFunc_AppendLocalDeclarationInfo(object);
         Statement* stmt = CFunc_AppendStatement(ST_EXPRESSION);
         stmt->expr = makediadicnode(
@@ -1385,7 +1385,7 @@ static void CFunc_DefineVLASizeObjects(Type* type) {
 
 static void CFunc_DefineVLA(Object* object) {
     CFunc_DefineVLASizeObjects(object->type);
-    Object* address = create_temp_object(CDecl_NewPointerType(TPTR_TARGET(object->type)));
+    Object* address = ORACLE_TEMP(44, create_temp_object(CDecl_NewPointerType(TPTR_TARGET(object->type))));
     address->name = object->name;
     // Declarations sharing a VLA typedef also share its current address binding in RC1.
     CDecl_FindVLAInfo(object->type)->addressObject = address;
