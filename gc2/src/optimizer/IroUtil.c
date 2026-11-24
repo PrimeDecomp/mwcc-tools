@@ -370,7 +370,23 @@ Boolean IRO_is_CPtypeequal(Type* a, Type* b) {
     return !!is_typeequal(a, b);
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean IRO_ExpressionFlagsEqual(IROLinear* a, IROLinear* b) {
+    UInt16 mask = 0xe7ff;
+
+    if (IS_LINEAR_MONADIC(a, ETYPCON) && IS_LINEAR_MONADIC(b, ETYPCON)) {
+        mask &= ~0x0008;
+    }
+    return ((a->nodeflags ^ b->nodeflags) & mask) == 0;
+}
+#endif
+
 Boolean IRO_ExprsSame(IROLinear* a, IROLinear* b) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (!IRO_ExpressionFlagsEqual(a, b)) {
+        return FALSE;
+    }
+#endif
     if (a->type == b->type && IRO_TypesEqual(a->rtype, b->rtype)) {
         switch (a->type) {
             case IROLinearOperand:
@@ -411,6 +427,11 @@ CLabel* IRO_NewLabel(void) {
 }
 
 Boolean IRO_ExprsSameSemantically(IROLinear* a, IROLinear* b) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (!IRO_ExpressionFlagsEqual(a, b)) {
+        return FALSE;
+    }
+#endif
     if (a->type == b->type && IRO_TypesEqual(a->rtype, b->rtype)) {
         Boolean swappedSame = FALSE;
 

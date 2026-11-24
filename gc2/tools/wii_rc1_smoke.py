@@ -3893,6 +3893,27 @@ extern void sink(int);
         run(compiler, *FLAGS, "-inline", "auto", "-O4,p", "-func_align", "4", "-c", source, "-o", obj, cwd=work)
         results[f"{name} -O4,p"] = obj.read_bytes()
 
+    source = work / "loop_invariant_reanalysis.c"
+    source.write_text(
+        """\
+extern void sink(int);
+static const int values[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+
+int sum_values(int i, unsigned count) {
+    int sum = values[i];
+    do {
+        sink(values[i]);
+        sum += values[i];
+    } while (count--);
+    return sum;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    run(compiler, *FLAGS, "-inline", "auto", "-O4,p", "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+    results[f"{source.name} -O4,p"] = obj.read_bytes()
+
     source = work / "array_member_address.c"
     source.write_text(
         """\

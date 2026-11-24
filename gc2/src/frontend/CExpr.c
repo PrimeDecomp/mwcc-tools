@@ -560,6 +560,14 @@ static ENode* psub(ENode* left, ENode* right) {
     return expr;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void CExpr_ClearArithmeticQualifiers(ENode* expr) {
+    if (!IS_TYPE_POINTER_ONLY(expr->rtype) && expr->rtype->type != TYPEMEMBERPOINTER) {
+        expr->flags &= ~ENODE_FLAG_QUALS;
+    }
+}
+#endif
+
 static ENode* makeaddnode(ENode* left, ENode* right) {
     if (IS_TYPE_POINTER(left->rtype)) {
         return padd(left, right);
@@ -579,11 +587,17 @@ static ENode* makeaddnode(ENode* left, ENode* right) {
     if (ENODE_IS(left, EINTCONST) && ENODE_IS(right, EINTCONST)) {
         left->data.intval =
             CMach_CalcIntDiadic(left->rtype, left->data.intval, '+', right->data.intval);
+#if VERSION == VERSION_WII_1_0RC1
+        CExpr_ClearArithmeticQualifiers(left);
+#endif
         return left;
     }
     if (ENODE_IS(left, EFLOATCONST) && ENODE_IS(right, EFLOATCONST)) {
         left->data.floatval =
             CMach_CalcFloatDiadic(left->rtype, left->data.floatval, '+', right->data.floatval);
+#if VERSION == VERSION_WII_1_0RC1
+        CExpr_ClearArithmeticQualifiers(left);
+#endif
         return left;
     }
 
@@ -595,6 +609,9 @@ static ENode* makeaddnode(ENode* left, ENode* right) {
     }
 
     left = makediadicnode(left, right, EADD);
+#if VERSION == VERSION_WII_1_0RC1
+    CExpr_ClearArithmeticQualifiers(left);
+#endif
     optimizecomm(left);
     if (IS_TYPE_FLOAT(left->rtype)) {
         left = CExpr_BinaryFloatExpression(left);

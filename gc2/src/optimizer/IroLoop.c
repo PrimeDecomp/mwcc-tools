@@ -1409,6 +1409,38 @@ static void IRO_ActUnmarkLoopInvariance(IROLinear* linear, Boolean isFirst) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void MoveInvarianceToPointerBase(IROLinear* linear) {
+    while (linear && (linear->flags & IROLF_LoopInvariant) &&
+           linear->rtype && IS_TYPE_POINTER_ONLY(linear->rtype)) {
+        IROLinear* base = linear;
+
+        if (linear->type == IROLinearOperand && linear->u.node &&
+            ENODE_IS(linear->u.node, EINTCONST)) {
+            base = NULL;
+        } else if (linear->type == IROLinearOp2Arg) {
+            IROLinear* left = linear->u.diadic.left;
+            IROLinear* right = linear->u.diadic.right;
+
+            if (right->rtype && right->rtype->type == TYPEINT && IRO_IsIntConstant(right)) {
+                base = left;
+            } else if (left->rtype && left->rtype->type == TYPEINT && IRO_IsIntConstant(left)) {
+                base = right;
+            }
+        }
+
+        if (base == linear) {
+            break;
+        }
+        linear->flags &= ~IROLF_LoopInvariant;
+        if (base) {
+            base->flags |= IROLF_LoopInvariant;
+        }
+        linear = base;
+    }
+}
+#endif
+
 static void UnmarkSubexpressionsOfInvariantExpressions(void) {
     IROExpr* expr;
 
@@ -1421,6 +1453,16 @@ static void UnmarkSubexpressionsOfInvariantExpressions(void) {
             expr->linear->flags |= IROLF_LoopInvariant;
         }
     }
+
+#if VERSION == VERSION_WII_1_0RC1
+    for (expr = IRO_FirstExpr; expr; expr = expr->next) {
+        if (Bv_IsBitSet(expr->node->index, InLoop) &&
+            !expr->notSubable &&
+            (!expr->couldError || expr->node->mustreach)) {
+            MoveInvarianceToPointerBase(expr->linear);
+        }
+    }
+#endif
 }
 
 #if VERSION == VERSION_WII_1_0RC1
@@ -1651,7 +1693,12 @@ static void MyHandleLoop_Vector(IRONode* fnode, IRONode* motionPreheader) {
 
     if (!copts.optimizesize && copts.strengthreduction) {
 #if VERSION == VERSION_WII_1_0RC1
-        RISProductSplit* splits = SplitStrengthReductionProducts();
+        RISProductSplit* splits;
+
+        // Strength reduction re-analyzes the loop before selecting candidates.
+        ComputeLoopKills();
+        ComputeLoopInvariance();
+        splits = SplitStrengthReductionProducts();
         if (splits) {
             FindSplitStrengthReductionExpressions();
         }

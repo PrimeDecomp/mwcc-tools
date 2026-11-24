@@ -2674,6 +2674,15 @@ static void AddAddend(ENode* expr) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean IsVolatileAddition(const ENode* expr) {
+    return ENODE_IS(expr, EADD) &&
+           ((expr->rtype && CParser_IsVolatile(expr->rtype, ENODE_QUALS(expr))) ||
+            IsVolatileAddition(expr->data.diadic.left) ||
+            IsVolatileAddition(expr->data.diadic.right));
+}
+#endif
+
 static ENode* CombineConstants(ENode* expr) {
     ENode* addend;
     ENodeList* el;
@@ -2684,6 +2693,11 @@ static ENode* CombineConstants(ENode* expr) {
     ENodeList* prev;
     CInt64 val;
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (IsVolatileAddition(expr)) {
+        return expr;
+    }
+#endif
     FirstAddend = LastAddend = NULL;
     AddAddend(expr->data.diadic.left);
     AddAddend(expr->data.diadic.right);
@@ -2804,6 +2818,11 @@ static ENode* CombineConstants(ENode* expr) {
         result = tmp;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (result) {
+        result->flags = expr->flags;
+    }
+#endif
     return result;
 }
 
