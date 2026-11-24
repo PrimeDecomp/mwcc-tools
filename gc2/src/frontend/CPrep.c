@@ -777,6 +777,9 @@ static Boolean setupfile(StringPtr filename, Boolean fullsearch, Boolean isImpor
         filestack[filesp]->pos = pos - filestack[filesp]->textbuffer;
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    CPrep_ConfigureSourceEncoding(&prepinfo);
+#endif
     pos = prepinfo.textbuffer;
     linenumber = 1;
     at_linestart = TRUE;
@@ -1400,6 +1403,12 @@ void CPrep_GetTokenContext(
             base = NULL;
         } else {
             base = loaded;
+#if VERSION == VERSION_WII_1_0RC1
+            if (pf->sourceEncoding == SourceEncodingUTF8 && auxlong > 3 &&
+                !memcmp(base, "\xEF\xBB\xBF", 3)) {
+                base += 3;
+            }
+#endif
         }
         release = TRUE;
     } else {
@@ -1480,7 +1489,11 @@ void CPrep_GetTokenContext(
     }
     context[n] = 0;
     if (release) {
+#if VERSION == VERSION_WII_1_0RC1
+        CWReleaseFileText(cparamblkptr->context, loaded);
+#else
         CWReleaseFileText(cparamblkptr->context, base);
+#endif
     }
     was_prep_error = FALSE;
 }
@@ -1553,9 +1566,20 @@ void popfile(void) {
 
 #if VERSION == VERSION_WII_1_0RC1
     CPrep_EndFileCondition(filesp);
-#endif
+    if (prep_file->sourceText) {
+        CWReleaseFileText(cparamblkptr->context, prep_file->sourceText);
+        prep_file->sourceText = NULL;
+        if (prep_file->sourceEncoding < SourceEncodingUCS2LE) {
+            prep_file->textbuffer = NULL;
+        }
+    } else {
+        CWReleaseFileText(cparamblkptr->context, prep_file->textbuffer);
+        prep_file->textbuffer = NULL;
+    }
+#else
     CWReleaseFileText(cparamblkptr->context, prep_file->textbuffer);
     prep_file->textbuffer = NULL;
+#endif
     if (cprep_extrafile && (text = cprep_extrafile->textbuffer)) {
         CWReleaseFileText(cparams.context, text);
         cprep_extrafile->textbuffer = NULL;

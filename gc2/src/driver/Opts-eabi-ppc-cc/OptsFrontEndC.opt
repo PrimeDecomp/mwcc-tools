@@ -192,10 +192,18 @@ Option optlstFrontEndC_127 = {"wchar_t", 0x100, (PARAM_T *)&optlstFrontEndC_126,
 #if VERSION == VERSION_WII_1_0RC1
 static SET_T encodingSingleByte = {11, 0x01, 0, 0, 1, 0, (void *)&pFrontEndC.multibyteaware};
 static SET_T encodingASCIISetting = {11, 0x01, 0, (PARAM_T *)&encodingSingleByte, 1, SourceEncodingASCII, (void *)&pFrontEndC.source_encoding};
+static SET_T encodingAutoSetting = {11, 0x01, 0, 0, 1, SourceEncodingAuto, (void *)&pFrontEndC.source_encoding};
+static SET_T encodingUTF8Setting = {11, 0x01, 0, 0, 1, SourceEncodingUTF8, (void *)&pFrontEndC.source_encoding};
 static SET_T encodingSJISSetting = {11, 0x01, 0, 0, 1, SourceEncodingSJIS, (void *)&pFrontEndC.source_encoding};
+static SET_T encodingEUCJPSetting = {11, 0x01, 0, 0, 1, SourceEncodingEUCJP, (void *)&pFrontEndC.source_encoding};
+static SET_T encodingISO2022JPSetting = {11, 0x01, 0, 0, 1, SourceEncodingISO2022JP, (void *)&pFrontEndC.source_encoding};
 static Option encodingASCII = {"ascii", 0x100, (PARAM_T *)&encodingASCIISetting, 0, 0, "ASCII (default)"};
-static Option encodingSJIS = {"sjis|shift-jis|shiftjis", 0x100, (PARAM_T *)&encodingSJISSetting, 0, 0, "Shift-JIS"};
-static Option *encodingChoices[] = {&encodingASCII, &encodingSJIS, 0};
+static Option encodingAuto = {"autodetect|multibyte|mb", 0x100, (PARAM_T *)&encodingAutoSetting, 0, 0, "scan file for multibyte encoding (slower)"};
+static Option encodingUTF8 = {"UTF8|UTF-8", 0x100, (PARAM_T *)&encodingUTF8Setting, 0, 0, "UTF-8"};
+static Option encodingSJIS = {"SJIS|Shift-JIS|ShiftJIS", 0x100, (PARAM_T *)&encodingSJISSetting, 0, 0, "Shift-JIS"};
+static Option encodingEUCJP = {"EUCJP|EUC-JP", 0x100, (PARAM_T *)&encodingEUCJPSetting, 0, 0, "EUC-JP"};
+static Option encodingISO2022JP = {"ISO2022JP|ISO-2022-JP", 0x100, (PARAM_T *)&encodingISO2022JPSetting, 0, 0, "ISO-2022-JP"};
+static Option *encodingChoices[] = {&encodingASCII, &encodingAuto, &encodingUTF8, &encodingSJIS, &encodingEUCJP, &encodingISO2022JP, 0};
 static OptionList encodingOptions = {0, 0x101, encodingChoices};
 static Option encodingOption = {"enc|encoding", 0x8100, 0, &encodingOptions, 0, "specify the source encoding"};
 static OptionList gccExtensionOptions;

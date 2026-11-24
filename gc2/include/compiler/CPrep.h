@@ -106,6 +106,10 @@ struct CPrepFileInfo {
     Boolean unkfield124;
     Boolean unkfield125;
     Boolean isSystemInclude;
+#if VERSION == VERSION_WII_1_0RC1
+    UInt8 sourceEncoding;
+    char* sourceText;
+#endif
 };
 #pragma pack(pop)
 extern CompilerLinkerParamBlk* cparamblkptr;

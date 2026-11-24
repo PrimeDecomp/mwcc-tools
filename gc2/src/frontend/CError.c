@@ -94,6 +94,10 @@ static void CError_GetErrorString(char* buf, short code) {
         strcpy(buf, "deleting a void pointer is undefined");
         return;
     }
+    if (code == WARN_ILLEGAL_UTF8_SEQUENCE) {
+        strcpy(buf, "illegal UTF-8 sequence, treating as raw bytes");
+        return;
+    }
 #endif
     CError_ASSERT(142, code >= ERR_ILLEGAL_CHARACTER_CONSTANT && code < ERR_MAX);
     COS_GetString(buf, 10000, code - 99);

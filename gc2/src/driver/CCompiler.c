@@ -201,7 +201,6 @@ static void initialize_compiler_options(CompilerLinkerParamBlk* params) {
     copts.comment_prepdump = (pFrontEnd.preprocess_options & PreprocessComments) != 0;
     copts.space_prepdump = (pFrontEnd.preprocess_options & PreprocessSpace) != 0;
     copts.source_encoding = pFrontEnd.source_encoding;
-    copts.multibyteaware |= pFrontEnd.source_encoding == SourceEncodingSJIS;
     copts.inline_bottom_up = !pFrontEnd.inline_top_down;
 #endif
     copts.unsigned_char = pFrontEnd.unsignedchars;

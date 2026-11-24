@@ -14,6 +14,7 @@
 #include "driver/COSToolsCLT.h"
 #include "driver/oslib.h"
 #if VERSION == VERSION_WII_1_0RC1
+#include "host/ShiftJISDecodeAliases.h"
 #include "host/ShiftJISTable.h"
 #endif
 #include <string.h>
@@ -31,16 +32,282 @@ static Boolean is_sjis_trail(UInt8 byte) {
     return byte >= 0x40 && byte <= 0xFC && byte != 0x7F;
 }
 
+static Boolean is_euc_pair_byte(UInt8 byte) {
+    return byte >= 0xA1 && byte <= 0xFE;
+}
+
+static Boolean decode_utf8(
+    const UInt8* bytes, const UInt8* end, UInt32* value, unsigned* size, Boolean fromUCS
+) {
+    static const UInt32 minimum[] = {0, 0, 0x80, 0x800, 0x10000, 0x200000, 0x4000000, 0x80000000};
+    UInt8 first = *bytes;
+    UInt8 bit;
+    unsigned count;
+    unsigned i;
+
+    *value = first;
+    *size = 1;
+    if (first < 0x80) {
+        return TRUE;
+    }
+    for (bit = 0x80, count = 0; first & bit; bit >>= 1) {
+        count++;
+    }
+    if (count < 2 || count > (fromUCS ? 7 : 6) || end - bytes < count) {
+        return FALSE;
+    }
+    first &= bit - 1;
+    for (i = 1; i < count; i++) {
+        if ((bytes[i] & 0xC0) != 0x80) {
+            return FALSE;
+        }
+    }
+    *size = count;
+    *value = first;
+    for (i = 1; i < count; i++) {
+        *value = (*value << 6) | (bytes[i] & 0x3F);
+    }
+    if (*value < minimum[count] || (!fromUCS && *value >= 0xD800 && *value < 0xE000)) {
+        *value = 0xFFFF;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static enum SourceEncoding detect_ucs_encoding(const UInt8* text, SInt32 len, unsigned* marker) {
+    unsigned zero[4] = {0, 0, 0, 0};
+    unsigned count = 0;
+    unsigned limit = len < 256 ? len : 256;
+    unsigned i;
+
+    if (len >= 4 && !memcmp(text, "\xFF\xFE\x00\x00", 4)) {
+        *marker = 4;
+        return SourceEncodingUCS4LE;
+    }
+    if (len >= 4 && !memcmp(text, "\x00\x00\xFE\xFF", 4)) {
+        *marker = 4;
+        return SourceEncodingUCS4BE;
+    }
+    if (len >= 2 && !memcmp(text, "\xFF\xFE", 2)) {
+        *marker = 2;
+        return SourceEncodingUCS2LE;
+    }
+    if (len >= 2 && !memcmp(text, "\xFE\xFF", 2)) {
+        *marker = 2;
+        return SourceEncodingUCS2BE;
+    }
+    for (i = 0; i < limit; i++) {
+        if (!text[i]) {
+            zero[i & 3]++;
+            count++;
+        }
+    }
+    if (count < 2) {
+        return SourceEncodingASCII;
+    }
+    if (2 * count > limit) {
+        return zero[0] > zero[3] ? SourceEncodingUCS4BE : SourceEncodingUCS4LE;
+    }
+    return zero[0] + zero[2] > zero[1] + zero[3] ? SourceEncodingUCS2BE : SourceEncodingUCS2LE;
+}
+
+static enum SourceEncoding detect_multibyte_encoding(const UInt8* text, const UInt8* end) {
+    unsigned euc = 0;
+    unsigned sjis = 0;
+    unsigned utf8 = 0;
+    unsigned invalid = 0;
+
+    while (text < end) {
+        UInt8 first = text[0];
+        UInt8 second = end - text >= 2 ? text[1] : 0;
+        unsigned step = 1;
+
+        if (is_euc_pair_byte(first) && is_euc_pair_byte(second)) {
+            euc += 2;
+            if (euc >= 8) {
+                return SourceEncodingEUCJP;
+            }
+            step = 2;
+        }
+        if (is_sjis_lead(first) && first <= 0xEF && is_sjis_trail(second)) {
+            sjis += 2;
+            if (sjis >= 8) {
+                return SourceEncodingSJIS;
+            }
+            step = 2;
+        }
+        if (first == 0x1B && second == '$' && end - text >= 3) {
+            if (text[2] == '@' || text[2] == 'B') {
+                return SourceEncodingISO2022JP;
+            }
+            step = 3;
+        }
+        if (first >= 0x80) {
+            UInt32 value;
+            unsigned size;
+            if (decode_utf8(text, end, &value, &size, FALSE) && value != 0xFFFF) {
+                utf8 += size;
+                if (utf8 >= 8) {
+                    return SourceEncodingUTF8;
+                }
+                step = size;
+            } else {
+                invalid++;
+                if (invalid >= 8 && !(euc | sjis | utf8)) {
+                    return SourceEncodingASCII;
+                }
+                step = 1;
+            }
+        }
+        text += step;
+    }
+    if (invalid > (euc | sjis | utf8)) {
+        return SourceEncodingASCII;
+    }
+    if (utf8 > (euc | sjis)) {
+        return SourceEncodingUTF8;
+    }
+    if (euc > sjis) {
+        return SourceEncodingEUCJP;
+    }
+    return sjis ? SourceEncodingSJIS : SourceEncodingASCII;
+}
+
+static unsigned encode_scanner_utf8(UInt8* text, UInt32 value) {
+    static const UInt32 maximum[] = {0x7F, 0x7FF, 0xFFFF, 0x1FFFFF, 0x3FFFFFF, 0x7FFFFFFF, 0xFFFFFFFF};
+    unsigned count = 1;
+    unsigned i;
+
+    while (value > maximum[count - 1]) {
+        count++;
+    }
+    if (text) {
+        for (i = count - 1; i > 0; i--) {
+            text[i] = 0x80 | (value & 0x3F);
+            value >>= 6;
+        }
+        text[0] = count == 1 ? value : ((0xFF << (8 - count)) & 0xFF) | value;
+    }
+    return count;
+}
+
+static UInt32 read_ucs(const UInt8* text, SInt32 width, Boolean bigEndian) {
+    UInt32 value = 0;
+    SInt32 i;
+
+    for (i = 0; i < width; i++) {
+        value = (value << 8) | text[bigEndian ? i : width - i - 1];
+    }
+    return value;
+}
+
+static SInt32 transcode_ucs(
+    UInt8* output, const UInt8* text, SInt32 len, SInt32 width, Boolean bigEndian
+) {
+    SInt32 size = 0;
+    UInt32 previous = 0;
+    while (len > 0) {
+        UInt32 value = 0xFFFF;
+        unsigned encoded;
+        if (len >= width) {
+            value = read_ucs(text, width, bigEndian);
+            if (width == 2 && value >= 0xD800 && value <= 0xDBFF && len >= 4) {
+                UInt32 low = read_ucs(text + 2, 2, bigEndian);
+                if (low >= 0xDC00 && low <= 0xDFFF) {
+                    value = 0x10000 + ((value - 0xD800) << 10) + low - 0xDC00;
+                    text += 2;
+                    len -= 2;
+                }
+            }
+        }
+        encoded = encode_scanner_utf8(output ? output + size : NULL, value == LF && previous != CR ? CR : value);
+        if (size > 0x7FFFFFFB - encoded) {
+            CError_NoMem();
+        }
+        size += encoded;
+        previous = value;
+        if (len <= width) {
+            break;
+        }
+        text += width;
+        len -= width;
+    }
+    return size;
+}
+
+void CPrep_ConfigureSourceEncoding(CPrepFileInfo* file) {
+    const UInt8* text = (const UInt8*)file->textbuffer;
+    enum SourceEncoding encoding;
+    unsigned marker = 0;
+
+    encoding = detect_ucs_encoding(text, file->textlength, &marker);
+    if (encoding != SourceEncodingASCII) {
+        SInt32 width = encoding >= SourceEncodingUCS4LE ? 4 : 2;
+        Boolean bigEndian = encoding == SourceEncodingUCS2BE || encoding == SourceEncodingUCS4BE;
+        SInt32 length = transcode_ucs(NULL, text + marker, file->textlength - marker, width, bigEndian);
+        UInt8* converted = galloc(length + 4);
+        transcode_ucs(converted, text + marker, file->textlength - marker, width, bigEndian);
+        memset(converted + length, 0, 4);
+        file->sourceText = file->textbuffer;
+        file->textbuffer = (char*)converted;
+        file->textlength = length;
+    } else {
+        encoding = copts.source_encoding;
+        if ((encoding == SourceEncodingASCII || encoding == SourceEncodingAuto || encoding == SourceEncodingUTF8) &&
+            file->textlength > 3 && !memcmp(text, "\xEF\xBB\xBF", 3)) {
+            encoding = SourceEncodingUTF8;
+            file->sourceText = file->textbuffer;
+            file->textbuffer += 3;
+            file->textlength -= 3;
+        } else if (encoding == SourceEncodingAuto) {
+            encoding = detect_multibyte_encoding(text, text + file->textlength);
+        }
+    }
+    file->sourceEncoding = encoding;
+}
+
+static enum SourceEncoding scanner_encoding(void) {
+    return prep_file ? prep_file->sourceEncoding : SourceEncodingASCII;
+}
+
+static Boolean scanner_multibyteaware(void) {
+    return copts.multibyteaware || scanner_encoding() == SourceEncodingSJIS ||
+           scanner_encoding() == SourceEncodingISO2022JP;
+}
+
+static Boolean is_iso2022_jis(const UInt8* start, const UInt8* position) {
+    const UInt8* scan;
+
+    for (scan = position; scan > start; scan--) {
+        if (scan[-1] == CR || scan[-1] == LF) {
+            break;
+        }
+        if (scan[-1] == 0x1B && position - scan >= 2 && (scan[0] == '$' || scan[0] == '(')) {
+            return scan[0] == '$' && (scan[1] == '@' || scan[1] == 'B');
+        }
+    }
+    return FALSE;
+}
+
+static UInt16 decode_sjis_pair(UInt16 encoded);
+
 static Boolean scanner_is_multibyte(const void* start, const void* position) {
     const UInt8* scan = start;
     const UInt8* end = position;
 
-    if (copts.source_encoding != SourceEncodingSJIS) {
+    if (scanner_encoding() == SourceEncodingISO2022JP) {
+        return is_iso2022_jis(start, position);
+    }
+    if (scanner_encoding() == SourceEncodingASCII) {
         return COS_IsMultiByte(start, position);
+    }
+    if (scanner_encoding() != SourceEncodingSJIS) {
+        return FALSE;
     }
 
     while (scan < end) {
-        if (is_sjis_lead(scan[0]) && is_sjis_trail(scan[1])) {
+        if (is_sjis_lead(scan[0]) && is_sjis_trail(scan[1]) &&
+            decode_sjis_pair(((UInt16)scan[0] << 8) | scan[1]) != 0xFFFF) {
             if (scan + 1 == end) {
                 return TRUE;
             }
@@ -52,26 +319,97 @@ static Boolean scanner_is_multibyte(const void* start, const void* position) {
     return FALSE;
 }
 
-static UInt16 decode_sjis(UInt8 first) {
-    UInt16 encoded;
+static UInt16 decode_sjis_pair(UInt16 encoded) {
+    UInt8 lead = encoded >> 8;
+    UInt8 trail = encoded;
     UInt32 i;
+
+    if (lead >= 0xF0 && lead <= 0xF9 && is_sjis_trail(trail)) {
+        return 0xE000 + (lead - 0xF0) * 188 + trail - (trail < 0x7F ? 0x40 : 0x41);
+    }
+    for (i = 0; i < sizeof(ShiftJIS_Table) / sizeof(*ShiftJIS_Table); i++) {
+        if (ShiftJIS_Table[i][1] == encoded) {
+            return ShiftJIS_Table[i][0];
+        }
+    }
+    for (i = 0; i < sizeof(ShiftJIS_DecodeAliases) / sizeof(*ShiftJIS_DecodeAliases); i++) {
+        if (ShiftJIS_DecodeAliases[i][0] == encoded) {
+            return ShiftJIS_DecodeAliases[i][1];
+        }
+    }
+    return 0xFFFF;
+}
+
+static UInt16 decode_jis_pair(UInt8 row, UInt8 column) {
+    UInt8 lead;
+    UInt8 trail;
+    if (row < 0x21 || row > 0x7E || column < 0x21 || column > 0x7E) {
+        return 0xFFFF;
+    }
+    lead = (row - 0x21) / 2 + (row < 0x5F ? 0x81 : 0xC1);
+    trail = column + ((row & 1) ? (column < 0x60 ? 0x1F : 0x20) : 0x7E);
+    return decode_sjis_pair(((UInt16)lead << 8) | trail);
+}
+
+static UInt16 decode_sjis(UInt8 first) {
+    UInt16 value;
 
     if (first >= 0xA1 && first <= 0xDF) {
         return 0xFF61 + first - 0xA1;
     }
+    if (first == 0xA0 || first >= 0xFD) {
+        return 0xF8F0 + (first == 0xA0 ? 0 : first - 0xFC);
+    }
+    if (first == 0x80) {
+        return first;
+    }
     if (is_sjis_lead(first) && is_sjis_trail((UInt8)*pos)) {
-        encoded = ((UInt16)first << 8) | (UInt8)*pos++;
-        for (i = 0; i < sizeof(ShiftJIS_Table) / sizeof(*ShiftJIS_Table); i++) {
-            if (ShiftJIS_Table[i][1] == encoded) {
-                return ShiftJIS_Table[i][0];
-            }
+        value = decode_sjis_pair(((UInt16)first << 8) | (UInt8)*pos);
+        if (value != 0xFFFF) {
+            pos++;
+            return value;
         }
     }
-    CPrep_Error(ERR_ILLEGAL_CHARACTER_CONSTANT);
-    return 0xFFFD;
+    return 0xFFFF;
+}
+
+static UInt16 decode_euc(UInt8 first) {
+    UInt8 second = (UInt8)*pos;
+    if (is_euc_pair_byte(first)) {
+        if (is_euc_pair_byte(second)) {
+            pos++;
+            return decode_jis_pair(first - 0x80, second - 0x80);
+        }
+        return 0xFFFF;
+    }
+    if (first == 0x8E) {
+        if (second >= 0xA1 && second <= 0xDF) {
+            pos++;
+            return 0xFF61 + second - 0xA1;
+        }
+        return 0xFFFF;
+    }
+    return first;
+}
+
+static UInt16 decode_literal_utf8(Boolean fromUCS) {
+    const UInt8* text = (const UInt8*)pos - 1;
+    UInt32 value;
+    unsigned size;
+    unsigned available = 1;
+
+    while (available < 7 && (text[available] & 0xC0) == 0x80) {
+        available++;
+    }
+    if (!decode_utf8(text, text + available, &value, &size, fromUCS)) {
+        CPrep_Warning(WARN_ILLEGAL_UTF8_SEQUENCE);
+    }
+    pos += size - 1;
+    return value;
 }
 #else
 #define scanner_is_multibyte COS_IsMultiByte
+#define scanner_multibyteaware() copts.multibyteaware
 #endif
 
 #if VERSION == VERSION_WII_1_0RC1
@@ -140,7 +478,7 @@ loop:
             return c;
         case '/':
             pos = (char*)p++;
-            if (copts.multibyteaware) {
+            if (scanner_multibyteaware()) {
                 while (p[0] == '\\' && !scanner_is_multibyte(start, p) && p[1] == CR) {
                     foundnl();
                     if (p[2] == LF) {
@@ -187,7 +525,7 @@ loop:
                             p[-1] = ' ';
                         }
                         if (c == '*') {
-                            if (copts.multibyteaware) {
+                            if (scanner_multibyteaware()) {
                                 while (p[0] == '\\' && !scanner_is_multibyte(start, p) && p[1] == CR) {
                                     foundnl();
                                     if (p[2] == LF) {
@@ -240,7 +578,7 @@ loop:
             pos = (char*)p++;
 mid_backslash:
             if (*p == CR) {
-                if (!copts.multibyteaware || !scanner_is_multibyte(start, p - 1)) {
+                if (!scanner_multibyteaware() || !scanner_is_multibyte(start, p - 1)) {
                     foundnl();
                     if (p[1] == LF) {
                         p += 2;
@@ -315,7 +653,7 @@ loop:
             pos = (char*)p - 1;
             return c;
         case '/':
-            if (copts.multibyteaware) {
+            if (scanner_multibyteaware()) {
                 while (p[0] == '\\' && !scanner_is_multibyte(start, p) && p[1] == CR) {
                     foundnl();
                     if (p[2] == LF) {
@@ -351,7 +689,7 @@ loop:
                         p[-1] = ' ';
                     }
                     if (c == '*') {
-                        if (copts.multibyteaware) {
+                        if (scanner_multibyteaware()) {
                             while (p[0] == '\\' && !scanner_is_multibyte(start, p) && p[1] == CR) {
                                 foundnl();
                                 if (p[2] == LF) {
@@ -387,7 +725,7 @@ loop:
         case '\\':
 backslash:
             if (*p == CR) {
-                if (!copts.multibyteaware || !scanner_is_multibyte(start, p - 1)) {
+                if (!scanner_multibyteaware() || !scanner_is_multibyte(start, p - 1)) {
                     foundnl();
                     if (p[1] == LF) {
                         p += 2;
@@ -460,7 +798,7 @@ loop:
             return c;
         case '\\':
 backslash:
-            if (p[0] == CR && (!copts.multibyteaware || !scanner_is_multibyte(str, p - 1))) {
+            if (p[0] == CR && (!scanner_multibyteaware() || !scanner_is_multibyte(str, p - 1))) {
                 if (countNewlines) {
                     foundnl();
                 } else {
@@ -540,7 +878,7 @@ loop:
     }
 
     if (c == CR) {
-        if (!copts.multibyteaware || !scanner_is_multibyte(start, p - 1)) {
+        if (!scanner_multibyteaware() || !scanner_is_multibyte(start, p - 1)) {
             if (countNewlines) {
                 foundnl();
             }
@@ -574,7 +912,7 @@ loop:
         }
     }
 
-    if (c == '\\' && !haveBackslash && (!copts.multibyteaware || !scanner_is_multibyte(start, p - 1))) {
+    if (c == '\\' && !haveBackslash && (!scanner_multibyteaware() || !scanner_is_multibyte(start, p - 1))) {
 backslash:
         if (*p == CR) {
             if (countNewlines) {
@@ -620,7 +958,7 @@ loop:
     }
 
     if (c == CR) {
-        if (!copts.multibyteaware || !scanner_is_multibyte(start, p - 1)) {
+        if (!scanner_multibyteaware() || !scanner_is_multibyte(start, p - 1)) {
             if (countNewlines) {
                 foundnl();
             }
@@ -653,7 +991,7 @@ loop:
         }
     }
 
-    if (c == '\\' && !haveBackslash && (!copts.multibyteaware || !scanner_is_multibyte(start, p - 1))) {
+    if (c == '\\' && !haveBackslash && (!scanner_multibyteaware() || !scanner_is_multibyte(start, p - 1))) {
 backslash:
         if (*p == CR) {
             if (countNewlines) {
@@ -723,7 +1061,7 @@ char* ReadIdentifier(const char* p) {
             }
             p++;
         } else {
-            if (copts.multibyteaware) {
+            if (scanner_multibyteaware()) {
                 if ((unsigned char)*p == '\\' && !scanner_is_multibyte(start, p) && p[1] == CR) {
                     if (p[2] == LF) {
                         p += 3;
@@ -936,6 +1274,14 @@ static SInt32 nextchar(StringPtr str) {
     short i;
     short t;
 
+#if VERSION == VERSION_WII_1_0RC1
+    enum SourceEncoding encoding = scanner_encoding();
+    if (widestring && encoding == SourceEncodingISO2022JP) {
+        while (pos[0] == 0x1B && (pos[1] == '$' || pos[1] == '(') && pos[2]) {
+            pos += 3;
+        }
+    }
+#endif
     chr_max = 0xFF;
     if (widestring) {
         chr_max = 0xFFFF;
@@ -945,11 +1291,40 @@ static SInt32 nextchar(StringPtr str) {
     t = prepnextstringchar(str, TRUE);
 
 #if VERSION == VERSION_WII_1_0RC1
-    if (widestring && t >= 0x80 && copts.source_encoding == SourceEncodingSJIS) {
-        return decode_sjis(t);
+    if (encoding == SourceEncodingISO2022JP && t != 0 && t != CR &&
+        is_iso2022_jis(str, (const UInt8*)pos - 1)) {
+        if (widestring && t >= 0x21 && t <= 0x7E && (UInt8)*pos >= 0x21 && (UInt8)*pos <= 0x7E) {
+            UInt8 second = (UInt8)*pos++;
+            return decode_jis_pair(t, second);
+        }
+        if (!widestring && (t == '"' || t == '\'')) {
+            was_escchar = TRUE;
+            return t;
+        }
+    }
+    if (t >= 0x80) {
+        if (encoding >= SourceEncodingUCS2LE) {
+            UInt16 value = decode_literal_utf8(TRUE);
+            was_escchar = TRUE;
+            return widestring ? value : (UInt8)value;
+        }
+        if (widestring) {
+            switch (encoding) {
+                case SourceEncodingSJIS:
+                    return decode_sjis(t);
+                case SourceEncodingEUCJP:
+                    return decode_euc(t);
+                case SourceEncodingUTF8:
+                    return decode_literal_utf8(FALSE);
+                case SourceEncodingISO2022JP:
+                    return t >= 0xA1 && t <= 0xDF ? 0xFF61 + t - 0xA1 : t;
+                default:
+                    break;
+            }
+        }
     }
 #endif
-    if (t == '\\' && (!copts.multibyteaware || !scanner_is_multibyte(str, pos - 1))) {
+    if (t == '\\' && (!scanner_multibyteaware() || !scanner_is_multibyte(str, pos - 1))) {
         was_escchar = TRUE;
         switch ((t = prepnextstringchar(str, TRUE))) {
             case 'a':
@@ -1044,7 +1419,7 @@ StringPtr CPrep_SkipNewComment(StringPtr str) {
                 return p;
 
             case '\\':
-                if (copts.multibyteaware && scanner_is_multibyte(str, p - 1)) {
+                if (scanner_multibyteaware() && scanner_is_multibyte(str, p - 1)) {
                     continue;
                 }
 
@@ -1096,7 +1471,7 @@ Boolean skipendoflinematch(StringPtr str, short token) {
                 break;
 
             case '\\':
-                if (copts.multibyteaware && scanner_is_multibyte(start, str - 1)) {
+                if (scanner_multibyteaware() && scanner_is_multibyte(start, str - 1)) {
                     continue;
                 }
 
@@ -1154,7 +1529,7 @@ void skipendofline(void) {
                 break;
 
             case '/':
-                if (copts.multibyteaware) {
+                if (scanner_multibyteaware()) {
                     while (*p == '\\' && !scanner_is_multibyte(start, p) && p[1] == CR) {
                         foundnl();
                         if (p[2] == LF) {
@@ -1197,7 +1572,7 @@ void skipendofline(void) {
                         }
 
                         if (ch == '*') {
-                            if (copts.multibyteaware) {
+                            if (scanner_multibyteaware()) {
                                 while (*p == '\\' && !scanner_is_multibyte(start, p) && p[1] == CR) {
                                     foundnl();
                                     if (p[2] == LF) {
@@ -1231,7 +1606,7 @@ void skipendofline(void) {
                 break;
 
             case '\\':
-                if (copts.multibyteaware && scanner_is_multibyte(start, p - 1)) {
+                if (scanner_multibyteaware() && scanner_is_multibyte(start, p - 1)) {
                     continue;
                 }
 
@@ -1462,6 +1837,17 @@ static short tquot(short t) {
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (!widestring && c == '"' && scanner_encoding() == SourceEncodingISO2022JP &&
+        pos - (char*)start_pos >= 4 && pos[-4] == 0x1B &&
+        (pos[-3] == '(' || pos[-3] == '$')) {
+        // A final shift sequence contributes a byte to the raw string token.
+        if (size >= maxstringsize && !COS_ResizeHandle(stringmem, maxstringsize += 256)) {
+            CError_NoMem();
+        }
+        (*stringmem)[size++] = 0;
+    }
+#endif
     if (ispascalstring) {
         if (size > 255 && type->size == 1) {
             CPrep_Error(ERR_STRING_TOO_LONG);

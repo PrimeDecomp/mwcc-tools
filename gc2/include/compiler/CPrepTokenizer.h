@@ -15,8 +15,18 @@ enum {
 #if VERSION == VERSION_WII_1_0RC1
 enum SourceEncoding {
     SourceEncodingASCII,
-    SourceEncodingSJIS
+    SourceEncodingSJIS,
+    SourceEncodingAuto,
+    SourceEncodingUTF8,
+    SourceEncodingEUCJP,
+    SourceEncodingISO2022JP,
+    SourceEncodingUCS2LE,
+    SourceEncodingUCS2BE,
+    SourceEncodingUCS4LE,
+    SourceEncodingUCS4BE
 };
+
+extern void CPrep_ConfigureSourceEncoding(CPrepFileInfo* file);
 #endif
 
 extern short prepskipnextchar(void);

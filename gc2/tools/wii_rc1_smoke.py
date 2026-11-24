@@ -2,6 +2,7 @@
 """Exercise the source-built Wii 1.0RC1 compiler on Windows."""
 
 import argparse
+import codecs
 import subprocess
 import tempfile
 from itertools import product
@@ -209,6 +210,59 @@ def check_source_encoding(compiler, objcopy, work):
         run(objcopy, f"--dump-section={name}={section}", obj, cwd=work)
         if section.read_bytes() != expected:
             raise ValueError(f"{compiler}: unexpected Shift-JIS literal data in {name}")
+
+
+def check_source_encoding_selection(compiler, objcopy, work):
+    def literals(text):
+        return f'char narrow[] = "{text}";\nwchar_t wide[] = L"{text}";\n'
+
+    japanese = literals("日本日本")
+    sjis = literals("表表表表").encode("cp932")
+    utf8 = japanese.encode("utf-8")
+    euc = japanese.encode("euc_jp")
+    iso = japanese.encode("iso2022_jp")
+    cases = [
+        ("auto_ascii", (), literals("text").encode("ascii"), "multibyte"),
+        ("auto_sjis", (), sjis, "autodetect"),
+        ("auto_utf8", (), utf8, "mb"),
+        ("auto_euc", (), euc, "multibyte"),
+        ("auto_iso", (), iso, "multibyte"),
+        ("auto_replaces_sjis", ("-enc", "SJIS"), utf8, "multibyte"),
+        ("euc_cp932_alias", (), literals("éåüé").encode("cp1252"), "multibyte"),
+        ("utf8", (), utf8, "UTF-8"),
+        ("utf8_short", (), utf8, "UTF8"),
+        ("euc", (), euc, "EUC-JP"),
+        ("euc_short", (), euc, "EUCJP"),
+        ("iso", (), iso, "ISO-2022-JP"),
+        ("iso_short", (), iso, "ISO2022JP"),
+        ("utf8_bom", (), codecs.BOM_UTF8 + utf8, "ascii"),
+    ]
+    for encoding, marker in (
+        ("utf-16-le", codecs.BOM_UTF16_LE),
+        ("utf-16-be", codecs.BOM_UTF16_BE),
+        ("utf-32-le", codecs.BOM_UTF32_LE),
+        ("utf-32-be", codecs.BOM_UTF32_BE),
+    ):
+        text = japanese.encode(encoding)
+        cases.append((encoding, (), text, "ascii"))
+        cases.append((f"{encoding}_bom", (), marker + text, "SJIS"))
+
+    header = work / "encoding_euc.h"
+    header.write_bytes('wchar_t header_text[] = L"日本日本";\n'.encode("euc_jp"))
+    source = b'#include "encoding_euc.h"\n' + sjis
+    cases.append(("mixed_encodings", (), source, "multibyte"))
+
+    results = {}
+    for name, prior_flags, contents, encoding in cases:
+        source = work / f"encoding_{name}.cpp"
+        source.write_bytes(contents)
+        obj = source.with_suffix(".o")
+        normalized = source.with_suffix(".normalized")
+        output = run(compiler, *FLAGS, *prior_flags, "-enc", encoding, "-O0",
+                     "-msgstyle", "parseable", "-c", source.name, "-o", obj, cwd=work)
+        run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
+        results[source.name] = (output, normalized.read_bytes())
+    return results
 
 
 def check_pch(compiler, objcopy, work):
@@ -5280,6 +5334,7 @@ bool same(const Values& a, const Values& b) {
         results[f"{name} {opt}"] = section.read_bytes()
     check_pch(compiler, objcopy, work)
     check_source_encoding(compiler, objcopy, work)
+    results.update(check_source_encoding_selection(compiler, objcopy, work))
     results.update(check_unconditional_branch_ranges(compiler, objcopy, work))
     results.update(check_auto_aggregate_initialization(compiler, work))
     results.update(check_unrolled_loop_guard(compiler, work))

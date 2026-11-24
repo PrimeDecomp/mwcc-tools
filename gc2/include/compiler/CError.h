@@ -344,6 +344,7 @@ extern void CError_AbstractClassError(TypeClass* tclass);
 extern void CError_Warning(int code, ...);
 #if VERSION == VERSION_WII_1_0RC1
 enum {
+    WARN_ILLEGAL_UTF8_SEQUENCE = 453,
     ERR_VARIABLE_LENGTH_ARRAY_CONTEXT = 471,
     ERR_DELETING_VOID_POINTER = 480,
     ERR_ILLEGAL_JUMP_INTO_TRY_CATCH = 577
