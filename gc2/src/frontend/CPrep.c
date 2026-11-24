@@ -9,6 +9,7 @@
 #if VERSION == VERSION_WII_1_0RC1
 #include "compiler/CMiddleLayer.h"
 #include "compiler/CPrecTransport.h"
+#include "driver/CLMain.h"
 #include "driver/MsDos.h"
 #endif
 #include "compiler/CodeGen.h"
@@ -1341,6 +1342,100 @@ static CPrepFileInfo* persist_file;
 static SInt32 persist_offset = -1;
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+static void CPrep_RenderMacroLine(
+    const char* base, const char* invocation, const char* suffix,
+    char* text, short* textpos, short* textcol
+) {
+    const char* start = invocation;
+    const char* end = invocation;
+    const char* p;
+    int length = 0;
+    int caret = -1;
+    Boolean splice = macrostart[0] != TK_MACRO_BOUNDARY;
+
+    while (start > base && start[-1] != '\r' && start[-1] != '\n') {
+        --start;
+    }
+    while (*end && *end != '\r' && *end != '\n') {
+        ++end;
+    }
+    if (splice) {
+        while (start < invocation && length < 127) {
+            text[length++] = *start == '\t' ? ' ' : *start;
+            ++start;
+        }
+        if (length < 127) {
+            text[length++] = ' ';
+        }
+    }
+
+    for (p = macrostart; *p && length < 127; ++p) {
+        if (p == macropos) {
+            caret = length;
+        }
+        if (*p == TK_MACRO_NOEXPAND || (splice && *p == TK_MACRO_BOUNDARY)) {
+            continue;
+        }
+        text[length++] = *p == '\t' || *p == TK_MACRO_BOUNDARY ? ' ' : *p;
+    }
+
+    if (splice && suffix <= end) {
+        while (suffix < end && length < 127) {
+            text[length++] = *suffix == '\t' ? ' ' : *suffix;
+            ++suffix;
+        }
+        if (*end && length < 127) {
+            text[length++] = ' ';
+        }
+        if (*end == '\r' && end[1] == '\n' && length < 127) {
+            text[length++] = ' ';
+        }
+    }
+    text[length] = 0;
+    *textpos = caret >= 0 ? caret : 0;
+    *textcol = caret >= 0 ? CPrep_TokenSize(text + caret) : 0;
+}
+
+const char* CPrep_AppendIncludeTrace(CPrepFileInfo* file, const char* message, Boolean expand) {
+    enum { ParseableMessageStyle = 4 };
+    const char* paths[32];
+    const char* macroName = NULL;
+    const char* indent = optsCmdLine.msgStyle == ParseableMessageStyle ? "       " : "    ";
+    size_t indentation = strlen(indent);
+    size_t size;
+    char* output;
+    char* p;
+    int level;
+
+    if (filesp < 3 || file != prep_file) {
+        return message;
+    }
+    if (expand && tokenstacklevel && tokenstack[0].expansion) {
+        macroName = tokenstack[0].expansion->name->name;
+    }
+
+    size = strlen(message) + sizeof("\n(included from:)");
+    if (macroName) {
+        size += strlen(macroName) + indentation + sizeof("\nexpanding macro ''");
+    }
+    for (level = filesp - 1; level >= 0; --level) {
+        paths[level] = CPrep_GetSourceFilePath(filestack[level])->name;
+        size += strlen(paths[level]) + indentation + sizeof("\n:-2147483648");
+    }
+    output = lalloc(size);
+    p = output + sprintf(output, "%s\n(included from:", message);
+    if (macroName) {
+        p += sprintf(p, "\n%sexpanding macro '%s'", indent, macroName);
+    }
+    for (level = filesp - 1; level >= 0; --level) {
+        p += sprintf(p, "\n%s%s:%ld", indent, paths[level], (long)filestack[level]->linenumber);
+    }
+    strcpy(p, ")");
+    return output;
+}
+#endif
+
 void CPrep_GetTokenContext(
     TStreamElement* token,
     CPrepFileInfo** file,
@@ -1429,6 +1524,14 @@ void CPrep_GetTokenContext(
     *line = n;
     c = CPrep_TokenSize(end = base + offset);
     *column = c;
+#if VERSION == VERSION_WII_1_0RC1
+    if (!token && tokenstacklevel == 1 && base == prep_file_start &&
+        offset == tokenstack[0].sourceOffset && tokenstack[0].expansion &&
+        tokenstack[0].pos >= end) {
+        CPrep_RenderMacroLine(base, end, tokenstack[0].pos, text, textpos, textcol);
+        goto formattedText;
+    }
+#endif
     if (!token && tokenstacklevel == 1) {
         start = macrostart;
         cursor = macropos;
@@ -1479,6 +1582,9 @@ void CPrep_GetTokenContext(
         text[j] = 0;
         *textcol = CPrep_TokenSize(text + *textpos);
     }
+#if VERSION == VERSION_WII_1_0RC1
+formattedText:
+#endif
     if (offset > 16) {
         cursor = end - 16;
         *contextpos = 16;
@@ -2101,6 +2207,7 @@ static void pushtokenseq(Macro* macro) {
         }
         tokenstack[tokenstacklevel].macrocheck = macrocheck;
 #if VERSION == VERSION_WII_1_0RC1
+        tokenstack[tokenstacklevel].expansion = NULL;
         if (!tokenstacklevel) {
             tokenstack[0].sourceOffset = -1;
         }
@@ -3860,6 +3967,7 @@ static char* XpandMacro(Macro* macro) {
 #if VERSION == VERSION_WII_1_0RC1
     Boolean omittedVariadic = FALSE;
     Boolean* argumentSpace = NULL;
+    SInt32 argumentLine;
 #endif
     UInt16 nargs;
     SInt16 argumentIndex;
@@ -3889,14 +3997,15 @@ static char* XpandMacro(Macro* macro) {
             arguments = aalloc(length);
             expandedArguments = aalloc(length);
 #if VERSION == VERSION_WII_1_0RC1
-            if (preprocessing_only) {
-                argumentSpace = aalloc(parameterCount * sizeof(*argumentSpace));
-                memset(argumentSpace, 0, parameterCount * sizeof(*argumentSpace));
-            }
+            argumentSpace = aalloc(parameterCount * sizeof(*argumentSpace));
+            memset(argumentSpace, 0, parameterCount * sizeof(*argumentSpace));
 #endif
             argument = 1;
             for (; argument < argumentCount;) {
                 firstToken = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+                argumentLine = linenumber;
+#endif
                 depth = 0;
                 mlist.size = 0;
                 for (;;) {
@@ -3926,7 +4035,8 @@ static char* XpandMacro(Macro* macro) {
                             case '\'':
 #if VERSION == VERSION_WII_1_0RC1
                                 if (argumentSpace && firstToken) {
-                                    argumentSpace[argument - 1] = spaceskip;
+                                    argumentSpace[argument - 1] =
+                                        spaceskip && (preprocessing_only || linenumber != argumentLine);
                                     firstToken = FALSE;
                                 }
 #endif
@@ -3979,7 +4089,8 @@ static char* XpandMacro(Macro* macro) {
                         }
 #if VERSION == VERSION_WII_1_0RC1
                         if (argumentSpace && firstToken) {
-                            argumentSpace[argument - 1] = spaceskip;
+                            argumentSpace[argument - 1] =
+                                spaceskip && (preprocessing_only || linenumber != argumentLine);
                         }
 #endif
                         AppendGListByte(&mlist, token);
@@ -4144,6 +4255,9 @@ static void prepmacro(Macro* macro) {
     result = XpandMacro(macro);
     macrocheck = TRUE;
     pushtokenseq(NULL);
+#if VERSION == VERSION_WII_1_0RC1
+    tokenstack[tokenstacklevel - 1].expansion = macro;
+#endif
     macrostart = pos = macropos = result;
     dofreeaheap = TRUE;
     macrocheck = FALSE;

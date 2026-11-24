@@ -2176,6 +2176,51 @@ def check_attributes(compiler, objcopy, work):
     return results
 
 
+def check_macro_diagnostics(compiler, work):
+    cases = (
+        ("object", "#define FLAG __attribute__((never_inline))\nstruct A { void FLAG f(); };\n"),
+        ("function", "#define FLAG(x) __attribute__((x))\nstruct A { void FLAG(never_inline) f(); };\n"),
+        ("nested", "#define INNER(x) __attribute__((x))\n#define FLAG INNER(never_inline)\n"
+         "struct A { void FLAG f(); };\n"),
+        ("argument", "#define ARG never_inline\n#define FLAG(x) __attribute__((x))\n"
+         "struct A { void FLAG(ARG) f(); };\n"),
+        ("multiline", "#define FLAG(x) __attribute__((x))\n"
+         "struct A { void FLAG(\n never_inline\n ) f(); };\n"),
+        ("clipped", "#define FLAG __attribute__((never_inline))\nstruct A {" +
+         " " * 115 + "void FLAG f(); };\n"),
+        ("syntax", "#define FLAG (3+)\nint x = FLAG;\n"),
+    )
+    results = {}
+    inputs = []
+    for name, text in cases:
+        source = work / f"diagnostic_macro_{name}.cpp"
+        source.write_text(text, encoding="ascii", newline="\r\n")
+        inputs.append(source)
+
+    for depth in (2, 3, 5):
+        include_dir = work / f"diagnostic_macro_include_{depth}"
+        include_dir.mkdir(exist_ok=True)
+        source = include_dir / "main.cpp"
+        for level in range(depth + 1):
+            file = source if level == 0 else include_dir / f"header{level}.h"
+            text = f'\n\n#include "header{level + 1}.h"\n' if level < depth else cases[0][1]
+            file.write_text(text, encoding="ascii")
+        inputs.append(source)
+
+    for source in inputs:
+        name = source.relative_to(work).as_posix()
+        for style in ("parseable", "std"):
+            process = subprocess.run(
+                (compiler, *FLAGS, "-msgstyle", style, "-c", source.name,
+                 "-o", source.with_suffix(".o")),
+                cwd=source.parent, capture_output=True, text=True, timeout=30,
+            )
+            if process.returncode != 1:
+                raise ValueError(f"{compiler}: unexpected status for {name}\n{process.stdout}{process.stderr}")
+            results[f"macro diagnostic {name} {style}"] = (process.stdout, process.stderr)
+    return results
+
+
 def check_reference_cast_diagnostics(compiler, objcopy, work):
     source = work / "reference_cast.cpp"
     source.write_text(
@@ -5330,6 +5375,7 @@ void member_call(V* v) { Guard guard; v->g(); }
     results.update(check_anonymous_declarations(compiler, objcopy, work))
     results.update(check_member_pointer_comparisons(compiler, objcopy, work))
     results.update(check_attributes(compiler, objcopy, work))
+    results.update(check_macro_diagnostics(compiler, work))
     results.update(check_reference_cast_diagnostics(compiler, objcopy, work))
     results.update(check_return_diagnostics(compiler, work))
     results.update(check_preprocess_output(compiler, work))

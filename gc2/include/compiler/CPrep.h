@@ -88,6 +88,7 @@ struct TokenStack {
     Boolean macrocheck;
 #if VERSION == VERSION_WII_1_0RC1
     SInt32 sourceOffset;
+    Macro* expansion;
 #endif
 };
 struct CPrepFileInfo {
@@ -203,6 +204,9 @@ extern void CPrep_GetTokenContext(
     char* context,
     short* contextpos
 );
+#if VERSION == VERSION_WII_1_0RC1
+extern const char* CPrep_AppendIncludeTrace(CPrepFileInfo* file, const char* message, Boolean expand);
+#endif
 
 #ifdef __cplusplus
 }

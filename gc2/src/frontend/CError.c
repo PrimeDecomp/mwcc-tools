@@ -867,6 +867,9 @@ void CError_ErrorMessage(int errTable, char* str, Boolean isTerminal, Boolean is
                 str = numbered;
             }
         }
+        if (ref) {
+            str = (char*)CPrep_AppendIncludeTrace(tokenfile, str, token == NULL);
+        }
 #endif
         if (CWReportMessage(cparamblkptr->context, ref, str, buf, messagetype, errTable) !=
             cwNoErr) {
