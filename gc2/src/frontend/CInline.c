@@ -121,6 +121,7 @@ static CI_Export* cinline_exportlist;
 #if VERSION == VERSION_WII_1_0RC1
 static CI_Export* cinline_templateexports;
 static Boolean cinline_scanning_saved_body;
+static Boolean cinline_scanning_unreferenced_inline;
 #endif
 static CI_Action* cinline_actionlist;
 CI_Action* cinline_tactionlist;
@@ -151,6 +152,7 @@ void CInline_Init(void) {
 #if VERSION == VERSION_WII_1_0RC1
     cinline_templateexports = NULL;
     cinline_scanning_saved_body = FALSE;
+    cinline_scanning_unreferenced_inline = FALSE;
 #endif
     cinline_actionlist = NULL;
     cinline_tactionlist = NULL;
@@ -4574,15 +4576,17 @@ static void CInline_AddFRefList_Object(Object* object) {
     }
 
 #if VERSION == VERSION_WII_1_0RC1
-    if (CMid_InIPA() && (object->qual & Q_INLINE)) {
-        object->flags |= OBJECT_REFERENCED;
-        if (object->u.func.u.ifuncdata && !(object->flags & OBJECT_DEFINED)) {
-            CInline_ObjectAddrRef(object);
+    if (!cinline_scanning_unreferenced_inline) {
+        if (CMid_InIPA() && (object->qual & Q_INLINE)) {
+            object->flags |= OBJECT_REFERENCED;
+            if (object->u.func.u.ifuncdata && !(object->flags & OBJECT_DEFINED)) {
+                CInline_ObjectAddrRef(object);
+            }
         }
-    }
-    // Direct code generation registers these references when it emits the saved body.
-    if (!cinline_scanning_saved_body || CMid_InIPA()) {
-        CInline_ReferenceTemplateFunction(object);
+        // Direct code generation registers these references when it emits the saved body.
+        if (!cinline_scanning_saved_body || CMid_InIPA()) {
+            CInline_ReferenceTemplateFunction(object);
+        }
     }
 #endif
     for (list = cinline_freflist; list; list = list->next) {
@@ -5130,11 +5134,22 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) 
             && (!CMid_InIPA() || (!copts.force_active && !(object->flags & OBJECT_EXPORT)))
 #endif
         ) {
+#if VERSION == VERSION_WII_1_0RC1
+            Boolean saved = cinline_scanning_unreferenced_inline;
+
+            // Check inline dependencies before deciding whether to emit the body.
+            cinline_scanning_unreferenced_inline = TRUE;
+            cinline_freflist = NULL;
+            CInline_AddFRefList_Statement(stmt);
+            CInline_CheckDependencies(cinline_freflist);
+            cinline_scanning_unreferenced_inline = saved;
+#else
             if (cinline_gendeps) {
                 cinline_freflist = NULL;
                 CInline_AddFRefList_Statement(stmt);
                 CInline_CheckDependencies(cinline_freflist);
             }
+#endif
             return;
         }
     }

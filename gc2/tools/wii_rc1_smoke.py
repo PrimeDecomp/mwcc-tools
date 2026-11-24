@@ -1874,6 +1874,16 @@ def check_template_actions(compiler, objcopy, nm, work):
             "void (*callback)(void*) = target;\n"
             "void last(void* p) { delete[] p; }\n"
         ),
+        "template_action_unreferenced_inline.cpp": (
+            "void consume(const void*);\n"
+            "struct Output {\n"
+            "    template<class T> void put(const T& t) { consume(&t); }\n"
+            "};\n"
+            "inline void unused(Output& out, const unsigned long long& value) {\n"
+            "    out.put(value);\n"
+            "}\n"
+            "const int* local_static() { static const int data = 37; return &data; }\n"
+        ),
     }
     results = {}
     for name, contents in cases.items():
