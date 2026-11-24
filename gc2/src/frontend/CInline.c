@@ -1742,6 +1742,9 @@ static Boolean CInline_CanExpand(ENode* expr) {
     tfunc = TYPE_FUNC(object->type);
 
     if (IS_TYPE_FUNC(tfunc) &&
+#if VERSION == VERSION_WII_1_0RC1
+        !(tfunc->flags & FUNC_NEVER_INLINE) &&
+#endif
         ((object->qual & Q_INLINE) || (tfunc->flags & FUNC_AUTO_INLINE)) &&
         (object->datatype == DFUNC ||
          (object->datatype == DVFUNC && (expr->flags & ENODE_FLAG_NONVIRTUAL)))) {
@@ -2248,6 +2251,9 @@ static Boolean CInline_InlineFunctionCheck(ENode* call) {
     }
 
     if (IS_TYPE_FUNC(object->type) &&
+#if VERSION == VERSION_WII_1_0RC1
+        !(TYPE_FUNC(object->type)->flags & FUNC_NEVER_INLINE) &&
+#endif
         ((object->qual & Q_INLINE) || (TYPE_FUNC(object->type)->flags & FUNC_AUTO_INLINE)) &&
         (object->datatype == DFUNC ||
          (object->datatype == DVFUNC && (expr->flags & ENODE_FLAG_NONVIRTUAL)))) {
@@ -3587,7 +3593,11 @@ static Boolean CInline_Expand(Statement* stmt) {
     Boolean expanded = FALSE;
 
     ORACLE_PROBE(OracleProbe_Expand(expanding_function));
-    if (!copts.dontinline && copts.inlinelevel >= 0) {
+    if (!copts.dontinline && copts.inlinelevel >= 0
+#if VERSION == VERSION_WII_1_0RC1
+        && (!expanding_function || !(TYPE_FUNC(expanding_function->type)->flags & FUNC_NO_INLINING))
+#endif
+    ) {
         if (copts.inline_bottom_up) {
             inline_max_size = copts.inlinemaxsize;
             while (inline_max_size > 1 &&
@@ -5035,6 +5045,7 @@ static Boolean CInline_CheckInlineability(Object* object, Statement* stmt) {
 
     inlineForSize = copts.inlineforsize && copts.optimizesize;
     if ((!copts.auto_inline && !inlineForSize) || copts.dontinline ||
+        (TYPE_FUNC(object->type)->flags & FUNC_NEVER_INLINE) ||
         !CInline_CanInline(object, stmt->next) ||
         (!inlineForSize && !CInline_IsSmallFunction(object, stmt->next))) {
         return FALSE;

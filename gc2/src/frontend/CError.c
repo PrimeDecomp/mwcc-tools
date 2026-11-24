@@ -1241,14 +1241,31 @@ void CError_AbstractClassError(TypeClass* tclass) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean CError_PromoteWarning(int code) {
+    switch (code) {
+        case ERR_POSSIBLE_UNWANTED_ASSIGNMENT:
+        case ERR_POSSIBLE_UNWANTED_COMPARE:
+        case ERR_POSSIBLE_UNWANTED_SEMICOLON:
+            return copts.warn_possunwant_as_error;
+        default:
+            return FALSE;
+    }
+}
+#endif
+
 void CError_Warning(int code, ...) {
     va_list va;
-    if (trychain || copts.supress_warnings) {
+    Boolean isWarning = TRUE;
+#if VERSION == VERSION_WII_1_0RC1
+    isWarning = !CError_PromoteWarning(code);
+#endif
+    if (trychain || (isWarning && copts.supress_warnings)) {
         return;
     }
 
     va_start(va, code);
-    CError_VAErrorMessage(code, va, FALSE, TRUE);
+    CError_VAErrorMessage(code, va, FALSE, isWarning);
     va_end(va);
 }
 
@@ -1294,7 +1311,7 @@ void CError_ANSIErrorWarning(int code, const FileOffsetInfo* source, ...) {
 void CError_WarningAt(int code, const FileOffsetInfo* source, ...) {
     va_list args;
     va_start(args, source);
-    CError_SourceDiagnostic(code, source, args, TRUE);
+    CError_SourceDiagnostic(code, source, args, !CError_PromoteWarning(code));
     va_end(args);
 }
 #endif

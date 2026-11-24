@@ -238,6 +238,8 @@ CompilerOption compileroptions[] = {
 #if VERSION == VERSION_WII_1_0RC1
     "warn_missingreturn", OPT_OFFSET(warn_missingreturn),
     "warn_missingreturn_as_error", OPT_OFFSET(warn_missingreturn_as_error),
+    "warn_illpragma_as_error", OPT_OFFSET(warn_illpragma_as_error),
+    "warn_possunwant_as_error", OPT_OFFSET(warn_possunwant_as_error),
 #endif
     "align_array_members", OPT_OFFSET(alignarraymembers),
     "dont_reuse_strings", OPT_OFFSET(dont_reuse_strings),
@@ -4246,13 +4248,27 @@ static void pragma_on_off_reset(int bits) {
     int imex_flags;
     int offset = bits & OPT_OFFSET_MASK;
     Boolean allowList = (bits & OPT_FLAG_LIST) != 0;
+#if VERSION == VERSION_WII_1_0RC1
+    int warningOffset = -1;
+    switch (offset) {
+        case OPT_OFFSET(warn_missingreturn_as_error):
+            warningOffset = OPT_OFFSET(warn_missingreturn);
+            break;
+        case OPT_OFFSET(warn_illpragma_as_error):
+            warningOffset = OPT_OFFSET(warn_illpragma);
+            break;
+        case OPT_OFFSET(warn_possunwant_as_error):
+            warningOffset = OPT_OFFSET(warn_possunwant);
+            break;
+    }
+#endif
 
     if (notendofline() && plex() == TK_IDENTIFIER) {
         if (!strcmp(tkidentifier->name, "on") || !strcmp(tkidentifier->name, "off")) {
             Boolean enabled = !strcmp(tkidentifier->name, "on");
 #if VERSION == VERSION_WII_1_0RC1
-            if (offset == OPT_OFFSET(warn_missingreturn_as_error)) {
-                CPrep_PushOption(OPT_OFFSET(warn_missingreturn), enabled);
+            if (warningOffset >= 0) {
+                CPrep_PushOption(warningOffset, enabled);
             }
 #endif
             CPrep_PushOption(offset, enabled);
@@ -4260,8 +4276,8 @@ static void pragma_on_off_reset(int bits) {
         }
         if (!strcmp(tkidentifier->name, "reset")) {
 #if VERSION == VERSION_WII_1_0RC1
-            if (offset == OPT_OFFSET(warn_missingreturn_as_error)) {
-                CPrep_PopOption(OPT_OFFSET(warn_missingreturn));
+            if (warningOffset >= 0) {
+                CPrep_PopOption(warningOffset);
             }
 #endif
             CPrep_PopOption(offset);

@@ -314,6 +314,8 @@ struct CompilerLinkerOptions {
     Boolean numbered_diagnostics;
     Boolean warn_missingreturn;
     Boolean warn_missingreturn_as_error;
+    Boolean warn_illpragma_as_error;
+    Boolean warn_possunwant_as_error;
     Boolean pragma_prepdump;
     Boolean comment_prepdump;
     Boolean space_prepdump;

@@ -2120,6 +2120,62 @@ def check_member_pointer_comparisons(compiler, objcopy, work):
     return results
 
 
+def check_attributes(compiler, objcopy, work):
+    cases = (
+        ("callee", "int f(int x) __attribute__((never_inline)) { return x + 1; }\n"
+         "int g(int x) { return f(x); }\n", (), 0),
+        ("explicit", "inline int f(int x) __attribute__((__noinline__)) { return x + 1; }\n"
+         "int g(int x) { return f(x); }\n", (), 0),
+        ("caller", "inline int f(int x) { return x + 1; }\n"
+         "int g(int x) __attribute__((noinlining)) { return f(x); }\n", (), 0),
+        ("prototype", "int f(int x) __attribute__((never_inline));\n"
+         "int f(int x) { return x + 1; }\nint g(int x) { return f(x); }\n", (), 0),
+        ("member", "struct A { int f(int x) __attribute__((never_inline)) { return x + 1; } };\n"
+         "int g(A& a, int x) { return a.f(x); }\n", (), 0),
+        ("prefix", "__attribute__((never_inline)) int f();\n", (), 1),
+        ("weak", "__attribute__((weak)) int x = 1;\nint f() { return x; }\n", (), 0),
+        ("unknown", "int f() __attribute__((unknown(1, (x)), never_inline)) { return 1; }\n", (), 0),
+        ("middle", "unsigned __attribute__((unused)) long x = 1;\n", (), 0),
+        ("unbalanced", "int f() __attribute__((unknown((x\n", (), 1),
+        ("mode", "int x __attribute__((mode(QI))) = 5;\n", (), 0),
+        ("format", "int f(const char*, ...) __attribute__((format(printf, 1, 2)));\n", (), 0),
+        ("warn_unknown", "int f() __attribute__((unknown));\n",
+         ("-pragma", "warn_illpragma on"), 0),
+        ("error_unknown", "int f() __attribute__((unknown));\n",
+         ("-pragma", "warn_illpragma_as_error on"), 1),
+        ("reset_unknown", "int f() __attribute__((unknown));\n",
+         ("-pragma", "warn_illpragma_as_error on", "-pragma", "warn_illpragma_as_error reset"), 0),
+        ("warn_mode", "int x __attribute__((mode(QI))) = 5;\n",
+         ("-pragma", "warn_possunwant on"), 0),
+        ("error_format", "int f(const char*, ...) __attribute__((format(printf, 1, 2)));\n",
+         ("-pragma", "warn_possunwant_as_error on"), 1),
+        ("unknown_pragma", "#pragma not_an_rc1_option on\nint g() { return 3; }\n",
+         ("-pragma", "warn_illpragma_as_error on"), 0),
+        ("condition", "int g(int n) {\n if (n=1) return n;\n return 0;\n}\n",
+         ("-pragma", "warn_possunwant_as_error on"), 1),
+    )
+    results = {}
+    for name, contents, flags, status in cases:
+        source = work / f"attribute_{name}.cpp"
+        source.write_text(contents, encoding="ascii")
+        obj = source.with_suffix(".o")
+        normalized = source.with_suffix(".normalized")
+        obj.unlink(missing_ok=True)
+        process = subprocess.run(
+            (compiler, *FLAGS, "-O4,p", "-inline", "auto", "-msgstyle", "parseable", *flags,
+             "-c", source.name, "-o", obj),
+            cwd=work, capture_output=True, text=True, timeout=30,
+        )
+        if process.returncode != status:
+            raise ValueError(f"{compiler}: unexpected status for {name}\n{process.stdout}{process.stderr}")
+        contents = None
+        if status == 0:
+            run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
+            contents = normalized.read_bytes()
+        results[f"attribute {name}"] = (process.stdout, process.stderr, contents)
+    return results
+
+
 def check_reference_cast_diagnostics(compiler, objcopy, work):
     source = work / "reference_cast.cpp"
     source.write_text(
@@ -5273,6 +5329,7 @@ void member_call(V* v) { Guard guard; v->g(); }
     results.update(check_inline_and_aggregate_ids(compiler, objcopy, work))
     results.update(check_anonymous_declarations(compiler, objcopy, work))
     results.update(check_member_pointer_comparisons(compiler, objcopy, work))
+    results.update(check_attributes(compiler, objcopy, work))
     results.update(check_reference_cast_diagnostics(compiler, objcopy, work))
     results.update(check_return_diagnostics(compiler, work))
     results.update(check_preprocess_output(compiler, work))

@@ -2323,6 +2323,54 @@ static void CParser_ParseAttributeFunctionSummary(DeclInfo* declinfo) {
 #undef CError_LINE_SHIFT
 #define CError_LINE_SHIFT (-48 + CError_LINE_DELTA)
 #endif
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean CParser_AttributeMatches(const char* name, const char* attribute) {
+    if (name[0] == '_' && name[1] == '_') {
+        size_t length = strlen(attribute);
+        return !strncmp(name + 2, attribute, length) && !strcmp(name + length + 2, "__");
+    }
+    return !strcmp(name, attribute);
+}
+
+static void CParser_ApplyDeclAlignment(DeclInfo* declinfo, UInt32 quals) {
+    Type* type = declinfo->thetype;
+    UInt32* qual = &declinfo->qual;
+
+    while (type && IS_TYPE_ARRAY(type)) {
+        type = TYPE_POINTER(type)->target;
+    }
+    if (type && IS_TYPE_POINTER_ONLY(type)) {
+        qual = &TYPE_POINTER(type)->qual;
+    } else if (type && IS_TYPE_MEMBERPOINTER(type)) {
+        qual = &TYPE_MEMBER_POINTER(type)->qual;
+    }
+    *qual = (*qual & ~Q_ALIGNED_MASK) | quals;
+}
+
+static void CParser_UnsupportedAttribute(Boolean warn, Boolean asError) {
+    if (asError) {
+        CError_Error(ERR_ILLEGAL_UNSUPPORTED_ATTRIBUTE);
+    } else if (warn) {
+        CError_Warning(ERR_ILLEGAL_UNSUPPORTED_ATTRIBUTE);
+    }
+}
+
+static Boolean CParser_UnimplementedAttribute(const char* name) {
+    static const char* const names[] = {
+        "packed", "noreturn", "pure", "const", "deprecated", "unavailable",
+        "force_export", "override", "final",
+    };
+    size_t i;
+
+    for (i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        if (CParser_AttributeMatches(name, names[i])) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+#endif
+
 void CParser_ParseAttribute(Type* type, DeclInfo* declinfo) {
     CInt64 val64;
     SInt32 val;
@@ -2337,7 +2385,14 @@ void CParser_ParseAttribute(Type* type, DeclInfo* declinfo) {
             return;
         }
         do {
-            if ((tk = lex()) != TK_IDENTIFIER) {
+            tk = lex();
+#if VERSION == VERSION_WII_1_0RC1
+            if (tk == TK_CONST) {
+                tkidentifier = GetHashNameNode("const");
+                tk = TK_IDENTIFIER;
+            }
+#endif
+            if (tk != TK_IDENTIFIER) {
                 CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
                 return;
             }
@@ -2386,6 +2441,9 @@ void CParser_ParseAttribute(Type* type, DeclInfo* declinfo) {
                         CError_Error(ERR_NOT_STRUCT_UNION_CLASS);
                     }
                 } else if (declinfo) {
+#if VERSION == VERSION_WII_1_0RC1
+                    CParser_ApplyDeclAlignment(declinfo, CTTool_Alignment2Quals(val));
+#else
                     declinfo->qual &= ~Q_ALIGNED_MASK;
                     switch (val) {
                         case 1:
@@ -2434,6 +2492,7 @@ void CParser_ParseAttribute(Type* type, DeclInfo* declinfo) {
                             CError_FATAL(2828);
                             break;
                     }
+#endif
                 } else {
                     CError_Error(ERR_ILLEGAL_UNSUPPORTED_ATTRIBUTE);
                 }
@@ -2442,6 +2501,59 @@ void CParser_ParseAttribute(Type* type, DeclInfo* declinfo) {
                     CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
                     return;
                 }
+#if VERSION == VERSION_WII_1_0RC1
+            } else if (CParser_AttributeMatches(tkidentifier->name, "never_inline") ||
+                       CParser_AttributeMatches(tkidentifier->name, "noinline") ||
+                       CParser_AttributeMatches(tkidentifier->name, "noinlining")) {
+                if (declinfo && declinfo->thetype && IS_TYPE_FUNC(declinfo->thetype)) {
+                    UInt32 flag = CParser_AttributeMatches(tkidentifier->name, "noinlining")
+                        ? FUNC_NO_INLINING : FUNC_NEVER_INLINE;
+                    TYPE_FUNC(declinfo->thetype)->flags |= flag;
+                } else {
+                    CError_Error(ERR_ILLEGAL_UNSUPPORTED_ATTRIBUTE);
+                }
+            } else if (CParser_AttributeMatches(tkidentifier->name, "unused")) {
+                /* Declaration marker accepted by RC1. */
+            } else if (declinfo && CParser_AttributeMatches(tkidentifier->name, "weak")) {
+                declinfo->qual |= Q_WEAK;
+            } else if (CParser_AttributeMatches(tkidentifier->name, "dllimport") ||
+                       CParser_AttributeMatches(tkidentifier->name, "dllexport")) {
+                if (declinfo) {
+                    declinfo->exportflags |= CParser_AttributeMatches(tkidentifier->name, "dllimport")
+                        ? OBJECT_IMPORT : OBJECT_EXPORT;
+                } else {
+                    CError_Error(ERR_ILLEGAL_UNSUPPORTED_ATTRIBUTE);
+                }
+            } else if (!strcmp(tkidentifier->name, "mode") ||
+                       !strcmp(tkidentifier->name, "__mode__")) {
+                if ((tk = lex()) != '(') {
+                    CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
+                    return;
+                }
+                if ((tk = lex()) != TK_IDENTIFIER) {
+                    CError_Error(ERR_IDENTIFIER_EXPECTED);
+                    return;
+                }
+                CParser_UnsupportedAttribute(copts.warn_possunwant, copts.warn_possunwant_as_error);
+                if ((tk = lex()) != ')') {
+                    CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
+                    return;
+                }
+            } else if (!strcmp(tkidentifier->name, "format") ||
+                       !strcmp(tkidentifier->name, "__format__")) {
+                if ((tk = lex()) != '(') {
+                    CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
+                    return;
+                }
+                do {
+                    tk = lex();
+                    if (tk == TK_EOF) {
+                        CError_Error(ERR_RPAREN_EXPECTED);
+                        return;
+                    }
+                } while (tk != ')');
+                CParser_UnsupportedAttribute(copts.warn_possunwant, copts.warn_possunwant_as_error);
+#endif
             } else if (!strcmp(tkidentifier->name, "nothrow") ||
                        !strcmp(tkidentifier->name, "__nothrow__")) {
                 if (declinfo && declinfo->thetype && IS_TYPE_FUNC(declinfo->thetype)) {
@@ -2471,7 +2583,29 @@ void CParser_ParseAttribute(Type* type, DeclInfo* declinfo) {
             } else if (!strcmp("function_summary", tkidentifier->name)) {
                 CParser_ParseAttributeFunctionSummary(declinfo);
             } else {
+#if VERSION == VERSION_WII_1_0RC1
+                CParser_UnsupportedAttribute(
+                    copts.warn_illpragma,
+                    copts.warn_illpragma_as_error || CParser_UnimplementedAttribute(tkidentifier->name)
+                );
+                if (lookahead() == '(') {
+                    int depth = 1;
+                    lex();
+                    while (depth) {
+                        tk = lex();
+                        if (tk == '(') {
+                            depth++;
+                        } else if (tk == ')') {
+                            depth--;
+                        } else if (tk == TK_EOF) {
+                            CError_Error(ERR_RPAREN_EXPECTED);
+                            return;
+                        }
+                    }
+                }
+#else
                 CError_Error(ERR_ILLEGAL_UNSUPPORTED_ATTRIBUTE);
+#endif
             }
         } while ((tk = lex()) == ',');
 
@@ -2532,9 +2666,7 @@ void CParser_ParseDeclSpec(DeclInfo* declinfo, Boolean unused) {
     }
 #if VERSION == VERSION_WII_1_0RC1
     if (!strcmp("align", tkidentifier->name)) {
-        Type* type = declinfo->thetype;
         CInt64 alignment;
-        UInt32 quals;
 
         if ((tk = lex()) != '(') {
             CError_Error(ERR_LPAREN_EXPECTED);
@@ -2542,18 +2674,7 @@ void CParser_ParseDeclSpec(DeclInfo* declinfo, Boolean unused) {
         }
         tk = lex();
         alignment = CExpr_IntegralConstExpr();
-        quals = CTTool_Alignment2Quals(CInt64_GetULong(&alignment));
-        while (type && IS_TYPE_ARRAY(type)) {
-            type = TYPE_POINTER(type)->target;
-        }
-        if (type && IS_TYPE_POINTER_ONLY(type)) {
-            TYPE_POINTER(type)->qual = (TYPE_POINTER(type)->qual & ~Q_ALIGNED_MASK) | quals;
-        } else if (type && IS_TYPE_MEMBERPOINTER(type)) {
-            TYPE_MEMBER_POINTER(type)->qual =
-                (TYPE_MEMBER_POINTER(type)->qual & ~Q_ALIGNED_MASK) | quals;
-        } else {
-            declinfo->qual = (declinfo->qual & ~Q_ALIGNED_MASK) | quals;
-        }
+        CParser_ApplyDeclAlignment(declinfo, CTTool_Alignment2Quals(CInt64_GetULong(&alignment)));
         if (tk != ')') {
             CError_Error(ERR_RPAREN_EXPECTED);
         }
@@ -3098,6 +3219,11 @@ void CParser_GetDeclSpecs(DeclInfo* di, Boolean resolveMembers) {
 
 restart:
     switch (tk) {
+#if VERSION == VERSION_WII_1_0RC1
+        case TK_UU_ATTRIBUTE_UU:
+            CParser_ParseAttribute(NULL, di);
+            goto bailOut;
+#endif
         case TK_AUTO:
         case TK_REGISTER:
         case TK_STATIC:
