@@ -182,3 +182,66 @@ mwcc-tools corpus --version GC_2_7 --project path/to/echoes --keep out-dir
 `corpus` compares objects, diagnostics and exit codes, and fails if any input differs. `--limit` and `--list FILE`
 narrow the inputs, `--all-traces` turns on the optional streams, `--exe` checks another oracle executable, and
 `--trace-reference OTHER` compares its traces with OTHER's. `mwcc-tools --help` lists the rest.
+
+### Replay a pinned corpus
+
+`--write-manifest FILE` records the resolved jobs and exits. Repeat `--project` to combine build graphs.
+`--project-version LABEL` adds a graph label to the selection while keeping the stock compiler specified by
+`--version`. The manifest records the graph hash, project revision when Git metadata is available, selected
+edges and targets, working directories, flags, and the hashes of the stock compiler and its adjacent DLLs.
+It also fingerprints the source and include trees, including generated headers and PCH files in those trees.
+Use `--input PATH` for additional compiler inputs such as response files, sidecars, and include roots outside
+the recorded trees. Keep build outputs, the manifest, and the cache outside the input trees.
+
+The graph supplies translation-unit arguments. Replay launches the compiler directly on the source bytes on disk
+and records the graph's wrapper. Use the project build for transcoding, postprocessing, and dependency-file generation.
+Use the PCH and IPA smoke suites for dedicated PCH producer and program replay checks.
+By default replay uses each project's working directory. With `--relocate DIR`, it uses a writable launch
+directory and resolves source, include, and prefix paths against the original project. This changes the path
+spelling seen by both compilers. Keep that choice consistent when comparing results.
+
+```powershell
+$root = 'F:/programming/decomp'
+$work = 'build/rc1-corpus'
+New-Item -ItemType Directory -Force $work | Out-Null
+mwcc-tools corpus --oracle-root . --version Wii_1_0RC1 --project "$root/otherm" --project "$root/rhf" `
+  --project "$root/corruption" --project "$root/dtk-version-matching/target/echoes-next-object-check" `
+  --project "$root/dtk-version-matching/target/echoes-r3me01-pr" --project-version Wii/1.0 `
+  --relocate $work --write-manifest "$work/projects.json"
+mwcc-tools corpus --oracle-root . --manifest "$work/projects.json" --cache "$work/ref" --details `
+  --exe gc2/build/Wii_1_0RC1/clang/mwcceppc.exe --jobs 8 --json > "$work/native.json"
+mwcc-tools corpus --oracle-root . --manifest "$work/projects.json" --cache "$work/ref" --strict `
+  --wasm build/Wii_1_0RC1/wasm/mwcceppc.wasm --jobs 8 --json > "$work/wasm.json"
+mwcc-tools corpus --oracle-root . --manifest "$work/projects.json" --strict `
+  --against gc2/build/Wii_1_0RC1/clang/mwcceppc.exe `
+  --wasm build/Wii_1_0RC1/wasm/mwcceppc.wasm --jobs 8 --json > "$work/native-vs-wasm.json"
+```
+
+Replay validates the manifest before and after running. Recapture it after changing an input. Explicit
+compiler artifacts are copied for the duration of the run, along with adjacent DLLs or the Wasm `.version`
+file. The JSON report includes their hashes. Use `--stage` to copy them for an ad hoc run as well.
+
+Use `--preflight --list FILE` to run two uncached reference compiles for each representative job and
+check byte-for-byte reproducibility before evaluating the candidate. The cache reuses stock results for the
+same manifest, host environment, timeout, and compiler invocation. Timed-out invocations are run again.
+Use a run without `--cache` for clock-dependent inputs such as those that expand `__DATE__` or `__TIME__`.
+
+`--strict` compares exit codes, the bytes of the merged console, and the presence and full bytes of files
+written under the compiler output directory. Each pair uses the same output path. Compiler banners that
+include the executable path can differ in a stock comparison. `--against NATIVE --wasm MODULE` compares
+the native binary directly with the explicit module and uses the native path as the Wasm program name by default.
+The stock comparison without `--strict` retains its historical diagnostic and ELF filtering.
+
+### Find the first divergence
+
+`--details` reports overlapping difference categories and clusters of inputs with the same combination
+of categories. Generated `@nnnn` names are kept in the equality check and grouped when they account
+for the string-table difference. For ELF differences, the report points to the first changed byte,
+preferring the instruction section and identifying the containing stock function when symbols permit.
+
+Start with `--list FILE` for a representative case. With a tracing compiler on each side,
+`--trace-only PREFIX` (repeatable) limits the comparison to the selected records. For example,
+`--all-traces --trace-only st.codegen --trace-only st.block --trace-only st.i` focuses on code generation
+and optimizer records. `--iro-phases NAME` or `--iro-phases all` requests the oracles' optimizer dumps and
+reports the first differing line with its function and phase when available. The reference oracle must
+support the chosen probes. `--keep DIR` retains mismatch evidence for inspection.

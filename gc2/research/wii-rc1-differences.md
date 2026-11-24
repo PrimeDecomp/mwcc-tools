@@ -13,6 +13,25 @@ found functions (`order`) or by byte similarity (`fuzzy`), so the pairing of the
 A function whose size changed by only a few bytes is typically a compiler-wide change (a new register or an inlined helper), a function
 that doubled is a rewrite. Functions that moved between modules are counted in the RC1 module they have there.
 
+## Reduced Wii 1.0RC1 behavior
+
+Run `mwcc-tools corpus --oracle-root . --version Wii_1_0RC1 --canaries gc2/research/Wii_1_0RC1/repros`
+with `--exe gc2/build/Wii_1_0RC1/clang/mwcceppc.exe --details --keep DIR` from the repository root.
+The fixtures in this directory document open diffs.
+
+- [if-ranges.c](Wii_1_0RC1/repros/if-ranges.c) reproduces the guard in Rhythm Heaven
+  Fever's `FaderFlash.cpp`. With `opt_optimizecontrolflow` enabled, stock groups the
+  consecutive signed values into two signed bounds at `-O0` through `-O3`. At `-O4,p`
+  it uses a subtraction and one unsigned compare. Stock retains three comparisons
+  with the pragma disabled. The gap and volatile accesses control for different inputs
+  and repeated side effects. Inspect stock `IRO_OptimizeIfs` at `0x61cda0` and its CFG
+  visitor at `0x61d1c0`. The source's bounded interval pass already handles the negated
+  disjunction at `-O4,p`.
+- For translation units with only generated `@nnnn` string-table differences, compare
+  the allocation sequence around stock `CParser_GetUniqueID` at `0x457190` and
+  `CParser_PrintUniqueID` at `0x457110`. The Rhythm Heaven Fever MyChecker variants
+  share a nonuniform shift in their IDs.
+
 ## RC1 modules, by differing bytes
 
 | module | unit | identical | differs | RC1-only | differing bytes (RC1 / 3.0a5.2) | RC1-only bytes | order+fuzzy |

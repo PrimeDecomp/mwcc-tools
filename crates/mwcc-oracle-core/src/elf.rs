@@ -221,6 +221,13 @@ impl<'a> Elf<'a> {
 
 /// Same section filtering as corpus.py; NOBITS is compared by size, not offset.
 pub fn comparable_sections(data: &[u8]) -> Result<BTreeMap<String, SectionContents>> {
+    sections_for_comparison(data, false)
+}
+
+pub(crate) fn sections_for_comparison(
+    data: &[u8],
+    include_metadata: bool,
+) -> Result<BTreeMap<String, SectionContents>> {
     if !data.starts_with(b"\x7fELF") {
         return Ok(BTreeMap::from([(
             "<file>".into(),
@@ -230,9 +237,10 @@ pub fn comparable_sections(data: &[u8]) -> Result<BTreeMap<String, SectionConten
     let elf = Elf::parse(data)?;
     let mut result = BTreeMap::new();
     for section in elf.sections {
-        if [".debug", ".line", ".comment"]
-            .iter()
-            .any(|prefix| section.name.starts_with(prefix))
+        if !include_metadata
+            && [".debug", ".line", ".comment"]
+                .iter()
+                .any(|prefix| section.name.starts_with(prefix))
         {
             continue;
         }

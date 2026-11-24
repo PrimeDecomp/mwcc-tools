@@ -102,7 +102,7 @@ pub struct Compilation {
     pub object: Vec<u8>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Execution {
     pub exit_code: Option<i32>,
     pub timed_out: bool,

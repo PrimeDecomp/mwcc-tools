@@ -38,9 +38,22 @@ fn timeout(value: &str) -> Result<Duration> {
 
 fn corpus_command(args: &[String]) -> Result<()> {
     let mut root = None;
-    let mut version = Version::Gc132;
+    let mut version = None;
     let mut canaries = None;
-    let mut project = None;
+    let mut projects = vec![];
+    let mut project_versions = vec![];
+    let mut relocate = None;
+    let mut manifest_path = None;
+    let mut write_manifest = None;
+    let mut input_paths = vec![];
+    let mut cache = None;
+    let mut against = None;
+    let mut strict = false;
+    let mut details = false;
+    let mut preflight = false;
+    let mut stage = false;
+    let mut trace_only = vec![];
+    let mut iro_phases = None;
     let mut keep = None;
     let mut exe = None;
     let mut limit = None;
@@ -56,48 +69,86 @@ fn corpus_command(args: &[String]) -> Result<()> {
     let mut timeout = Duration::from_secs(600);
     let mut i = 0;
     while i < args.len() {
-        if args[i] == "--all-traces" {
-            all_traces = true;
-            i += 1;
-            continue;
-        }
-        if args[i] == "--json" {
-            json_output = true;
-            i += 1;
-            continue;
-        }
-        if args[i] == "--source-arenas" || args[i] == "--source-nodes" {
-            source_arenas = true;
-            source_nodes |= args[i] == "--source-nodes";
-            i += 1;
-            continue;
-        }
-        let option = args[i].as_str();
-        let value = option_value(args, &mut i)?;
-        match option {
-            "--oracle-root" => root = Some(PathBuf::from(value)),
-            "--version" => version = Version::parse(value)?,
-            "--canaries" => canaries = Some(PathBuf::from(value)),
-            "--prime" | "--project" => project = Some(PathBuf::from(value)),
-            "--keep" => keep = Some(PathBuf::from(value)),
-            "--exe" => exe = Some(PathBuf::from(value)),
-            "--trace-reference" => trace_reference = Some(PathBuf::from(value)),
-            "--ignore" => ignore.push(value.clone()),
-            "--wasm" => wasm = Some(PathBuf::from(value)),
-            "--limit" => limit = Some(value.parse::<usize>()?),
-            "--list" => list = Some(PathBuf::from(value)),
-            "--jobs" => jobs = value.parse()?,
-            "--timeout" => timeout = self::timeout(value)?,
-            _ => bail!("unknown corpus option {option}"),
+        match args[i].as_str() {
+            "--all-traces" => all_traces = true,
+            "--json" => json_output = true,
+            "--strict" => strict = true,
+            "--details" => details = true,
+            "--preflight" => preflight = true,
+            "--stage" => stage = true,
+            "--source-arenas" | "--source-nodes" => {
+                source_arenas = true;
+                source_nodes |= args[i] == "--source-nodes";
+            }
+            option => {
+                let value = option_value(args, &mut i)?;
+                match option {
+                    "--oracle-root" => root = Some(PathBuf::from(value)),
+                    "--version" => version = Some(Version::parse(value)?),
+                    "--canaries" => canaries = Some(PathBuf::from(value)),
+                    "--prime" | "--project" => projects.push(PathBuf::from(value)),
+                    "--project-version" => project_versions.push(value.clone()),
+                    "--relocate" => relocate = Some(std::path::absolute(value)?),
+                    "--manifest" => manifest_path = Some(PathBuf::from(value)),
+                    "--write-manifest" => write_manifest = Some(PathBuf::from(value)),
+                    "--input" => input_paths.push(PathBuf::from(value)),
+                    "--cache" => cache = Some(PathBuf::from(value)),
+                    "--against" => against = Some(PathBuf::from(value)),
+                    "--keep" => keep = Some(PathBuf::from(value)),
+                    "--exe" => exe = Some(PathBuf::from(value)),
+                    "--trace-reference" => trace_reference = Some(PathBuf::from(value)),
+                    "--trace-only" => trace_only.push(value.clone()),
+                    "--iro-phases" => iro_phases = Some(value.clone()),
+                    "--ignore" => ignore.push(value.clone()),
+                    "--wasm" => wasm = Some(PathBuf::from(value)),
+                    "--limit" => limit = Some(value.parse::<usize>()?),
+                    "--list" => list = Some(PathBuf::from(value)),
+                    "--jobs" => jobs = value.parse()?,
+                    "--timeout" => timeout = self::timeout(value)?,
+                    _ => bail!("unknown corpus option {option}"),
+                }
+            }
         }
         i += 1;
     }
-    let mut inputs = vec![];
+    anyhow::ensure!(
+        manifest_path.is_none()
+            || (canaries.is_none()
+                && projects.is_empty()
+                && project_versions.is_empty()
+                && relocate.is_none()
+                && write_manifest.is_none()),
+        "--manifest supplies the input jobs and cannot be combined with input discovery"
+    );
+    anyhow::ensure!(
+        input_paths.is_empty() || write_manifest.is_some(),
+        "--input needs --write-manifest"
+    );
+    let manifest = manifest_path
+        .as_deref()
+        .map(corpus::Manifest::read)
+        .transpose()?;
+    let version = version
+        .or(manifest.as_ref().map(|m| m.version))
+        .unwrap_or(Version::Gc132);
+    let root = root.map_or_else(run_cli::root, Ok)?;
+    let mut inputs = manifest.as_ref().map_or_else(Vec::new, |m| m.jobs.clone());
+    let mut provenance = vec![];
+    if let Some(path) = &relocate {
+        anyhow::ensure!(
+            path.is_dir(),
+            "relocation directory does not exist: {}",
+            path.display()
+        );
+    }
     if let Some(path) = canaries {
         inputs.extend(corpus::canary_jobs(&path)?);
     }
-    if let Some(path) = project {
-        inputs.extend(corpus::project_jobs(&path, version)?);
+    for path in projects {
+        let (jobs, project) =
+            corpus::project_jobs_for(&path, version, &project_versions, relocate.as_deref())?;
+        inputs.extend(jobs);
+        provenance.push(project);
     }
     if let Some(path) = list {
         let names = fs::read_to_string(path)?;
@@ -107,11 +158,53 @@ fn corpus_command(args: &[String]) -> Result<()> {
     if let Some(limit) = limit {
         inputs.truncate(limit);
     }
+    if let Some(path) = write_manifest {
+        corpus::Manifest::capture(&root, version, inputs, provenance, input_paths)?.write(&path)?;
+        println!("Wrote {}", path.display());
+        return Ok(());
+    }
+    let stage = stage || manifest.is_some();
+    let staged_candidate = if stage {
+        wasm.as_deref()
+            .or(exe.as_deref())
+            .map(corpus::stage)
+            .transpose()?
+    } else {
+        None
+    };
+    let staged_reference = if stage {
+        against.as_deref().map(corpus::stage).transpose()?
+    } else {
+        None
+    };
+    let staged_trace = if stage {
+        trace_reference.as_deref().map(corpus::stage).transpose()?
+    } else {
+        None
+    };
+    let against = staged_reference
+        .as_ref()
+        .map(|artifact| artifact.path.clone())
+        .or(against);
+    let exe = if wasm.is_some() {
+        exe.or_else(|| against.clone())
+    } else {
+        staged_candidate
+            .as_ref()
+            .map(|artifact| artifact.path.clone())
+            .or(exe)
+    };
+    let wasm = wasm.as_ref().and_then(|path| {
+        staged_candidate
+            .as_ref()
+            .map(|artifact| &artifact.path)
+            .or(Some(path))
+    });
     let in_process = wasm
-        .map(|module| wasm_compiler(version, &module))
+        .map(|module| wasm_compiler(version, module))
         .transpose()?;
     let report = corpus::run(&corpus::Request {
-        root: root.map_or_else(run_cli::root, Ok)?,
+        root,
         version,
         executable: exe,
         jobs: inputs,
@@ -121,19 +214,52 @@ fn corpus_command(args: &[String]) -> Result<()> {
         all_traces,
         source_arenas,
         source_nodes,
-        trace_reference,
+        trace_reference: staged_trace
+            .as_ref()
+            .map(|artifact| artifact.path.clone())
+            .or(trace_reference),
         ignore,
         in_process,
+        against,
+        manifest,
+        cache,
+        strict,
+        details,
+        preflight,
+        trace_only,
+        iro_phases,
     })?;
     if json_output {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        let mut json = serde_json::to_value(&report)?;
+        for (key, artifact) in [
+            ("candidate_artifacts", &staged_candidate),
+            ("reference_artifacts", &staged_reference),
+            ("trace_reference_artifacts", &staged_trace),
+        ] {
+            if let Some(artifact) = artifact {
+                json[key] = serde_json::to_value(&artifact.hashes)?;
+            }
+        }
+        println!("{}", serde_json::to_string_pretty(&json)?);
     } else {
         for outcome in &report.outcomes {
             if !outcome.problems.is_empty() {
                 println!("DIFF {}: {}", outcome.name, outcome.problems.join("; "));
+                if let Some(location) = &outcome.first_object_difference {
+                    println!("     first object difference: {location}");
+                }
             }
         }
         println!("{}/{} identical", report.identical, report.total);
+        if let Some(hits) = report.cached_reference {
+            println!("{hits}/{} stock results reused", report.total);
+        }
+        if let Some(checked) = report.preflight_checked {
+            println!("{checked} reference invocations reproduced byte for byte");
+        }
+        for (category, count) in &report.categories {
+            println!("{count:>6} {category}");
+        }
     }
     anyhow::ensure!(
         report.identical == report.total,
@@ -161,9 +287,13 @@ fn help() {
       a project's build.ninja (configured without --wrapper) built in place of ninja: the compilers and linkers
       with built modules run in process, any other command as a process (docs/wasm.md)
       (mw-ninja ARGS, installed beside this executable, is `mwcc-tools run ninja ARGS`)
-  corpus --canaries DIR | --project DIR [--oracle-root ROOT] [--version V] [--jobs N] [--all-traces]
-         [--source-arenas | --source-nodes] [--exe ORACLE] [--trace-reference OTHER_ORACLE [--ignore PREFIX]...] [--wasm MODULE]
+  corpus --canaries DIR | --project DIR... | --manifest FILE [--oracle-root ROOT] [--version V] [--jobs N]
+         [--write-manifest FILE [--input PATH]...] [--project-version LABEL]... [--relocate DIR] [--cache DIR]
+         [--exe COMPILER | --wasm MODULE] [--against NATIVE] [--stage] [--preflight] [--strict] [--details]
+         [--all-traces | --source-arenas | --source-nodes]
+         [--trace-reference OTHER_ORACLE [--ignore PREFIX]... [--trace-only PREFIX]... [--iro-phases PHASES]]
       --wasm runs MODULE (build/VERSION/wasm/*.wasm) in process in the oracle's place
+      --strict compares raw diagnostics, primary file bytes and side outputs
       --source-arenas, --source-nodes trace those streams too, and compare them with the reference's
   object compare ORACLE.o ORIGINAL.o
   pe inspect|read|find FILE [options]
