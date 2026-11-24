@@ -301,8 +301,14 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
                     IRO_DumpAfterPhase("IRO_SimplifyBoundedIntervalConditionals", FALSE);
                 }
             }
-            if (copts.removeemptyloops && IRO_RemoveAllEmptyLoops()) {
+            if (pass == 0 && copts.loopinvariants) {
+                IRO_PullOutInvariantAssignments();
+            }
+            while (copts.removeemptyloops && IRO_RemoveAllEmptyLoops(pass == 0)) {
                 IRO_DumpAfterPhase("IRO_RemoveAllEmptyLoops", FALSE);
+                if (pass != 0 || !copts.loopinvariants || !IRO_PullOutInvariantAssignments()) {
+                    break;
+                }
             }
 #else
             IRO_SimplifyConditionals();
@@ -401,7 +407,7 @@ Statement* IRO_Optimizer(Object* func, Statement* statements) {
                 changed |= IRO_EvaluateConditionals();
                 IRO_DumpAfterPhase("IRO_EvaluateConditionals", FALSE);
 #if VERSION == VERSION_WII_1_0RC1
-                if (!changed && copts.removeemptyloops && IRO_RemoveAllEmptyLoops()) {
+                if (!changed && copts.removeemptyloops && IRO_RemoveAllEmptyLoops(FALSE)) {
                     IRO_DumpAfterPhase("IRO_RemoveAllEmptyLoops", FALSE);
                     changed = TRUE;
                 }

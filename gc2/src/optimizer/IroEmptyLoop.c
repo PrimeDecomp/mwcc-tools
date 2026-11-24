@@ -1,5 +1,6 @@
 #include "compiler/IroEmptyLoop.h"
 #include "compiler/IroDump.h"
+#include "compiler/IroCSE.h"
 #include "compiler/IroEval.h"
 #include "compiler/IroFlowgraph.h"
 #include "compiler/IroJump.h"
@@ -363,7 +364,131 @@ static Boolean RemoveEmptyCountedLoop(IRONode* test, const EmptyLoopTest* info) 
     return TRUE;
 }
 
-Boolean IRO_RemoveAllEmptyLoops(void) {
+
+static Boolean InductionIsLiveAfterLoop(IRONode* exit, VarRecord* var) {
+    IRONodes work;
+    BitVector* visited;
+    IRO_FNodeWorkStack_Init(&work);
+    Bv_AllocVector(&visited, IRO_NumNodes + 1);
+    IRO_FNodeWorkStack_Add(&work, exit->index);
+    Bv_SetBit(exit->index, visited);
+
+    while (IRO_FNodeWorkStack_Count(&work)) {
+        IRONode* block = IRO_NodeTable[IRO_FNodeWorkStack_Remove(&work)];
+        IROLinear* scan;
+        Boolean overwritten = FALSE;
+        UInt16 i;
+
+        for (scan = block->first; scan; scan = scan->next) {
+            if (IRO_IsVariable(scan) == var->object &&
+                (!(scan->flags & IROLF_Assigned) || (scan->flags & IROLF_Used))) {
+                return TRUE;
+            }
+            if (IRO_IsAssignment(scan) && IRO_FindAssigned(scan) == var) {
+                overwritten = TRUE;
+                break;
+            }
+            if (scan == block->last) {
+                break;
+            }
+        }
+        if (!overwritten) {
+            for (i = 0; i < block->numsucc; ++i) {
+                UInt16 successor = block->succ[i];
+                if (!Bv_IsBitSet(successor, visited)) {
+                    Bv_SetBit(successor, visited);
+                    IRO_FNodeWorkStack_Add(&work, successor);
+                }
+            }
+        }
+    }
+    return FALSE;
+}
+
+
+
+static Boolean FirstInductionUpdateIsRepresentable(
+    IRONode* preheader, VarRecord* var, CInt64 step
+) {
+    IROLinear* write = IRO_FindInitialLoopAssignment(preheader, var);
+    Type* type = var->object->type;
+    CInt64 value;
+
+    if (!write || !ReadInductionValue(write, var, &value, FALSE)) {
+        return FALSE;
+    }
+    value = CInt64_Add(value, step);
+    return CInt64_GreaterEqual(value, IRO_MinValueOfIntegerType(type)) &&
+        CInt64_LessEqual(value, IRO_MaxValueOfIntegerType(type));
+}
+
+static Boolean RemoveEmptyDynamicLoop(IRONode* test, IRONode* preheader) {
+    IROLinear* cond = test->last->u.label.cond;
+    IROLinear* variable;
+    IROLinear* bound;
+    IROLinear* update;
+    Object* object;
+    VarRecord* var;
+    Type* type;
+    Boolean increasing;
+    Boolean testedFirst;
+    CInt64 step;
+    int side;
+
+    if (cond->type != IROLinearOp2Arg ||
+        (cond->nodetype != ELESS && cond->nodetype != EGREATER &&
+         cond->nodetype != ELESSEQU && cond->nodetype != EGREATEREQU) ||
+        IRO_HasSideEffect(cond) || IRO_ExprHasFloatingPointEffects(cond) ||
+        IRO_IsIntConstant(cond->u.diadic.left) || IRO_IsIntConstant(cond->u.diadic.right)) {
+        return FALSE;
+    }
+
+    for (side = 0; side < 2; ++side) {
+        variable = side ? cond->u.diadic.right : cond->u.diadic.left;
+        bound = side ? cond->u.diadic.left : cond->u.diadic.right;
+        object = IRO_IsVariable(variable);
+        if (!object || object->datatype != DLOCAL || !(var = IRO_FindVar(object, FALSE, TRUE)) ||
+            var->noregister || !(type = object->type) || !IS_TYPE_INT(type) || type->size > 4 ||
+            !IRO_TypesEqual(variable->rtype, type) || !IRO_TypesEqual(bound->rtype, type)) {
+            continue;
+        }
+
+        increasing = cond->nodetype == ELESS || cond->nodetype == EGREATEREQU;
+        if (side) {
+            increasing = !increasing;
+        }
+
+        // Only a strict comparison guarantees that a unit step cannot step past the type's limit.
+        if ((test->last->type == IROLinearIf) !=
+            (cond->nodetype == ELESS || cond->nodetype == EGREATER)) {
+            continue;
+        }
+        update = FindEmptyLoopUpdate(test, var);
+        if (!update || !ReadInductionStep(update, var, &step) ||
+            !CInt64_Equal(step, increasing ? cint64_one : CInt64_Neg(cint64_one))) {
+            continue;
+        }
+
+        testedFirst = TRUE;
+        for (IROLinear* nd = test->first; nd && nd != test->last; nd = nd->next) {
+            if (nd == update) {
+                testedFirst = FALSE;
+                break;
+            }
+        }
+        if ((!testedFirst && !FirstInductionUpdateIsRepresentable(preheader, var, step)) ||
+            InductionIsLiveAfterLoop(test->nextnode, var)) {
+            continue;
+        }
+        IRO_FindDepends(bound);
+        if (!Bv_IsBitSet(var->index, IRO_Depends)) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+Boolean IRO_RemoveAllEmptyLoops(Boolean removeDynamic) {
     BitVector* savedKills = IRO_VarKills;
     Boolean changed = FALSE;
     IRONode* header;
@@ -397,8 +522,9 @@ Boolean IRO_RemoveAllEmptyLoops(void) {
                                     (header->pred[0] == node->index || header->pred[1] == node->index))) &&
                 !Bv_IsBitSet(node->nextnode->index, InLoop) && node->last &&
                 (node->last->type == IROLinearIf || node->last->type == IROLinearIfNot) &&
-                AnalyzeLoopTest(header, node, preheader, &info) &&
-                (!EvaluateLoopTest(&info) || RemoveEmptyCountedLoop(node, &info))) {
+                ((AnalyzeLoopTest(header, node, preheader, &info) &&
+                  (!EvaluateLoopTest(&info) || RemoveEmptyCountedLoop(node, &info))) ||
+                 (removeDynamic && RemoveEmptyDynamicLoop(node, preheader)))) {
                 IROLinear* cond = node->last->u.label.cond;
                 node->last->type = IROLinearNop;
                 cond->flags &= ~IROLF_Reffed;

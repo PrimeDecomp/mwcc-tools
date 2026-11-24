@@ -78,6 +78,14 @@ extern void FindAssignmenttoInductionVar(IROLoop* loop, IRONode* fnode);
 extern IROLoop* ExtractLoopInfo(IRONode* fnode);
 extern CLabel* BuildLabel(IROList* list);
 
+#if VERSION == VERSION_WII_1_0RC1
+extern IROLinear* IRO_FindInitialLoopAssignment(IRONode* preheader, VarRecord* var);
+extern IRONode* IRO_CopyLoopTestToLoopPreheaderAndBranchToSuccNode(
+    IRONode* header, IRONode* preheader, IROLinear** exitTest
+);
+extern Boolean IRO_PullOutInvariantAssignments(void);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

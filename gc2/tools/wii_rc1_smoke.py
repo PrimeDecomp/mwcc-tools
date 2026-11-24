@@ -3979,6 +3979,51 @@ int later(void) {
         )
         results[f"{source.name} {' '.join(options)}"] = obj.read_bytes()
 
+    source = work / "loop_invariant_assignments.c"
+    source.write_text(
+        """\
+void before_test(int n, int value, int *destination) {
+    int i;
+    for (i = 0; i < n; ++i) {
+        *destination = value;
+    }
+}
+
+void after_test(int n, int value, int *destination) {
+    int i = 0;
+    do {
+        *destination = value;
+        ++i;
+    } while (i < n);
+}
+
+void volatile_store(int n, int value, volatile int *destination) {
+    int i;
+    for (i = 0; i < n; ++i) {
+        *destination = value;
+    }
+}
+
+int live_induction(int n) {
+    int i;
+    for (i = 0; i < n; ++i) {
+    }
+    return i;
+}
+
+int later(void) {
+    static int marker;
+    return ++marker;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O4,p", "-O4,s"):
+        run(compiler, *FLAGS, "-inline", "auto", opt, "-func_align", "4",
+            "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     for name, modes, contents in (
         (
             "block_static_order.c",

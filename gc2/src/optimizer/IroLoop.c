@@ -2893,3 +2893,359 @@ static UInt32 IsAssignmentReductionCandidate(IROLinear* nd) {
 }
 
 #pragma pack(2)
+
+#if VERSION == VERSION_WII_1_0RC1
+typedef struct InvariantAssignment {
+    IROLinear* assignment;
+    IRONode* block;
+    BitVector* kills;
+    struct InvariantAssignment* next;
+} InvariantAssignment;
+
+static Boolean CanMoveInvariantAssignment(IROLinear* nd) {
+    IROLinear* dest;
+    IROLinear* value;
+
+    if (nd->type != IROLinearOp2Arg || !IRO_IsAssignment(nd) || IRO_IsModifyOp[nd->nodetype] ||
+        (nd->flags & IROLF_Reffed) || !nd->rtype ||
+        CParser_IsVolatile(nd->rtype, nd->nodeflags & ENODE_FLAG_QUALS)) {
+        return FALSE;
+    }
+    dest = nd->u.diadic.left;
+    value = nd->u.diadic.right;
+    return IS_LINEAR_MONADIC(dest, EINDIRECT) &&
+        (dest->u.monadic->flags & IROLF_LoopInvariant) && (value->flags & IROLF_LoopInvariant) &&
+        !IRO_HasSideEffect(dest) && !IRO_HasSideEffect(value) &&
+        !IRO_ExprHasFloatingPointEffects(nd);
+}
+
+static Boolean LoopAssignmentMayConflict(
+    const InvariantAssignment* candidate, const InvariantAssignment* other
+) {
+    IRONode* node;
+    IROLinear* nd;
+    IROLinear* expr;
+
+    for (; other; other = other->next) {
+        if (other->block != candidate->block &&
+            (other->assignment->flags & IROLF_InvariantAssignment) &&
+            Bv_BitsInCommon(other->kills, candidate->kills)) {
+            return TRUE;
+        }
+    }
+    for (node = IRO_FirstNode; node; node = node->nextnode) {
+        if (!Bv_IsBitSet(node->index, InLoop)) {
+            continue;
+        }
+        for (nd = node->first; nd; nd = nd->next) {
+            expr = NULL;
+            if (!(nd->flags & (IROLF_Reffed | IROLF_InvariantAssignment))) {
+                switch (nd->type) {
+                    case IROLinearIf:
+                    case IROLinearIfNot:
+                        expr = nd->u.label.cond;
+                        break;
+                    case IROLinearReturn:
+                        expr = nd->u.monadic;
+                        break;
+                    case IROLinearSwitch:
+                        expr = nd->u.swtch.cond;
+                        break;
+                    case IROLinearOperand:
+                    case IROLinearOp1Arg:
+                    case IROLinearOp2Arg:
+                    case IROLinearOp3Arg:
+                    case IROLinearFunccall:
+                        expr = nd;
+                        break;
+                    case IROLinearBeginCatch:
+                    case IROLinearEndCatch:
+                    case IROLinearEndCatchDtor:
+                    case IROLinearAsm:
+                        return TRUE;
+                    default:
+                        break;
+                }
+            }
+            if (expr) {
+                IRO_FindDepends_NoAlloc(expr);
+                if (Bv_BitsInCommon(IRO_Depends, candidate->kills)) {
+                    return TRUE;
+                }
+                Bv_Clear(IRO_VarKills);
+                IRO_GetKills(expr);
+                if (Bv_BitsInCommon(IRO_VarKills, candidate->kills)) {
+                    return TRUE;
+                }
+            }
+            if (nd == node->last) {
+                break;
+            }
+        }
+    }
+    return FALSE;
+}
+
+IROLinear* IRO_FindInitialLoopAssignment(IRONode* block, VarRecord* var) {
+    for (;;) {
+        IROLinear* scan;
+        IROLinear* write = NULL;
+        for (scan = block->first; scan; scan = scan->next) {
+            Bv_Clear(IRO_VarKills);
+            IRO_GetKills(scan);
+            if (Bv_IsBitSet(var->index, IRO_VarKills)) {
+                write = scan;
+            }
+            if (scan == block->last) {
+                break;
+            }
+        }
+        if (write) {
+            return write;
+        }
+        if (block->numpred != 1 || block->pred[0] == block->index ||
+            Bv_IsBitSet(block->pred[0], InLoop) ||
+            !Bv_IsBitSet(block->pred[0], block->dom)) {
+            return NULL;
+        }
+        block = IRO_NodeTable[block->pred[0]];
+    }
+}
+
+static Boolean LoopTestAllowsFirstIteration(IRONode* header, IRONode* preheader) {
+    IROLinear* cond = header->last->u.label.cond;
+    IROLinear* variable;
+    IROLinear* bound;
+    Object* object;
+    VarRecord* var;
+    IROLinear* initial;
+    CInt64 value;
+    CInt64 limit;
+    int order;
+    Boolean enters;
+
+    if (cond->type != IROLinearOp2Arg ||
+        (cond->nodetype < ELESS || cond->nodetype > ENOTEQU)) {
+        return FALSE;
+    }
+    variable = cond->u.diadic.left;
+    bound = cond->u.diadic.right;
+    if (!IRO_IsIntConstant(bound) || !(object = IRO_IsVariable(variable)) ||
+        !(var = IRO_FindVar(object, FALSE, TRUE)) ||
+        !IS_TYPE_INT(variable->rtype) || !IRO_TypesEqual(variable->rtype, object->type)) {
+        return FALSE;
+    }
+    initial = IRO_FindInitialLoopAssignment(preheader, var);
+    if (!initial || !IS_LINEAR_DIADIC(initial, EASS) || IRO_FindAssigned(initial) != var ||
+        !IRO_IsIntConstant(initial->u.diadic.right)) {
+        return FALSE;
+    }
+    initial = initial->u.diadic.right;
+
+    value = initial->u.node->data.intval;
+    limit = bound->u.node->data.intval;
+    IRO_TruncateValueToType(&value, variable->rtype);
+    IRO_TruncateValueToType(&limit, variable->rtype);
+    if (CInt64_Equal(value, limit)) {
+        order = 0;
+    } else if (is_unsigned(variable->rtype) ? CInt64_LessU(value, limit) : CInt64_Less(value, limit)) {
+        order = -1;
+    } else {
+        order = 1;
+    }
+    switch (cond->nodetype) {
+        case ELESS: enters = order < 0; break;
+        case EGREATER: enters = order > 0; break;
+        case ELESSEQU: enters = order <= 0; break;
+        case EGREATEREQU: enters = order >= 0; break;
+        case EEQU: enters = order == 0; break;
+        case ENOTEQU: enters = order != 0; break;
+        default: return FALSE;
+    }
+    return enters == (header->last->type == IROLinearIf);
+}
+
+static Boolean CanCopyLoopTest(IRONode* header) {
+    IROLinear* nd;
+    IROLinear* condition = header->last->u.label.cond;
+
+    for (nd = header->first; nd != header->last; nd = nd->next) {
+        if (nd->type == IROLinearNop || nd->type == IROLinearLabel) {
+            continue;
+        }
+        if (nd == condition || !(nd->flags & IROLF_Reffed)) {
+            if (IRO_HasSideEffect(nd) || IRO_ExprHasFloatingPointEffects(nd)) {
+                return FALSE;
+            }
+        }
+    }
+    return TRUE;
+}
+
+static Boolean MoveInvariantAssignments(IRONode* header) {
+    InvariantAssignment* head = NULL;
+    InvariantAssignment** tail = &head;
+    InvariantAssignment* item;
+    IRONode* node;
+    IROLinear* nd;
+    IRONode* preheader = NULL;
+    IRONode* fallthrough = NULL;
+    UInt16 outside = 0;
+    UInt16 i;
+    Boolean guarded = FALSE;
+    Boolean changed;
+    IROList list;
+
+    for (i = 0; i < header->numpred; ++i) {
+        node = IRO_NodeTable[header->pred[i]];
+        if (!Bv_IsBitSet(node->index, InLoop)) {
+            preheader = node;
+            ++outside;
+            if (preheader->nextnode == header) {
+                fallthrough = preheader;
+            }
+        }
+    }
+    if (!outside) {
+        return FALSE;
+    }
+
+    LoopNode = header;
+    FindMustReach();
+    Bv_AllocVector(&InLoop_Exits, IRO_NumNodes + 1);
+    Bv_AllocVector(&InLoop_Tails, IRO_NumNodes + 1);
+    LoopExitNumber = LoopTailNum = 0;
+    LoopExitSuccessor = LoopTail = NULL;
+    IRO_FindLoopTailsAndExits(header);
+    FindMustReach1(header);
+
+    for (node = IRO_FirstNode; node; node = node->nextnode) {
+        if (!Bv_IsBitSet(node->index, InLoop)) {
+            continue;
+        }
+        for (nd = node->first; nd; nd = nd->next) {
+            nd->flags &= ~IROLF_LoopInvariant;
+            if (nd == node->last) {
+                break;
+            }
+        }
+    }
+    ComputeLoopKills();
+    ComputeLoopInvariance();
+    // The dependence vector and the per-instruction kill set must be independent here.
+    Bv_AllocVector(&IRO_Depends, IRO_NumVars + 1);
+
+    for (node = IRO_FirstNode; node; node = node->nextnode) {
+        if (!Bv_IsBitSet(node->index, InLoop) || (!node->mustreach && !node->mustreach1)) {
+            continue;
+        }
+        for (nd = node->first; nd; nd = nd->next) {
+            if (CanMoveInvariantAssignment(nd)) {
+                item = oalloc(sizeof(InvariantAssignment));
+                item->assignment = nd;
+                item->block = node;
+                Bv_AllocVector(&item->kills, IRO_NumVars + 1);
+                Bv_Clear(IRO_VarKills);
+                IRO_GetKills(nd);
+                Bv_Or(IRO_VarKills, item->kills);
+                item->next = NULL;
+                nd->flags |= IROLF_InvariantAssignment;
+                *tail = item;
+                tail = &item->next;
+            }
+            if (nd == node->last) {
+                break;
+            }
+        }
+    }
+
+    do {
+        changed = FALSE;
+        for (item = head; item; item = item->next) {
+            nd = item->assignment;
+            if ((nd->flags & IROLF_InvariantAssignment) && LoopAssignmentMayConflict(item, head)) {
+                nd->flags &= ~IROLF_InvariantAssignment;
+                changed = TRUE;
+            }
+        }
+    } while (changed);
+
+    for (item = head; item; item = item->next) {
+        if (item->assignment->flags & IROLF_InvariantAssignment) {
+            changed = TRUE;
+            guarded |= !item->block->mustreach;
+        }
+    }
+    if (!changed) {
+        return FALSE;
+    }
+
+    if (guarded &&
+        (outside != 1 || !preheader->last || preheader->last->type != IROLinearGoto ||
+         LoopExitNumber != 1 || LoopExitSuccessor != header->nextnode ||
+         (header->last->type != IROLinearIf && header->last->type != IROLinearIfNot) ||
+         !CanCopyLoopTest(header))) {
+        for (item = head; item; item = item->next) {
+            item->assignment->flags &= ~IROLF_InvariantAssignment;
+        }
+        return FALSE;
+    }
+
+    if (outside != 1 || !preheader->last || preheader->last->type != IROLinearGoto) {
+        preheader = CreatePreHeader(header, fallthrough);
+    }
+    if (guarded && !LoopTestAllowsFirstIteration(header, preheader)) {
+        IROLinear* guard;
+        preheader = IRO_CopyLoopTestToLoopPreheaderAndBranchToSuccNode(header, preheader, &guard);
+        IRO_NodeTable = oalloc(sizeof(IRONode*) * IRO_NumNodes);
+        memset(IRO_NodeTable, 0, sizeof(IRONode*) * IRO_NumNodes);
+        for (node = IRO_FirstNode; node; node = node->nextnode) {
+            IRO_NodeTable[node->index] = node;
+        }
+        IRO_ComputeSuccPred();
+        IRO_ComputeDom();
+    }
+    for (item = head; item; item = item->next) {
+        nd = item->assignment;
+        if (nd->flags & IROLF_InvariantAssignment) {
+            nd->flags &= ~IROLF_InvariantAssignment;
+            IRO_InitList(&list);
+            IRO_DuplicateExpr(nd, &list);
+            IRO_NopOut(nd);
+            IRO_Paste(list.head, list.tail, preheader->last);
+        }
+    }
+    IRO_UpdateFlagsOnInts();
+    return TRUE;
+}
+
+Boolean IRO_PullOutInvariantAssignments(void) {
+    IRONode* header;
+    UInt16 i;
+    Boolean changed = FALSE;
+
+    for (header = IRO_FirstNode; header; header = header->nextnode) {
+        Boolean found = FALSE;
+        for (i = 0; i < header->numpred; ++i) {
+            IRONode* pred = IRO_NodeTable[header->pred[i]];
+            if (!Bv_IsBitSet(header->index, pred->dom)) {
+                continue;
+            }
+            if (!found) {
+                Bv_AllocVector(&InLoop, IRO_NumNodes + 1);
+                Bv_SetBit(header->index, InLoop);
+                found = TRUE;
+            }
+            if (pred != header && !Bv_IsBitSet(pred->index, InLoop)) {
+                Bv_SetBit(pred->index, InLoop);
+                AddPreds(pred);
+            }
+        }
+        if (found) {
+            changed |= MoveInvariantAssignments(header);
+        }
+    }
+    IRO_CheckForUserBreak();
+    return changed;
+}
+#endif

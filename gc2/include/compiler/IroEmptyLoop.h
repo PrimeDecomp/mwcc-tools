@@ -9,7 +9,7 @@ extern "C" {
 
 extern void IRO_FindEmptyLoops(void);
 #if VERSION == VERSION_WII_1_0RC1
-extern Boolean IRO_RemoveAllEmptyLoops(void);
+extern Boolean IRO_RemoveAllEmptyLoops(Boolean removeDynamic);
 #endif
 
 #ifdef __cplusplus

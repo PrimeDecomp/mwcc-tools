@@ -65,7 +65,8 @@ enum {
     IROLF_VecOpBase = 0x10000,
     IROLF_CounterLoop = 0x40000,
     IROLF_BitfieldIndirect = 0x80000,
-    IROLF_CouldError = 0x100000
+    IROLF_CouldError = 0x100000,
+    IROLF_InvariantAssignment = 0x200000
 };
 
 struct IROLinear {

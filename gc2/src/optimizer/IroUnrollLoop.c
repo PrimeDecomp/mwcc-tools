@@ -1011,7 +1011,7 @@ void IRO_LinearizeForLoopPostLoop(
 }
 
 #if VERSION == VERSION_WII_1_0RC1
-static IRONode* IRO_CopyLoopTestToLoopPreheaderAndBranchToSuccNode(
+IRONode* IRO_CopyLoopTestToLoopPreheaderAndBranchToSuccNode(
     IRONode* header, IRONode* preheader, IROLinear** exitTest
 ) {
     IRONode* exit = header->nextnode;
