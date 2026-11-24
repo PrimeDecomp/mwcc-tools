@@ -109,7 +109,9 @@ struct ClassAction {
     struct ClassAction* next;
     TypeClass* tclass;
 };
+#if VERSION != VERSION_WII_1_0RC1
 static struct ClassAction* cparser_classactions;
+#endif
 
 struct ParentCleanup {
     struct ParentCleanup* next;
@@ -502,7 +504,9 @@ void CParser_Setup(void) {
     dont_set_references = FALSE;
 
     copts.sideeffects = TRUE;
+#if VERSION != VERSION_WII_1_0RC1
     cparser_classactions = NULL;
+#endif
     name_obj_check = NULL;
     callbackactions = NULL;
     init_expressions = NULL;
@@ -3805,6 +3809,13 @@ static void CParser_GlobalCleanup(Boolean runClassActions) {
         working = FALSE;
 
         if (runClassActions) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (CClass_Finalize()) {
+                working = TRUE;
+            } else if (CTempl_Instantiate()) {
+                working = TRUE;
+            }
+#else
             if (cparser_classactions) {
                 CClass_ClassAction(cparser_classactions->tclass);
                 cparser_classactions = cparser_classactions->next;
@@ -3812,6 +3823,7 @@ static void CParser_GlobalCleanup(Boolean runClassActions) {
             } else if (CTempl_Instantiate()) {
                 working = TRUE;
             }
+#endif
         }
 
         while (CInline_GenerateDeferredFuncs()) {
@@ -3957,10 +3969,14 @@ void CParser_NewCallBackAction(Object* obj, TypeClass* tclass) {
 }
 
 void CParser_NewClassAction(TypeClass* tclass) {
+#if VERSION == VERSION_WII_1_0RC1
+    CClass_GetClassEntry(tclass)->vtablePending = TRUE;
+#else
     struct ClassAction* act = galloc(sizeof(struct ClassAction));
     act->next = cparser_classactions;
     act->tclass = tclass;
     cparser_classactions = act;
+#endif
 }
 
 void CParser_CallBackAction(Object* obj) {

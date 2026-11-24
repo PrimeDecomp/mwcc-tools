@@ -5542,6 +5542,9 @@ void CDecl_CompleteClass(ClassLayout* decle, TypeClass* tclass) {
         CClass_CheckOverrides(tclass);
     }
     CABI_LayoutClass(decle, tclass);
+#if VERSION == VERSION_WII_1_0RC1
+    CClass_AddClass(tclass);
+#endif
     if (tclass->sominfo) {
         CSOM_ClassComplete(tclass);
     }

@@ -2004,6 +2004,7 @@ def check_dependent_member_expressions(compiler, objcopy, work):
         "static_cast": "sizeof(static_cast<T*>(0)->field)",
         "reinterpret_cast": "sizeof(reinterpret_cast<T*>(0)->field)",
         "const_cast": "sizeof(const_cast<T*>((const Input*)0)->field)",
+        "dynamic_cast": "sizeof(dynamic_cast<T*>((Base*)0)->field)",
     }
     flags = (*FLAGS, "-O0", "-RTTI", "on", "-msgstyle", "parseable")
     results = {}
@@ -2048,6 +2049,90 @@ def check_dependent_member_expressions(compiler, objcopy, work):
         )
     results[source.name] = (process.stdout, process.stderr)
     return results
+
+
+def check_class_rtti(compiler, objcopy, work):
+    cases = {
+        "downcast": (
+            "struct Base { virtual void f(); }; struct Derived : Base {};\n"
+            "Derived* cast(Base* p) { return dynamic_cast<Derived*>(p); }\n"
+        ),
+        "diamond": (
+            "struct Base { virtual void f(); };\n"
+            "struct Left : virtual Base {}; struct Right : virtual Base {};\n"
+            "struct Derived : Left, Right {};\n"
+            "Derived* cast(Base* p) { return dynamic_cast<Derived*>(p); }\n"
+        ),
+        "typeid": (
+            "namespace std { struct type_info { virtual ~type_info(); }; }\n"
+            "struct Value { int field; };\n"
+            "const std::type_info& class_id() { return typeid(Value); }\n"
+            "const std::type_info& scalar_id() { return typeid(int); }\n"
+        ),
+        "vtable_order": (
+            "struct A { virtual void f(); }; struct B { virtual void g(); };\n"
+            "void B::g() {}\n"
+            "void A::f() {}\n"
+            "A* make_a() { return new A; } B* make_b() { return new B; }\n"
+        ),
+    }
+    results = {}
+    for name, contents in cases.items():
+        source = work / f"class_rtti_{name}.cpp"
+        source.write_text(contents, encoding="ascii")
+        obj = source.with_suffix(".o")
+        normalized = source.with_suffix(".normalized")
+        for ipa in ("off", "file"):
+            output = run(
+                compiler, *FLAGS, "-RTTI", "on", "-O4,p", "-ipa", ipa,
+                "-c", source.name, "-o", obj, cwd=work,
+            )
+            run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
+            results[f"{source.name} -ipa {ipa}"] = (output, normalized.read_bytes())
+    return results
+
+
+def check_class_rtti_pch(compiler, reference, objcopy, work):
+    flags = (*FLAGS, "-RTTI", "on", "-O4,p", "-lang", "c++")
+    header = work / "class_rtti.h"
+    header.write_text(
+        "struct Base { virtual void f(); int pad; }; struct Derived : Base {};\n"
+        "inline Derived* down(Base* p) { return dynamic_cast<Derived*>(p); }\n",
+        encoding="ascii",
+    )
+    stock = work / "class_rtti_stock.mch"
+    source = work / "class_rtti_source.mch"
+    stock_repacked = work / "class_rtti_stock_repacked.mch"
+    repacked = work / "class_rtti_repacked.mch"
+    stub = work / "class_rtti_stub.h"
+    stub.write_text("#define CLASS_RTTI_REPACKED 1\n", encoding="ascii")
+    run(reference, *flags, "-precompile", stock, header.name, cwd=work)
+    run(compiler, *flags, "-precompile", source, header.name, cwd=work)
+    run(reference, *flags, "-prefix", stock.name, "-precompile", stock_repacked, stub.name, cwd=work)
+    run(compiler, *flags, "-prefix", stock.name, "-precompile", repacked, stub.name, cwd=work)
+
+    for name, body in (
+        ("used", "Derived* cast(Base* p) { return down(p); }\n"),
+        ("unused", "int answer() { return 1; }\n"),
+    ):
+        consumer = work / f"class_rtti_pch_{name}.cpp"
+        consumer.write_text(body, encoding="ascii")
+        obj = consumer.with_suffix(".o")
+        normalized = consumer.with_suffix(".normalized")
+
+        def compile_with(tool, prefix):
+            output = run(
+                tool, *flags, "-prefix", prefix.name, "-c", consumer.name, "-o", obj, cwd=work,
+            )
+            run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
+            return output, normalized.read_bytes()
+
+        expected = compile_with(reference, stock)
+        for prefix in (stock, source):
+            if compile_with(compiler, prefix) != expected:
+                raise ValueError(f"{compiler}: RTTI differs with {prefix.name} and {consumer.name}")
+        if compile_with(compiler, repacked) != compile_with(reference, stock_repacked):
+            raise ValueError(f"{compiler}: RTTI differs with {repacked.name} and {consumer.name}")
 
 
 def check_inline_and_aggregate_ids(compiler, objcopy, work):
@@ -5447,6 +5532,7 @@ void member_call(V* v) { Guard guard; v->g(); }
     results.update(check_void_delete_diagnostics(compiler, work))
     results.update(check_template_actions(compiler, objcopy, nm, work))
     results.update(check_dependent_member_expressions(compiler, objcopy, work))
+    results.update(check_class_rtti(compiler, objcopy, work))
     results.update(check_inline_and_aggregate_ids(compiler, objcopy, work))
     results.update(check_anonymous_declarations(compiler, objcopy, work))
     results.update(check_member_pointer_comparisons(compiler, objcopy, work))
@@ -5665,6 +5751,7 @@ def main():
                 check_aligned_pch(compiler, stock, args.objcopy, work)
                 check_stock_pch_initializers(compiler, stock, args.objcopy, args.nm, args.objdump, work)
                 check_stock_pch_templates(compiler, stock, args.objcopy, args.nm, work)
+                check_class_rtti_pch(compiler, stock, args.objcopy, work)
     except subprocess.CalledProcessError as error:
         parser.exit(1, f"{error}\n{error.output}")
     except (OSError, ValueError, subprocess.TimeoutExpired) as error:

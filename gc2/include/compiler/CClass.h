@@ -8,6 +8,19 @@ extern "C" {
 #endif
 
 extern void CClass_Init(void);
+#if VERSION == VERSION_WII_1_0RC1
+typedef struct CClassEntry {
+    struct CClassEntry* next;
+    TypeClass* type;
+    Object* typeInfo;
+    Boolean vtablePending;
+} CClassEntry;
+
+extern CClassEntry* cclass_classes;
+extern CClassEntry* CClass_AddClass(TypeClass* type);
+extern CClassEntry* CClass_GetClassEntry(TypeClass* type);
+extern Boolean CClass_Finalize(void);
+#endif
 extern void CClass_GenThunks(void);
 extern UInt8 CClass_GetOverrideKind(TypeFunc* a, TypeFunc* b, Boolean errorflag);
 extern Boolean CClass_IsEmpty(TypeClass* tclass);

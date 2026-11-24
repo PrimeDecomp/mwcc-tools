@@ -111,10 +111,11 @@ typedef struct Header {
     TemplateFunction* ctempl_templatefuncs;
 #if VERSION == VERSION_WII_1_0RC1
     ObjectList* tentativeData; // Previously reserved in the source PCH header.
+    CClassEntry* classes;
 #else
     UInt32 x9C;
-#endif
     UInt32 xA0;
+#endif
     UInt32 xA4;
     UInt32 xA8;
     UInt32 xAC;
@@ -3800,6 +3801,29 @@ static ObjectList* CPrec_GetTentativeDataPatch(const ObjectList* list) {
 }
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+static CClassEntry* CPrec_GetClassEntryPatch(const CClassEntry* entry) {
+    CClassEntry* first = NULL;
+    CClassEntry* previous = NULL;
+
+    for (; entry; entry = entry->next) {
+        CClassEntry* record = (CClassEntry*)CPrec_AppendAlign();
+        CPrec_AppendData(entry, sizeof(*entry));
+        if (previous) {
+            CPrec_NewPointerPatch(&previous->next, record);
+        } else {
+            first = record;
+        }
+        CPrec_NewPointerPatch(&record->type, CPrec_GetTypePatch(TYPE(entry->type)));
+        if (entry->typeInfo) {
+            CPrec_NewPointerPatch(&record->typeInfo, CPrec_GetObjectPatch(entry->typeInfo));
+        }
+        previous = record;
+    }
+    return first;
+}
+#endif
+
 static CallbackAction* CPrec_GetCallbackPatch(CallbackAction* ca) {
     CallbackAction* first;
     SInt32 next;
@@ -4263,6 +4287,15 @@ static OSErr CPrec_DumpColorSymbolTable(Boolean doWrite) {
         ObjectList* p = CPrec_GetTentativeDataPatch(cinit_tentative);
         if (doWrite) {
             cprec_header->tentativeData = p;
+        }
+        if ((err = CPrec_FlushRawBuffer()) != noErr) {
+            return err;
+        }
+    }
+    if (cclass_classes) {
+        CClassEntry* classes = CPrec_GetClassEntryPatch(cclass_classes);
+        if (doWrite) {
+            cprec_header->classes = classes;
         }
         if ((err = CPrec_FlushRawBuffer()) != noErr) {
             return err;
@@ -5369,8 +5402,7 @@ static Type* CPrec_ReadStockClass(
         align > 0x4000 ||
         (align & (align - 1)) ||
         record[0x2e] > CLASS_MODE_CLASS ||
-        record[0x2f] > CLASS_ACTION_JAVA ||
-        CIRStream_ReadWord(record + 0x1e)) {
+        record[0x2f] > CLASS_ACTION_JAVA) {
         return NULL;
     }
     result = galloc(classSize);
@@ -6177,18 +6209,39 @@ static Boolean CPrec_ReadStockScopeContents(CPrecStockGraph* graph) {
 
 static Boolean CPrec_ReadStockClassList(CPrecStockGraph* graph, UInt32 offset) {
     UInt32 remaining = graph->rawSize / 0x0c;
+    CClassEntry* first = NULL;
+    CClassEntry** tail = &first;
     for (; offset;) {
         const UInt8* record = CPrec_StockRecord(graph, offset, 0x0c);
+        const UInt8* classRecord;
         Type* type;
-        if (!record || !remaining--) {
+        CClassEntry* entry;
+        UInt32 typeInfo;
+        if (!record || !remaining-- ||
+            !(classRecord = CPrec_StockRecord(graph, CIRStream_ReadWord(record + 4), 0x30))) {
             return FALSE;
         }
         type = CPrec_ReadStockType(graph, record + 4, 0);
         if (!type || !IS_TYPE_CLASS(type)) {
             return FALSE;
         }
+        entry = galloc(sizeof(*entry));
+        entry->type = TYPE_CLASS(type);
+        entry->typeInfo = NULL;
+        entry->vtablePending = FALSE;
+        typeInfo = CIRStream_ReadWord(classRecord + 0x1e);
+        if (typeInfo) {
+            entry->typeInfo = CPrec_ReadStockSymbol(graph, typeInfo, 0);
+            if (!entry->typeInfo || entry->typeInfo->datatype != DDATA) {
+                return FALSE;
+            }
+        }
+        *tail = entry;
+        tail = &entry->next;
         offset = CIRStream_ReadWord(record);
     }
+    *tail = NULL;
+    cclass_classes = first;
     return TRUE;
 }
 
@@ -8038,6 +8091,12 @@ void PrecompilerRead(short refnum, void* buffer) {
         callbackactions =
             (CallbackAction*)((UInt8*)cprec_rawbuffer + (UInt32)cprec_header->callbackactions);
     }
+
+#if VERSION == VERSION_WII_1_0RC1
+    cclass_classes = cprec_header->classes
+        ? (CClassEntry*)((UInt8*)cprec_rawbuffer + (UInt32)cprec_header->classes)
+        : NULL;
+#endif
 
     if (!cprec_header->cobjc_type_class) {
         cobjc_type_class = NULL;

@@ -28,7 +28,7 @@ typedef struct Offset {
 static Offset* crtti_offsets;
 static OLinkList* crtti_olinks;
 
-static Object* CRTTI_ConstructTypeInfoObject(Type* type, UInt32 qual);
+static Object* CRTTI_GetTypeInfoObject(Type* type, UInt32 qual);
 
 typedef struct RTTISubClassList {
     struct RTTISubClassList* next;
@@ -197,7 +197,7 @@ static Object* CRTTI_CreateBaseListObject(TypeClass* tclass) {
                 ref = lalloc(sizeof(OLinkList));
                 ref->next = refs;
                 refs = ref;
-                ref->obj = CRTTI_ConstructTypeInfoObject(TYPE(scan->base), 0);
+                ref->obj = CRTTI_GetTypeInfoObject(TYPE(scan->base), 0);
                 ref->offset = ((char*)work) - ((char*)buf);
                 ref->addend = 0;
                 work[1] = CTool_EndianConvertWord32(scan->voffset);
@@ -211,7 +211,7 @@ static Object* CRTTI_CreateBaseListObject(TypeClass* tclass) {
                 ref = lalloc(sizeof(OLinkList));
                 ref->next = refs;
                 refs = ref;
-                ref->obj = CRTTI_ConstructTypeInfoObject(TYPE(scan->base), 0);
+                ref->obj = CRTTI_GetTypeInfoObject(TYPE(scan->base), 0);
                 ref->offset = ((char*)work) - ((char*)buf);
                 ref->addend = 0;
                 work[1] = CTool_EndianConvertWord32(scan->voffset | 0x80000000);
@@ -221,7 +221,7 @@ static Object* CRTTI_CreateBaseListObject(TypeClass* tclass) {
                     ref = lalloc(sizeof(OLinkList));
                     ref->next = refs;
                     refs = ref;
-                    ref->obj = CRTTI_ConstructTypeInfoObject(TYPE(subclass->base), 0);
+                    ref->obj = CRTTI_GetTypeInfoObject(TYPE(subclass->base), 0);
                     ref->offset = ((char*)work2) - ((char*)buf);
                     ref->addend = 0;
                     work2[1] = CTool_EndianConvertWord32(subclass->voffset);
@@ -235,18 +235,42 @@ static Object* CRTTI_CreateBaseListObject(TypeClass* tclass) {
     return object;
 }
 
-static Object* CRTTI_ConstructTypeInfoObject(Type* type, UInt32 qual) {
-    Object* baselistobj;
-    UInt32 data[2];
+#if VERSION == VERSION_WII_1_0RC1
+void CRTTI_GenerateTypeInfoData(Object* object, Type* type, UInt32 qual) {
+#else
+static void CRTTI_GenerateTypeInfoData(Object* object, Type* type, UInt32 qual) {
+#endif
+    char* name = CError_GetTypeName(type, qual, FALSE);
+    Object* nameObject = CInit_DeclareString(name, strlen(name) + 1, FALSE, FALSE);
+    Object* bases = IS_TYPE_CLASS(type) ? CRTTI_CreateBaseListObject(TYPE_CLASS(type)) : NULL;
+    UInt32 data[2] = {0, 0};
+    OLinkList reference;
+    OLinkList baseReference;
+
+    reference.next = NULL;
+    reference.obj = nameObject;
+    reference.offset = 0;
+    reference.addend = 0;
+    if (bases) {
+        baseReference.next = NULL;
+        baseReference.obj = bases;
+        baseReference.offset = 4;
+        baseReference.addend = 0;
+        reference.next = &baseReference;
+    }
+
+    CInit_DeclareData(object, data, &reference, object->type->size);
+}
+
+static Object* CRTTI_GetTypeInfoObject(Type* type, UInt32 qual) {
     HashNameNode* rttiname;
-    OLinkList* refs;
-    char* namestr;
-    int namelen;
     Object* object;
     NameSpaceObjectList* list;
     TypePointer tptr_copy;
     TypeMemberPointer tmemptr_copy;
-    Object* nameobj;
+#if VERSION == VERSION_WII_1_0RC1
+    CClassEntry* entry = NULL;
+#endif
 
     switch (type->type) {
         case TYPEPOINTER:
@@ -274,45 +298,43 @@ static Object* CRTTI_ConstructTypeInfoObject(Type* type, UInt32 qual) {
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_TYPE_CLASS(type)) {
+        entry = CClass_GetClassEntry(TYPE_CLASS(type));
+        if (entry->typeInfo) {
+            return entry->typeInfo;
+        }
+    }
+#endif
+
     rttiname = CMangler_RTTIObjectName(type, qual);
     list = CScope_FindName(cscope_root, rttiname);
-
-    if (!list || (object = OBJECT(list->object))->otype != OT_OBJECT || object->datatype != DDATA) {
-        namestr = CError_GetTypeName(type, qual, FALSE);
-        namelen = strlen(namestr) + 1;
-        nameobj = CInit_DeclareString(namestr, namelen, FALSE, FALSE);
-
-        baselistobj = NULL;
-        if (IS_TYPE_CLASS(type)) {
-            baselistobj = CRTTI_CreateBaseListObject(TYPE_CLASS(type));
+    if (list && list->object->otype == OT_OBJECT && OBJECT(list->object)->datatype == DDATA) {
+        object = OBJECT(list->object);
+#if VERSION == VERSION_WII_1_0RC1
+        if (entry) {
+            entry->typeInfo = object;
         }
-
-        memclrw(data, sizeof(data));
-
-        object = CParser_NewCompilerDefDataObject();
-        object->name = rttiname;
-        object->type = CDecl_NewStructType(sizeof(data), 4);
-        object->qual = Q_CONST;
-        object->sclass = TK_STATIC;
-
-        refs = lalloc(sizeof(OLinkList));
-        refs->next = NULL;
-        refs->obj = nameobj;
-        refs->offset = 0;
-        refs->addend = 0;
-
-        if (baselistobj) {
-            refs->next = lalloc(sizeof(OLinkList));
-            refs->next->next = NULL;
-            refs->next->obj = baselistobj;
-            refs->next->offset = 4;
-            refs->next->addend = 0;
-        }
-
-        CScope_AddGlobalObject(object);
-        CInit_DeclareData(object, data, refs, object->type->size);
+#endif
+        return object;
     }
 
+    object = CParser_NewCompilerDefDataObject();
+    object->name = rttiname;
+    object->type = CDecl_NewStructType(8, 4);
+    object->qual = Q_CONST;
+    object->sclass = TK_STATIC;
+#if VERSION == VERSION_WII_1_0RC1
+    object->qual |= Q_IMPLICIT_WEAK;
+#endif
+    CScope_AddGlobalObject(object);
+#if VERSION == VERSION_WII_1_0RC1
+    if (entry) {
+        entry->typeInfo = object;
+        return object;
+    }
+#endif
+    CRTTI_GenerateTypeInfoData(object, type, qual);
     return object;
 }
 
@@ -380,7 +402,7 @@ OLinkList* CRTTI_ConstructVTableHeaders(TypeClass* tclass, void* data, OLinkList
     crtti_olinks = links;
 
     CRTTI_ConstructVTableHeader(
-        tclass, tclass, CRTTI_ConstructTypeInfoObject(TYPE(tclass), 0), data, 0, 0
+        tclass, tclass, CRTTI_GetTypeInfoObject(TYPE(tclass), 0), data, 0, 0
     );
 
     return crtti_olinks;
@@ -468,7 +490,7 @@ ENode* CRTTI_ParseTypeID(void) {
         }
     }
 
-    expr = create_objectrefnode(CRTTI_ConstructTypeInfoObject(type, qual));
+    expr = create_objectrefnode(CRTTI_GetTypeInfoObject(type, qual));
     expr = makemonadicnode(expr, EINDIRECT);
     expr->rtype = typeinfoType;
     expr->flags = ENODE_FLAG_CONST;
@@ -824,7 +846,7 @@ static ENode* CRTTI_DynamicCast(ENode* expr, Type* type, UInt32 qual) {
     }
 
     if (destclass) {
-        typeinfo = create_objectrefnode(CRTTI_ConstructTypeInfoObject(TYPE(destclass), 0));
+        typeinfo = create_objectrefnode(CRTTI_GetTypeInfoObject(TYPE(destclass), 0));
         if (destclass->sominfo) {
             CError_Error(ERR_ILLEGAL_TYPE_CAST);
             return expr;
@@ -838,7 +860,7 @@ static ENode* CRTTI_DynamicCast(ENode* expr, Type* type, UInt32 qual) {
         expr,
         intconstnode(TYPE(&stsignedlong), srcclass->vtable->offset),
         typeinfo,
-        create_objectrefnode(CRTTI_ConstructTypeInfoObject(TYPE(srcclass), 0)),
+        create_objectrefnode(CRTTI_GetTypeInfoObject(TYPE(srcclass), 0)),
         intconstnode(TYPE(&stsignedshort), isRef),
         NULL
     );

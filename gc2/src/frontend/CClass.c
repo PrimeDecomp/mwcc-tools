@@ -82,8 +82,59 @@ static TypeClass* cclass_dominator_oclass;
 static SInt32 cclass_dominator_ooffset;
 static Object* cclass_dominator_eobject;
 
+#if VERSION == VERSION_WII_1_0RC1
+CClassEntry* cclass_classes;
+
+CClassEntry* CClass_AddClass(TypeClass* type) {
+    CClassEntry* entry = galloc(sizeof(*entry));
+    entry->next = cclass_classes;
+    entry->type = type;
+    entry->typeInfo = NULL;
+    entry->vtablePending = FALSE;
+    cclass_classes = entry;
+    return entry;
+}
+
+CClassEntry* CClass_GetClassEntry(TypeClass* type) {
+    CClassEntry* entry;
+    for (entry = cclass_classes; entry; entry = entry->next) {
+        if (entry->type == type) {
+            return entry;
+        }
+    }
+    return CClass_AddClass(type);
+}
+
+Boolean CClass_Finalize(void) {
+    CClassEntry* entry;
+    Boolean changed = FALSE;
+
+    if (anyerrors || cparamblkptr->precompile == 1) {
+        return FALSE;
+    }
+
+    for (entry = cclass_classes; entry; entry = entry->next) {
+        Object* object;
+        if (entry->vtablePending) {
+            entry->vtablePending = FALSE;
+            CClass_ClassAction(entry->type);
+            changed = TRUE;
+        }
+        object = entry->typeInfo;
+        if (object && (object->flags & (OBJECT_REFERENCED | OBJECT_DEFINED)) == OBJECT_REFERENCED) {
+            CRTTI_GenerateTypeInfoData(object, TYPE(entry->type), 0);
+            changed = TRUE;
+        }
+    }
+    return changed;
+}
+#endif
+
 void CClass_Init(void) {
     cclass_thunklist = NULL;
+#if VERSION == VERSION_WII_1_0RC1
+    cclass_classes = NULL;
+#endif
 }
 
 void CClass_GenThunks(void) {
