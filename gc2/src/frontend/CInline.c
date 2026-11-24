@@ -875,9 +875,16 @@ static ENode* CInline_CopyNodes(ENode* node) {
         switch (copy->type) {
             case ETEMPLDEP:
                 switch (copy->data.templdep.subtype) {
-                    case TDE_PARAM:
                     case TDE_SIZEOF:
                     case TDE_ALIGNOF:
+#if VERSION == VERSION_WII_1_0RC1
+                        if (copy->data.templdep.u.typeexpr.expr) {
+                            copy->data.templdep.u.typeexpr.expr =
+                                CInline_CopyNodes(copy->data.templdep.u.typeexpr.expr);
+                        }
+#endif
+                        break;
+                    case TDE_PARAM:
                     case TDE_QUALNAME:
                     case TDE_OBJ:
                         break;
@@ -889,6 +896,20 @@ static ENode* CInline_CopyNodes(ENode* node) {
                         copy->data.templdep.u.sourceref.expr =
                             CInline_CopyNodes(copy->data.templdep.u.sourceref.expr);
                         break;
+#if VERSION == VERSION_WII_1_0RC1
+                    case TDE_MEMBER_ACCESS:
+                        copy->data.templdep.u.member.object =
+                            CInline_CopyNodes(copy->data.templdep.u.member.object);
+                        break;
+                    case TDE_DYNAMIC_CAST:
+                    case TDE_STATIC_CAST:
+                    case TDE_REINTERPRET_CAST:
+                    case TDE_CONST_CAST:
+                        copy->data.templdep.u.namedCast.expr =
+                            CInline_CopyNodes(copy->data.templdep.u.namedCast.expr);
+                        break;
+                    case TDE_MONMUL:
+#endif
                     case TDE_ADDRESS_OF:
                         copy->data.templdep.u.monadic =
                             CInline_CopyNodes(copy->data.templdep.u.monadic);

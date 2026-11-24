@@ -10,6 +10,7 @@
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
+#include "compiler/CRTTI.h"
 #include "compiler/CScope.h"
 #include "compiler/CTemplateClass.h"
 #include "compiler/CTemplateNew.h"
@@ -855,6 +856,13 @@ Boolean CTemplTool_EqualExprTypes(ENode* a, ENode* b) {
                         a->data.templdep.u.pid.index == b->data.templdep.u.pid.index;
                 case TDE_SIZEOF:
                 case TDE_ALIGNOF:
+#if VERSION == VERSION_WII_1_0RC1
+                    if (a->data.templdep.u.typeexpr.expr || b->data.templdep.u.typeexpr.expr) {
+                        return CTemplTool_EqualExprTypes(
+                            a->data.templdep.u.typeexpr.expr, b->data.templdep.u.typeexpr.expr
+                        );
+                    }
+#endif
                     return is_typesame(
                         a->data.templdep.u.typeexpr.type, b->data.templdep.u.typeexpr.type
                     );
@@ -871,6 +879,26 @@ Boolean CTemplTool_EqualExprTypes(ENode* a, ENode* b) {
                         a->data.templdep.u.qual.name == b->data.templdep.u.qual.name;
                 case TDE_OBJ:
                     return a->data.templdep.u.obj == b->data.templdep.u.obj;
+#if VERSION == VERSION_WII_1_0RC1
+                case TDE_MEMBER_ACCESS:
+                    return a->data.templdep.u.member.name == b->data.templdep.u.member.name &&
+                        a->data.templdep.u.member.arrow == b->data.templdep.u.member.arrow &&
+                        CTemplTool_EqualExprTypes(
+                            a->data.templdep.u.member.object, b->data.templdep.u.member.object
+                        );
+                case TDE_DYNAMIC_CAST:
+                case TDE_STATIC_CAST:
+                case TDE_REINTERPRET_CAST:
+                case TDE_CONST_CAST:
+                    return a->data.templdep.u.namedCast.qual == b->data.templdep.u.namedCast.qual &&
+                        is_typesame(
+                            a->data.templdep.u.namedCast.type, b->data.templdep.u.namedCast.type
+                        ) &&
+                        CTemplTool_EqualExprTypes(
+                            a->data.templdep.u.namedCast.expr, b->data.templdep.u.namedCast.expr
+                        );
+                case TDE_MONMUL:
+#endif
                 case TDE_ADDRESS_OF:
                     return CTemplTool_EqualExprTypes(
                         a->data.templdep.u.monadic, b->data.templdep.u.monadic
@@ -1290,6 +1318,23 @@ ENode* CTemplTool_DeduceExpr(TypeDeduce* deduce, ENode* expr) {
 
                     CError_FATAL(1582);
 
+#if VERSION == VERSION_WII_1_0RC1
+                case TDE_SIZEOF:
+                case TDE_ALIGNOF:
+                    if (expr->data.templdep.u.typeexpr.expr) {
+                        newExpr = CTemplTool_DeduceExpr(deduce, expr->data.templdep.u.typeexpr.expr);
+                        type = NULL;
+                    } else {
+                        newExpr = NULL;
+                        qual = 0;
+                        type = CTemplTool_DeduceTypeCopy(
+                            deduce, expr->data.templdep.u.typeexpr.type, &qual
+                        );
+                    }
+                    return CExpr_ComputeSizeOrAlignment(
+                        type, newExpr, expr->data.templdep.subtype == TDE_ALIGNOF
+                    );
+#else
                 case TDE_SIZEOF:
                     qual = 0;
                     type = CTemplTool_DeduceTypeCopy(
@@ -1321,6 +1366,7 @@ ENode* CTemplTool_DeduceExpr(TypeDeduce* deduce, ENode* expr) {
                     }
 
                     return intconstnode(CABI_GetSizeTType(), CMach_GetTypeAlign(type));
+#endif
 
                 case TDE_CAST:
                     qual = expr->data.templdep.u.cast.qual;
@@ -1384,6 +1430,34 @@ ENode* CTemplTool_DeduceExpr(TypeDeduce* deduce, ENode* expr) {
                     CError_UnlockErrorPos(&saved);
                     return newExpr;
 
+#if VERSION == VERSION_WII_1_0RC1
+                case TDE_MEMBER_ACCESS:
+                    newExpr = CTemplTool_DeduceExpr(deduce, expr->data.templdep.u.member.object);
+                    return CExpr_New_MemberAccess_Node(
+                        newExpr, expr->data.templdep.u.member.name, expr->data.templdep.u.member.arrow
+                    );
+                case TDE_MONMUL:
+                    return CExpr_New_EMONMUL_Node(
+                        CTemplTool_DeduceExpr(deduce, expr->data.templdep.u.monadic)
+                    );
+                case TDE_DYNAMIC_CAST:
+                case TDE_STATIC_CAST:
+                case TDE_REINTERPRET_CAST:
+                case TDE_CONST_CAST:
+                    qual = expr->data.templdep.u.namedCast.qual;
+                    type = CTemplTool_DeduceTypeCopy(deduce, expr->data.templdep.u.namedCast.type, &qual);
+                    newExpr = CTemplTool_DeduceExpr(deduce, expr->data.templdep.u.namedCast.expr);
+                    switch (expr->data.templdep.subtype) {
+                        case TDE_DYNAMIC_CAST:
+                            return CRTTI_DynamicCast(newExpr, type, qual);
+                        case TDE_STATIC_CAST:
+                            return CRTTI_StaticCast(newExpr, type, qual);
+                        case TDE_REINTERPRET_CAST:
+                            return CRTTI_ReinterpretCast(newExpr, type, qual);
+                        default:
+                            return CRTTI_ConstCast(newExpr, type, qual);
+                    }
+#endif
                 case TDE_ADDRESS_OF:
                     newExpr = CTemplTool_DeduceExpr(deduce, expr->data.templdep.u.monadic);
                     return getnodeaddress(newExpr, TRUE);

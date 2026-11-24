@@ -82,6 +82,10 @@ void CError_ResetErrorSkip(void) {
 
 static void CError_GetErrorString(char* buf, short code) {
 #if VERSION == VERSION_WII_1_0RC1
+    if (code == ERR_CLASS_MEMBER_NOT_FOUND) {
+        strcpy(buf, "'%u' is not a member of class '%t'");
+        return;
+    }
     if (code == ERR_ILLEGAL_ARRAY_DEFINITION) {
         strcpy(buf, "illegal array declaration");
         return;

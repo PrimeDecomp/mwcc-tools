@@ -1271,6 +1271,20 @@ def check_stock_pch_templates(compiler, reference, objcopy, nm, work):
             "    return read(v) + v.c + sizeof(extra);\n"
             "}\n",
         ),
+        (
+            "class-dependent-members", set(), (), (),
+            "struct Input { char pad; int field; };\n"
+            "template<class T, unsigned N> struct Value { unsigned get() const { return N; } };\n"
+            "template<class T> struct Box {\n"
+            "    typedef Value<T, (unsigned)&(((T*)0)->field)> Offset;\n"
+            "    typedef Value<T, sizeof((*(T*)0).field)> Size;\n"
+            "    typedef Value<T, __alignof__(static_cast<T*>(0)->field)> Align;\n"
+            "    Offset offset; Size size; Align align;\n"
+            "};\n",
+            "unsigned run(const Box<Input>& b) {\n"
+            "    return b.offset.get() + b.size.get() + b.align.get();\n"
+            "}\n",
+        ),
     )
     flags = (*FLAGS, "-lang=c++", "-O2", "-inline", "off")
     stub = work / "stock-templates-repack.h"
@@ -1972,6 +1986,67 @@ def check_template_actions(compiler, objcopy, nm, work):
         normalized = source.with_suffix(".normalized")
         run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
         results[f"{source.name} -ipa {ipa}"] = (output, normalized.read_bytes())
+    return results
+
+
+def check_dependent_member_expressions(compiler, objcopy, work):
+    header_text = (
+        "struct Base { virtual void key(); char pad; int field; enum { integer = 5 }; };\n"
+        "struct Input : Base {};\n"
+        "template<class T, unsigned N> struct Value { unsigned get() const { return N; } };\n"
+    )
+    cases = {
+        "address": "(unsigned)&(((T*)0)->field)",
+        "arrow_size": "sizeof(((T*)0)->field)",
+        "dot_size": "sizeof((*(T*)0).field)",
+        "align": "__alignof__(((T*)0)->field)",
+        "enum": "((T*)0)->integer",
+        "static_cast": "sizeof(static_cast<T*>(0)->field)",
+        "reinterpret_cast": "sizeof(reinterpret_cast<T*>(0)->field)",
+        "const_cast": "sizeof(const_cast<T*>((const Input*)0)->field)",
+    }
+    flags = (*FLAGS, "-O0", "-RTTI", "on", "-msgstyle", "parseable")
+    results = {}
+    header = work / "dependent_member.h"
+    pch = work / "dependent_member.mch"
+    for name, expr in cases.items():
+        template_text = (
+            f"template<class T> struct Box {{ typedef Value<T, {expr}> Item; Item item; }};\n"
+        )
+        body = "unsigned query(const Box<Input>& box) { return box.item.get(); }\n"
+        source = work / f"dependent_member_{name}.cpp"
+        source.write_text(header_text + template_text + body, encoding="ascii")
+        obj = source.with_suffix(".o")
+        normalized = source.with_suffix(".normalized")
+        output = run(compiler, *flags, "-c", source.name, "-o", obj, cwd=work)
+        run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
+        results[source.name] = (output, normalized.read_bytes())
+
+        if name == "static_cast":
+            header.write_text(header_text + template_text, encoding="ascii")
+            run(compiler, *flags, "-lang", "c++", "-precompile", pch, header, cwd=work)
+            source.write_text(body, encoding="ascii")
+            output = run(compiler, *flags, "-prefix", pch.name, "-c", source.name, "-o", obj, cwd=work)
+            run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
+            results[f"{source.name} with PCH"] = (output, normalized.read_bytes())
+
+    source = work / "dependent_member_missing.cpp"
+    source.write_text(
+        header_text +
+        "template<class T> struct Box { typedef Value<T, sizeof(((T*)0)->missing)> Item; Item item; };\n"
+        "unsigned query(const Box<Input>& box) { return box.item.get(); }\n",
+        encoding="ascii",
+    )
+    process = subprocess.run(
+        [compiler, *flags, "-c", source.name, "-o", source.with_suffix(".o")],
+        cwd=work, capture_output=True, text=True, timeout=30,
+    )
+    if (process.returncode != 1 or
+            ">(10393) 'missing' is not a member of class 'Input'" not in process.stdout):
+        raise ValueError(
+            f"{compiler}: unexpected dependent member diagnostic\n{process.stdout}{process.stderr}"
+        )
+    results[source.name] = (process.stdout, process.stderr)
     return results
 
 
@@ -5371,6 +5446,7 @@ void member_call(V* v) { Guard guard; v->g(); }
     results[source.name] = (process.stdout, process.stderr)
     results.update(check_void_delete_diagnostics(compiler, work))
     results.update(check_template_actions(compiler, objcopy, nm, work))
+    results.update(check_dependent_member_expressions(compiler, objcopy, work))
     results.update(check_inline_and_aggregate_ids(compiler, objcopy, work))
     results.update(check_anonymous_declarations(compiler, objcopy, work))
     results.update(check_member_pointer_comparisons(compiler, objcopy, work))

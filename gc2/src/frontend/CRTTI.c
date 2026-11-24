@@ -12,6 +12,7 @@
 #include "compiler/CPrep.h"
 #include "compiler/CPrepTokenizer.h"
 #include "compiler/CScope.h"
+#include "compiler/CTemplateTools.h"
 #include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/scopes.h"
@@ -720,31 +721,47 @@ static ENode* CRTTI_UniversalCast(ENode* expr, Type* type, UInt32 qual, UInt8 mo
     return do_typecast(expr, type, qual);
 }
 
-ENode* CRTTI_Parse_dynamic_cast(void) {
+#if VERSION == VERSION_WII_1_0RC1
+static ENode* CRTTI_NewDependentCast(TemplDepSubType subtype, ENode* expr, Type* type, UInt32 qual) {
+    ENode* node;
+    if (!CTemplTool_IsTemplateArgumentDependentType(type) &&
+        !CTemplTool_IsTemplateArgumentDependentExpression(expr)) {
+        return NULL;
+    }
+
+    node = CExpr_NewTemplDepENode(subtype);
+    node->data.templdep.u.namedCast.expr = expr;
+    node->data.templdep.u.namedCast.type = type;
+    node->data.templdep.u.namedCast.qual = qual;
+    return node;
+}
+#endif
+
+#if VERSION == VERSION_WII_1_0RC1
+ENode* CRTTI_DynamicCast(ENode* expr, Type* type, UInt32 qual) {
+#else
+static ENode* CRTTI_DynamicCast(ENode* expr, Type* type, UInt32 qual) {
+#endif
     Boolean isRef;
-    ENode* expr;
     TypeClass* srcclass;
     TypeClass* destclass;
     ENode* typeinfo;
     TypePointer* tptr;
-    DeclInfo di;
 
-    expr = CRTTI_ParseCast(&di);
-    if (!expr) {
-        return nullnode();
+#if VERSION == VERSION_WII_1_0RC1
+    ENode* dependent = CRTTI_NewDependentCast(TDE_DYNAMIC_CAST, expr, type, qual);
+    if (dependent) {
+        return dependent;
     }
+#endif
 
-    if (!copts.RTTI) {
-        CError_Warning(ERR_RTTI_OPTION_DISABLED);
-    }
-
-    CRTTI_ConstCastCheck(expr->rtype, expr->flags, di.thetype, di.qual);
-    if (!IS_TYPE_POINTER_ONLY(di.thetype)) {
+    CRTTI_ConstCastCheck(expr->rtype, expr->flags, type, qual);
+    if (!IS_TYPE_POINTER_ONLY(type)) {
         CError_Error(ERR_ILLEGAL_TYPE_CAST);
         return expr;
     }
 
-    tptr = TYPE_POINTER(di.thetype);
+    tptr = TYPE_POINTER(type);
     isRef = (tptr->qual & Q_REFERENCE) != 0;
 
     if (IS_TYPE_CLASS(tptr->target)) {
@@ -771,7 +788,7 @@ ENode* CRTTI_Parse_dynamic_cast(void) {
         if (destclass) {
             if (srcclass == destclass ||
                 CClass_IsBaseClass(srcclass, destclass, NULL, FALSE, TRUE)) {
-                return do_typecast(expr, di.thetype, di.qual);
+                return do_typecast(expr, type, qual);
             }
         }
 
@@ -786,7 +803,7 @@ ENode* CRTTI_Parse_dynamic_cast(void) {
         if (destclass) {
             if (srcclass == destclass ||
                 CClass_IsBaseClass(srcclass, destclass, NULL, FALSE, TRUE)) {
-                return do_typecast(expr, di.thetype, di.qual);
+                return do_typecast(expr, type, qual);
             }
         }
     }
@@ -831,66 +848,97 @@ ENode* CRTTI_Parse_dynamic_cast(void) {
         expr = makemonadicnode(expr, EINDIRECT);
         expr->rtype = TYPE(destclass);
     } else {
-        expr->rtype = di.thetype;
+        expr->rtype = type;
     }
-    expr->flags = di.qual & ENODE_FLAG_QUALS;
+    expr->flags = qual & ENODE_FLAG_QUALS;
     return expr;
 }
 
-ENode* CRTTI_Parse_static_cast(void) {
-    ENode* expr;
+ENode* CRTTI_Parse_dynamic_cast(void) {
     DeclInfo di;
-
-    expr = CRTTI_ParseCast(&di);
+    ENode* expr = CRTTI_ParseCast(&di);
     if (!expr) {
         return nullnode();
     }
 
-    CRTTI_ConstCastCheck(expr->rtype, expr->flags, di.thetype, di.qual);
+    if (!copts.RTTI) {
+        CError_Warning(ERR_RTTI_OPTION_DISABLED);
+    }
 
-    if (IS_TYPE_REFERENCE(di.thetype)) {
+    return CRTTI_DynamicCast(expr, di.thetype, di.qual);
+}
+
 #if VERSION == VERSION_WII_1_0RC1
-        if (CRTTI_IsReferenceCastCompatible(TPTR_TARGET(di.thetype), expr->rtype)) {
-            return CExpr_Convert(expr, di.thetype, di.qual, TRUE, TRUE);
+ENode* CRTTI_StaticCast(ENode* expr, Type* type, UInt32 qual) {
+#else
+static ENode* CRTTI_StaticCast(ENode* expr, Type* type, UInt32 qual) {
+#endif
+#if VERSION == VERSION_WII_1_0RC1
+    ENode* dependent = CRTTI_NewDependentCast(TDE_STATIC_CAST, expr, type, qual);
+    if (dependent) {
+        return dependent;
+    }
+#endif
+
+    CRTTI_ConstCastCheck(expr->rtype, expr->flags, type, qual);
+
+    if (IS_TYPE_REFERENCE(type)) {
+#if VERSION == VERSION_WII_1_0RC1
+        if (CRTTI_IsReferenceCastCompatible(TPTR_TARGET(type), expr->rtype)) {
+            return CExpr_Convert(expr, type, qual, TRUE, TRUE);
         }
 #endif
-        if (IS_TYPE_CLASS(expr->rtype) && CExpr_CanImplicitlyConvert(expr, di.thetype, di.qual)) {
-            expr = CExpr_Convert(expr, di.thetype, di.qual, FALSE, TRUE);
+        if (IS_TYPE_CLASS(expr->rtype) && CExpr_CanImplicitlyConvert(expr, type, qual)) {
+            expr = CExpr_Convert(expr, type, qual, FALSE, TRUE);
             CError_ASSERT(959, IS_TYPE_POINTER_ONLY(expr->rtype));
 
             expr = makemonadicnode(expr, EINDIRECT);
-            expr->rtype = TPTR_TARGET(di.thetype);
-            expr->flags = di.qual & ENODE_FLAG_QUALS;
+            expr->rtype = TPTR_TARGET(type);
+            expr->flags = qual & ENODE_FLAG_QUALS;
             return expr;
         }
     } else {
-        if (CExpr_CanImplicitlyConvert(expr, di.thetype, di.qual)) {
-            return CExpr_Convert(expr, di.thetype, di.qual, TRUE, TRUE);
+        if (CExpr_CanImplicitlyConvert(expr, type, qual)) {
+            return CExpr_Convert(expr, type, qual, TRUE, TRUE);
         }
     }
 
-    if (!IS_TYPE_VOID(di.thetype) &&
+    if (!IS_TYPE_VOID(type) &&
         !(IS_TYPE_POINTER_ONLY(expr->rtype) && IS_TYPE_VOID(TPTR_TARGET(expr->rtype)))) {
-        CRTTI_IncompleteCheck(di.thetype);
+        CRTTI_IncompleteCheck(type);
         CRTTI_IncompleteCheck(expr->rtype);
     }
 
-    return CRTTI_UniversalCast(expr, di.thetype, di.qual, 2);
+    return CRTTI_UniversalCast(expr, type, qual, 2);
 }
 
-ENode* CRTTI_Parse_reinterpret_cast(void) {
-    ENode* expr;
-    Type* origtype;
+ENode* CRTTI_Parse_static_cast(void) {
     DeclInfo di;
-
-    expr = CRTTI_ParseCast(&di);
+    ENode* expr = CRTTI_ParseCast(&di);
     if (!expr) {
         return nullnode();
     }
 
-    CRTTI_ConstCastCheck(expr->rtype, expr->flags, di.thetype, di.qual);
+    return CRTTI_StaticCast(expr, di.thetype, di.qual);
+}
 
-    if (IS_TYPE_REFERENCE(di.thetype)) {
+#if VERSION == VERSION_WII_1_0RC1
+ENode* CRTTI_ReinterpretCast(ENode* expr, Type* type, UInt32 qual) {
+#else
+static ENode* CRTTI_ReinterpretCast(ENode* expr, Type* type, UInt32 qual) {
+#endif
+    Type* origtype;
+
+#if VERSION == VERSION_WII_1_0RC1
+    ENode* dependent = CRTTI_NewDependentCast(TDE_REINTERPRET_CAST, expr, type, qual);
+    if (dependent) {
+        return dependent;
+    }
+#endif
+
+    CRTTI_ConstCastCheck(expr->rtype, expr->flags, type, qual);
+
+    if (IS_TYPE_REFERENCE(type)) {
         expr = CExpr_LValue(expr, FALSE, TRUE);
         if (!ENODE_IS(expr, EINDIRECT)) {
             return expr;
@@ -898,18 +946,18 @@ ENode* CRTTI_Parse_reinterpret_cast(void) {
 
         expr->data.monadic->rtype = CDecl_NewPointerType(expr->rtype);
         expr = expr->data.monadic;
-        origtype = di.thetype;
-        di.thetype = CDecl_NewPointerType(TPTR_TARGET(di.thetype));
+        origtype = type;
+        type = CDecl_NewPointerType(TPTR_TARGET(type));
     } else {
         origtype = NULL;
     }
 
-    switch (di.thetype->type) {
+    switch (type->type) {
         case TYPEINT:
             switch (expr->rtype->type) {
                 case TYPEMEMBERPOINTER:
                 case TYPEPOINTER:
-                    expr = do_typecast(expr, di.thetype, di.qual);
+                    expr = do_typecast(expr, type, qual);
                     break;
                 default:
                     CError_Error(ERR_ILLEGAL_TYPE_CAST);
@@ -920,14 +968,14 @@ ENode* CRTTI_Parse_reinterpret_cast(void) {
                 case TYPEINT:
                 case TYPEENUM:
                     if (origtype) {
-                        di.thetype = origtype;
+                        type = origtype;
                     }
-                    expr = do_typecast(expr, di.thetype, di.qual);
+                    expr = do_typecast(expr, type, qual);
                     break;
                 case TYPEPOINTER:
                     expr = makemonadicnode(expr, ETYPCON);
-                    expr->rtype = di.thetype;
-                    expr->flags = di.qual & ENODE_FLAG_QUALS;
+                    expr->rtype = type;
+                    expr->flags = qual & ENODE_FLAG_QUALS;
                     break;
                 default:
                     CError_Error(ERR_ILLEGAL_TYPE_CAST);
@@ -935,21 +983,21 @@ ENode* CRTTI_Parse_reinterpret_cast(void) {
             break;
         case TYPEMEMBERPOINTER:
             if (IS_TYPE_MEMBERPOINTER(expr->rtype)) {
-                if (IS_TYPE_FUNC(TYPE_MEMBER_POINTER(di.thetype)->ty1)) {
+                if (IS_TYPE_FUNC(TYPE_MEMBER_POINTER(type)->ty1)) {
                     if (IS_TYPE_FUNC(TYPE_MEMBER_POINTER(expr->rtype)->ty1)) {
-                        expr->rtype = di.thetype;
-                        expr->flags = di.qual & ENODE_FLAG_QUALS;
+                        expr->rtype = type;
+                        expr->flags = qual & ENODE_FLAG_QUALS;
                         break;
                     }
                 } else {
                     if (!IS_TYPE_FUNC(TYPE_MEMBER_POINTER(expr->rtype)->ty1)) {
-                        expr->rtype = di.thetype;
-                        expr->flags = di.qual & ENODE_FLAG_QUALS;
+                        expr->rtype = type;
+                        expr->flags = qual & ENODE_FLAG_QUALS;
                         break;
                     }
                 }
             }
-            expr = do_typecast(expr, di.thetype, di.qual);
+            expr = do_typecast(expr, type, qual);
             break;
         default:
             CError_Error(ERR_ILLEGAL_TYPE_CAST);
@@ -957,7 +1005,66 @@ ENode* CRTTI_Parse_reinterpret_cast(void) {
 
     if (origtype && IS_TYPE_POINTER_ONLY(expr->rtype)) {
         expr = makemonadicnode(expr, EINDIRECT);
-        expr->rtype = TPTR_TARGET(di.thetype);
+        expr->rtype = TPTR_TARGET(type);
+    }
+
+    return expr;
+}
+
+ENode* CRTTI_Parse_reinterpret_cast(void) {
+    DeclInfo di;
+    ENode* expr = CRTTI_ParseCast(&di);
+    if (!expr) {
+        return nullnode();
+    }
+
+    return CRTTI_ReinterpretCast(expr, di.thetype, di.qual);
+}
+
+#if VERSION == VERSION_WII_1_0RC1
+ENode* CRTTI_ConstCast(ENode* expr, Type* type, UInt32 qual) {
+#else
+static ENode* CRTTI_ConstCast(ENode* expr, Type* type, UInt32 qual) {
+#endif
+
+#if VERSION == VERSION_WII_1_0RC1
+    ENode* dependent = CRTTI_NewDependentCast(TDE_CONST_CAST, expr, type, qual);
+    if (dependent) {
+        return dependent;
+    }
+#endif
+
+    if (IS_TYPE_POINTER_ONLY(type)) {
+        if (TPTR_QUAL(type) & Q_REFERENCE) {
+            if (!iscpp_typeequal(TPTR_TARGET(type), expr->rtype)) {
+                CError_Error(ERR_ILLEGAL_TYPE_CAST);
+            }
+
+            if (ENODE_IS(expr, EINDIRECT)) {
+                expr->rtype = TPTR_TARGET(type);
+                expr->flags = qual & ENODE_FLAG_QUALS;
+            } else {
+                CError_Error(ERR_NOT_LVALUE);
+            }
+        } else {
+            if (!iscpp_typeequal(type, expr->rtype)) {
+                CError_Error(ERR_ILLEGAL_TYPE_CAST);
+            }
+
+            expr = do_typecast(expr, type, qual);
+        }
+    } else if (IS_TYPE_MEMBERPOINTER(type)) {
+        if (!iscpp_typeequal(type, expr->rtype)) {
+            CError_Error(ERR_ILLEGAL_TYPE_CAST);
+        }
+
+        expr = do_typecast(expr, type, qual);
+    } else {
+        if (!is_typesame(type, expr->rtype)) {
+            CError_Error(ERR_ILLEGAL_TYPE_CAST);
+        } else {
+            expr = do_typecast(expr, type, qual);
+        }
     }
 
     return expr;
@@ -965,44 +1072,10 @@ ENode* CRTTI_Parse_reinterpret_cast(void) {
 
 ENode* CRTTI_Parse_const_cast(void) {
     DeclInfo di;
-    ENode* expr;
-
-    if (!(expr = CRTTI_ParseCast(&di))) {
+    ENode* expr = CRTTI_ParseCast(&di);
+    if (!expr) {
         return nullnode();
     }
 
-    if (IS_TYPE_POINTER_ONLY(di.thetype)) {
-        if (TPTR_QUAL(di.thetype) & Q_REFERENCE) {
-            if (!iscpp_typeequal(TPTR_TARGET(di.thetype), expr->rtype)) {
-                CError_Error(ERR_ILLEGAL_TYPE_CAST);
-            }
-
-            if (ENODE_IS(expr, EINDIRECT)) {
-                expr->rtype = TPTR_TARGET(di.thetype);
-                expr->flags = di.qual & ENODE_FLAG_QUALS;
-            } else {
-                CError_Error(ERR_NOT_LVALUE);
-            }
-        } else {
-            if (!iscpp_typeequal(di.thetype, expr->rtype)) {
-                CError_Error(ERR_ILLEGAL_TYPE_CAST);
-            }
-
-            expr = do_typecast(expr, di.thetype, di.qual);
-        }
-    } else if (IS_TYPE_MEMBERPOINTER(di.thetype)) {
-        if (!iscpp_typeequal(di.thetype, expr->rtype)) {
-            CError_Error(ERR_ILLEGAL_TYPE_CAST);
-        }
-
-        expr = do_typecast(expr, di.thetype, di.qual);
-    } else {
-        if (!is_typesame(di.thetype, expr->rtype)) {
-            CError_Error(ERR_ILLEGAL_TYPE_CAST);
-        } else {
-            expr = do_typecast(expr, di.thetype, di.qual);
-        }
-    }
-
-    return expr;
+    return CRTTI_ConstCast(expr, di.thetype, di.qual);
 }

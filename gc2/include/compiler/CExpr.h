@@ -111,6 +111,9 @@ extern CInt64 CExpr_IntegralConstExprType(Type** tint);
 extern ENode* CExpr_IntegralConstOrDepExpr(void);
 #if VERSION == VERSION_WII_1_0RC1
 extern ENode* CExpr_ComputeTypeExprFunc(Type* type);
+extern ENode* CExpr_New_MemberAccess_Node(ENode* expr, HashNameNode* name, Boolean arrow);
+extern ENode* CExpr_New_EMONMUL_Node(ENode* expr);
+extern ENode* CExpr_ComputeSizeOrAlignment(Type* type, ENode* operand, Boolean alignofType);
 #endif
 extern CInt64 CExpr_IntegralConstExpr(void);
 extern void CExpr_CheckUnwantedAssignment(ENode* expr);

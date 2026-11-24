@@ -2824,6 +2824,14 @@ static ENode* CPrec_GetExpressionPatch(ENode* expr) {
                     break;
                 case TDE_SIZEOF:
                 case TDE_ALIGNOF:
+#if VERSION == VERSION_WII_1_0RC1
+                    if (expr->data.templdep.u.typeexpr.expr) {
+                        CPrec_NewPointerPatch(
+                            (void*)(p + offsetof(ENode, data.templdep.u.typeexpr.expr)),
+                            CPrec_GetExpressionPatch(expr->data.templdep.u.typeexpr.expr)
+                        );
+                    }
+#endif
                     CPrec_NewPointerPatch(
                         (void*)(p + offsetof(ENode, data.templdep.u.typeexpr.type)),
                         CPrec_GetTypePatch(expr->data.templdep.u.typeexpr.type)
@@ -2863,6 +2871,32 @@ static ENode* CPrec_GetExpressionPatch(ENode* expr) {
                         CPrec_GetExpressionPatch(expr->data.templdep.u.sourceref.expr)
                     );
                     break;
+#if VERSION == VERSION_WII_1_0RC1
+                case TDE_MEMBER_ACCESS:
+                    CPrec_NewPointerPatch(
+                        (void*)(p + offsetof(ENode, data.templdep.u.member.object)),
+                        CPrec_GetExpressionPatch(expr->data.templdep.u.member.object)
+                    );
+                    CPrec_NamePatch(
+                        (void*)(p + offsetof(ENode, data.templdep.u.member.name)),
+                        expr->data.templdep.u.member.name
+                    );
+                    break;
+                case TDE_DYNAMIC_CAST:
+                case TDE_STATIC_CAST:
+                case TDE_REINTERPRET_CAST:
+                case TDE_CONST_CAST:
+                    CPrec_NewPointerPatch(
+                        (void*)(p + offsetof(ENode, data.templdep.u.namedCast.expr)),
+                        CPrec_GetExpressionPatch(expr->data.templdep.u.namedCast.expr)
+                    );
+                    CPrec_NewPointerPatch(
+                        (void*)(p + offsetof(ENode, data.templdep.u.namedCast.type)),
+                        CPrec_GetTypePatch(expr->data.templdep.u.namedCast.type)
+                    );
+                    break;
+                case TDE_MONMUL:
+#endif
                 case TDE_ADDRESS_OF:
                     CPrec_NewPointerPatch(
                         (void*)(p + offsetof(ENode, data.templdep.u.monadic)),
@@ -4802,6 +4836,10 @@ enum {
     StockFunctionInstanceSize = 0x1c,
     StockTemplateActionSize = 0x1c,
     StockExpressionTemplate = 0x4c,
+    StockDependentParameter = 0,
+    StockDependentTypeQuery = 1,
+    StockDependentCast = 2,
+    StockDependentAddressOf = 9,
     StockExpressionSize = 0x2e,
     StockExpressionDepth = 256
 };
@@ -6455,6 +6493,71 @@ static Boolean CPrec_ReadStockExpressionList(
     return TRUE;
 }
 
+static Boolean CPrec_ReadStockDependentExpression(
+    CPrecStockGraph* graph, const UInt8* record, ENode* node, UInt32 depth
+) {
+    const UInt8* data = record + 0x10;
+    UInt32 first = CIRStream_ReadWord(data);
+    UInt32 second = CIRStream_ReadWord(data + 4);
+
+    switch (record[0x2c]) {
+        case StockDependentParameter:
+            node->data.templdep.subtype = TDE_PARAM;
+            return CPrec_ReadStockParamID(data, &node->data.templdep.u.pid) &&
+                node->data.templdep.u.pid.type == TPT_NONTYPE;
+        case StockDependentTypeQuery:
+            if (data[8] > 1 || data[9] > 1) {
+                return FALSE;
+            }
+            node->data.templdep.subtype = data[8] ? TDE_ALIGNOF : TDE_SIZEOF;
+            if (data[9]) {
+                node->data.templdep.u.typeexpr.type = &sttemplexpr;
+                node->data.templdep.u.typeexpr.expr =
+                    CPrec_ReadStockExpression(graph, first, depth);
+                return node->data.templdep.u.typeexpr.expr != NULL;
+            }
+            node->data.templdep.u.typeexpr.type = CPrec_ReadStockType(graph, data, 0);
+            return node->data.templdep.u.typeexpr.type != NULL;
+        case StockDependentCast:
+            node->data.templdep.subtype = TDE_CAST;
+            node->data.templdep.u.cast.type = CPrec_ReadStockType(graph, data + 4, 0);
+            node->data.templdep.u.cast.qual = CIRStream_ReadWord(data + 8);
+            return node->data.templdep.u.cast.type &&
+                CPrec_ReadStockExpressionList(
+                    graph, first, &node->data.templdep.u.cast.args, depth
+                );
+        case StockDependentAddressOf:
+        case TDE_MONMUL:
+            node->data.templdep.subtype =
+                record[0x2c] == StockDependentAddressOf ? TDE_ADDRESS_OF : TDE_MONMUL;
+            node->data.templdep.u.monadic = CPrec_ReadStockExpression(graph, first, depth);
+            return node->data.templdep.u.monadic != NULL;
+        case TDE_DYNAMIC_CAST:
+        case TDE_STATIC_CAST:
+        case TDE_REINTERPRET_CAST:
+        case TDE_CONST_CAST:
+            node->data.templdep.subtype = (TemplDepSubType)record[0x2c];
+            node->data.templdep.u.namedCast.expr = CPrec_ReadStockExpression(graph, first, depth);
+            node->data.templdep.u.namedCast.type = CPrec_ReadStockType(graph, data + 4, 0);
+            node->data.templdep.u.namedCast.qual = CIRStream_ReadWord(data + 8);
+            return node->data.templdep.u.namedCast.expr && node->data.templdep.u.namedCast.type;
+        case TDE_MEMBER_ACCESS: {
+            const UInt8* name = CPrec_StockRecord(graph, second, 14);
+            if (!name || name[0x0c] || CIRStream_ReadWord(name)) {
+                return FALSE;
+            }
+            node->data.templdep.subtype = TDE_MEMBER_ACCESS;
+            node->data.templdep.u.member.object = CPrec_ReadStockExpression(graph, first, depth);
+            node->data.templdep.u.member.arrow = data[8] != 0;
+            return node->data.templdep.u.member.object &&
+                CPrec_ReadStockName(graph, name + 4, &node->data.templdep.u.member.name) &&
+                node->data.templdep.u.member.name;
+        }
+        default:
+            return FALSE;
+    }
+}
+
 static Boolean CPrec_ReadStockExpressionData(
     CPrecStockGraph* graph, const UInt8* record, ENode* node, UInt32 depth
 ) {
@@ -6556,15 +6659,7 @@ static Boolean CPrec_ReadStockExpressionData(
             node->data.temp.needs_dtor = data[8] != 0;
             return node->data.temp.type != NULL;
         case ETEMPLDEP:
-            node->data.templdep.subtype = (TemplDepSubType)record[0x2c];
-            if (node->data.templdep.subtype == TDE_SIZEOF ||
-                node->data.templdep.subtype == TDE_ALIGNOF) {
-                node->data.templdep.u.typeexpr.type = CPrec_ReadStockType(graph, data, 0);
-                return node->data.templdep.u.typeexpr.type != NULL;
-            }
-            return node->data.templdep.subtype == TDE_PARAM &&
-                CPrec_ReadStockParamID(data, &node->data.templdep.u.pid) &&
-                node->data.templdep.u.pid.type == TPT_NONTYPE;
+            return CPrec_ReadStockDependentExpression(graph, record, node, depth);
         default:
             return FALSE;
     }

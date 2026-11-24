@@ -197,7 +197,15 @@ typedef enum TemplDepSubType {
     TDE_QUALNAME,
     TDE_OBJ,
     TDE_SOURCEREF,
-    TDE_ADDRESS_OF
+    TDE_ADDRESS_OF,
+#if VERSION == VERSION_WII_1_0RC1
+    TDE_MONMUL = 0x0B,
+    TDE_DYNAMIC_CAST = 0x0F,
+    TDE_STATIC_CAST = 0x10,
+    TDE_REINTERPRET_CAST = 0x11,
+    TDE_CONST_CAST = 0x12,
+    TDE_MEMBER_ACCESS = 0x14
+#endif
 } TemplDepSubType;
 union ENodeUnion {
     CInt64 intval;
@@ -277,6 +285,9 @@ union ENodeUnion {
             TemplParamID pid;
             struct {
                 Type* type;
+#if VERSION == VERSION_WII_1_0RC1
+                ENode* expr;
+#endif
             } typeexpr;
             struct {
                 ENodeList* args;
@@ -291,6 +302,18 @@ union ENodeUnion {
                 ENode* expr;
                 struct TStreamElement* token;
             } sourceref;
+#if VERSION == VERSION_WII_1_0RC1
+            struct {
+                ENode* object;
+                HashNameNode* name;
+                Boolean arrow;
+            } member;
+            struct {
+                ENode* expr;
+                Type* type;
+                UInt32 qual;
+            } namedCast;
+#endif
             ENode* monadic;
             Object* obj;
         } u;
