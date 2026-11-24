@@ -98,6 +98,18 @@ static void CError_GetErrorString(char* buf, short code) {
         strcpy(buf, "illegal UTF-8 sequence, treating as raw bytes");
         return;
     }
+    if (code == ERR_ANONYMOUS_AGGREGATE_MEMBER_ACCESS) {
+        strcpy(buf, "anonymous unions/structs shall not have private/protected members");
+        return;
+    }
+    if (code == ERR_ANONYMOUS_AGGREGATE_MEMBER_DECLARATION) {
+        strcpy(buf, "anonymous unions/structs shall only define non-static data members");
+        return;
+    }
+    if (code == ERR_LOCAL_OR_UNNAMED_CLASS_STATIC_MEMBER) {
+        strcpy(buf, "local or unnamed classes shall not have static members");
+        return;
+    }
 #endif
     CError_ASSERT(142, code >= ERR_ILLEGAL_CHARACTER_CONSTANT && code < ERR_MAX);
     COS_GetString(buf, 10000, code - 99);
@@ -1036,9 +1048,15 @@ void CError_ErrorMessageVA(
 
 static void CError_VAErrorMessage(int code, va_list list, Boolean isTerminal, Boolean isWarning) {
     char buf[256];
+    int diagnostic = code + 10000;
 
     CError_GetErrorString(buf, code);
-    CError_ErrorMessageVA(code + 10000, buf, list, isTerminal, isWarning);
+#if VERSION == VERSION_WII_1_0RC1
+    if (code == ERR_ILLEGAL_UNSUPPORTED_ATTRIBUTE) {
+        diagnostic = 10358;
+    }
+#endif
+    CError_ErrorMessageVA(diagnostic, buf, list, isTerminal, isWarning);
 }
 
 void CError_Error(int code, ...) {

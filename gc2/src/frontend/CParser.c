@@ -3311,6 +3311,9 @@ restart:
             if (typetoken || signedness || typesize) {
                 CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
             }
+#if VERSION == VERSION_WII_1_0RC1
+            di->hasElaboratedTypeSpecifier = TRUE;
+#endif
             tk = lex();
             scanstruct(di, STRUCT_TYPE_STRUCT);
             if (tk == TK_UU_ATTRIBUTE_UU) {
@@ -3328,6 +3331,9 @@ restart:
             if (typetoken || signedness || typesize) {
                 CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
             }
+#if VERSION == VERSION_WII_1_0RC1
+            di->hasElaboratedTypeSpecifier = TRUE;
+#endif
             tk = lex();
             CDecl_ParseClass(di, CLASS_MODE_CLASS, TRUE, 0);
             if (tk == TK_UU_ATTRIBUTE_UU) {
@@ -3345,6 +3351,9 @@ restart:
             if (typetoken || signedness || typesize) {
                 CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
             }
+#if VERSION == VERSION_WII_1_0RC1
+            di->hasElaboratedTypeSpecifier = TRUE;
+#endif
             tk = lex();
             scanstruct(di, STRUCT_TYPE_UNION);
             if (tk == TK_UU_ATTRIBUTE_UU) {
@@ -3362,6 +3371,9 @@ restart:
             if (typetoken || signedness || typesize) {
                 CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
             }
+#if VERSION == VERSION_WII_1_0RC1
+            di->hasElaboratedTypeSpecifier = TRUE;
+#endif
             tk = lex();
             scanenum(di);
             if (tk == TK_UU_ATTRIBUTE_UU) {
@@ -3691,11 +3703,70 @@ void CParser_FlushIPADefinitions(void) {
 }
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+static void CParser_CheckAnonymousMembers(TypeClass* aggregate) {
+    CScopeObjectIterator iterator;
+    NameSpaceObjectList* list;
+
+    CScope_InitObjectIterator(&iterator, aggregate->nspace);
+    while ((list = CScope_NextObjectIteratorObjectList(&iterator))) {
+        for (; list; list = list->next) {
+            ObjBase* member = list->object;
+            if (member->access != ACCESSPUBLIC) {
+                CError_Error(ERR_ANONYMOUS_AGGREGATE_MEMBER_ACCESS);
+                return;
+            }
+            switch (member->otype) {
+                case OT_MEMBERVAR:
+                    break;
+                case OT_TYPETAG:
+                    if (OBJ_TYPE_TAG(member)->type != TYPE(aggregate)) {
+                        CError_ANSIErrorWarning(ERR_ANONYMOUS_AGGREGATE_MEMBER_DECLARATION, NULL);
+                    }
+                    break;
+                case OT_TYPE:
+                case OT_ENUMCONST:
+                    CError_ANSIErrorWarning(ERR_ANONYMOUS_AGGREGATE_MEMBER_DECLARATION, NULL);
+                    break;
+                case OT_OBJECT:
+                    if (!IS_TYPE_FUNC(OBJECT(member)->type) ||
+                        !(TYPE_FUNC(OBJECT(member)->type)->flags & FUNC_AUTO_GENERATED)) {
+                        CError_Error(ERR_ANONYMOUS_AGGREGATE_MEMBER_DECLARATION);
+                        return;
+                    }
+                    break;
+                default:
+                    CError_FATAL(0x1D49);
+                    break;
+            }
+        }
+    }
+}
+#endif
+
 Boolean CParser_IsAnonymousUnion(DeclInfo* di, Boolean allowStruct) {
+#if VERSION == VERSION_WII_1_0RC1
+    TypeClass* aggregate;
+    Boolean anonymous;
+
+    if (!IS_TYPE_CLASS(di->thetype)) {
+        return FALSE;
+    }
+    aggregate = TYPE_CLASS(di->thetype);
+    anonymous = IsTempName(aggregate->classname) || aggregate->classname == no_name_node;
+    if (!(aggregate->mode == CLASS_MODE_UNION && anonymous) &&
+        (!allowStruct || (copts.ANSIstrict && !copts.cpp_extensions && !copts.gcc_extensions) ||
+         (di->hasElaboratedTypeSpecifier && !anonymous))) {
+        return FALSE;
+    }
+    CParser_CheckAnonymousMembers(aggregate);
+    return TRUE;
+#else
     return IS_TYPE_CLASS(di->thetype) &&
         ((TYPE_CLASS(di->thetype)->mode == CLASS_MODE_UNION ||
           (allowStruct && copts.cpp_extensions))) &&
         IsTempName(TYPE_CLASS(di->thetype)->classname);
+#endif
 }
 
 void CParser_CheckAnonymousUnion(DeclInfo* di, Boolean isLocal) {

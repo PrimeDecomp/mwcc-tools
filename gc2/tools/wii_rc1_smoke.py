@@ -2012,6 +2012,73 @@ def check_inline_and_aggregate_ids(compiler, objcopy, work):
     return results
 
 
+def check_anonymous_declarations(compiler, objcopy, work):
+    strict = ("-pragma", "ANSI_strict on")
+    extensions = (strict + ("-pragma", "cpp_extensions on"), strict + ("-gcc_extensions", "on"))
+    cases = [
+        (
+            "anonymous_bits.cpp",
+            "struct A {\n int z;\n union { unsigned a; struct { unsigned first:24; unsigned opt:8; }; };\n};\n"
+            "unsigned f(const A* p) { return p->opt; }\n",
+            [((), 0), (strict, 1), *((flags, 0) for flags in extensions)],
+        ),
+        (
+            "anonymous_init.c",
+            "struct A { int before; struct { int x; float y; }; int after; };\n"
+            "struct A a = {1, {7, 5.0f}, 3};\n",
+            [((), 0), *((flags, 0) for flags in extensions)],
+        ),
+        (
+            "anonymous_typedef.cpp",
+            "struct S { int x; }; typedef S Alias;\n"
+            "struct A { Alias; };\n"
+            "int f(A* a) { return a->x; }\n",
+            [((), 0), (strict, 1)],
+        ),
+        (
+            "named_struct.cpp",
+            "struct S { int x; };\nstruct A { struct S; int y; };\n"
+            "int f(A* a) { return a->y + sizeof(A); }\n",
+            [((), 0), (strict, 0)],
+        ),
+        (
+            "anonymous_private.cpp",
+            "struct A {\n union { private: int x; public: float y; };\n};\n",
+            [((), 1)],
+        ),
+        (
+            "anonymous_static.cpp",
+            "struct A {\n union {\n  static int a;\n  int x;\n };\n};\n",
+            [((), 1)],
+        ),
+        (
+            "unsupported_attribute.cpp",
+            "void __attribute__((never_inline)) f();\n",
+            [((), 1)],
+        ),
+    ]
+    results = {}
+    for name, text, modes in cases:
+        source = work / name
+        source.write_text(text, encoding="ascii")
+        obj = source.with_suffix(".o")
+        normalized = source.with_suffix(".normalized")
+        for flags, status in modes:
+            obj.unlink(missing_ok=True)
+            process = subprocess.run(
+                (compiler, *FLAGS, "-O0", "-msgstyle", "parseable", *flags, "-c", name, "-o", obj),
+                cwd=work, capture_output=True, text=True, timeout=30,
+            )
+            if process.returncode != status:
+                raise ValueError(f"{compiler}: unexpected status for {name} {flags}\n{process.stdout}{process.stderr}")
+            contents = None
+            if status == 0:
+                run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
+                contents = normalized.read_bytes()
+            results[f"{name} {flags}"] = (process.stdout, process.stderr, contents)
+    return results
+
+
 def check_reference_cast_diagnostics(compiler, objcopy, work):
     source = work / "reference_cast.cpp"
     source.write_text(
@@ -5163,6 +5230,7 @@ void member_call(V* v) { Guard guard; v->g(); }
     results.update(check_void_delete_diagnostics(compiler, work))
     results.update(check_template_actions(compiler, objcopy, nm, work))
     results.update(check_inline_and_aggregate_ids(compiler, objcopy, work))
+    results.update(check_anonymous_declarations(compiler, objcopy, work))
     results.update(check_reference_cast_diagnostics(compiler, objcopy, work))
     results.update(check_return_diagnostics(compiler, work))
     results.update(check_preprocess_output(compiler, work))

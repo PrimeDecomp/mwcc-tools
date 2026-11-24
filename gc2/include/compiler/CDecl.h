@@ -66,6 +66,7 @@ struct DeclInfo {
     UInt16 interruptflags;
     Boolean allowVariableLengthArray;
     Boolean hasVariableLengthArray;
+    Boolean hasElaboratedTypeSpecifier;
 #else
     UInt8 interruptflags;
 #endif

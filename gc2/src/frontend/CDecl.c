@@ -3509,12 +3509,15 @@ static void CDecl_LayoutStruct(TypeStruct* tstruct) {
                 if (ismember(tstruct, innermember->name)) {
                     CError_Error(ERR_STRUCT_UNION_CLASS_MEMBER_REDEFINED, innermember->name->name);
                 }
+#if VERSION != VERSION_WII_1_0RC1
                 if (removeNoNames) {
                     member->type = innermember->type;
                     member->name = innermember->name;
                     member->qual = innermember->qual;
                     member->offset = innerbase + innermember->offset;
-                } else {
+                } else
+#endif
+                {
                     newmember = galloc(sizeof(StructMember));
                     memclrw(newmember, sizeof(StructMember));
                     newmember->next = member->next;
@@ -3541,6 +3544,11 @@ static void CDecl_LayoutStruct(TypeStruct* tstruct) {
     if (removeNoNames) {
         memberp = &tstruct->members;
         while (*memberp) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (!(*memberp)->name) {
+                (*memberp)->name = CParser_AppendUniqueName("__anon");
+            }
+#endif
             if ((*memberp)->name == no_name_node || !(*memberp)->name) {
                 *memberp = (*memberp)->next;
             } else {
@@ -3664,7 +3672,12 @@ static SInt32 scanstructdeclarationlist(TypeStruct* tstruct, Boolean addToBrowse
                     }
                     tk = lex();
                 }
-            } else if (!copts.ANSIstrict && IS_TYPE_STRUCT(bde.declinfo.thetype)) {
+            } else if (IS_TYPE_STRUCT(bde.declinfo.thetype) &&
+#if VERSION == VERSION_WII_1_0RC1
+                       (!copts.ANSIstrict || copts.cpp_extensions || copts.gcc_extensions)) {
+#else
+                       !copts.ANSIstrict) {
+#endif
                 member = galloc(sizeof(StructMember));
                 memclrw(member, sizeof(StructMember));
                 member->type = bde.declinfo.thetype;
@@ -4309,6 +4322,22 @@ Boolean CDecl_CheckCtorIntegrity(FuncArg* args, TypeClass* tclass) {
     return TRUE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean CDecl_ClassAllowsStaticData(TypeClass* tclass) {
+    NameSpace* scope;
+
+    if (CScope_IsInLocalNameSpace(tclass->nspace)) {
+        return FALSE;
+    }
+    for (scope = tclass->nspace; scope && scope->theclass; scope = scope->parent) {
+        if (IsTempName(scope->theclass->classname)) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+#endif
+
 static void CDecl_ParseClassMembers(ClassLayout* decle, TypeClass* tclass, short mode) {
     AccessType access;
     Boolean resolveSelfRefs;
@@ -4714,6 +4743,11 @@ after_various_things:
                                     decle, tclass, &bde.declinfo2, access, FALSE, FALSE, TRUE, TRUE
                                 );
                             } else {
+#if VERSION == VERSION_WII_1_0RC1
+                                if (!CDecl_ClassAllowsStaticData(tclass)) {
+                                    CError_Error(ERR_LOCAL_OR_UNNAMED_CLASS_STATIC_MEMBER);
+                                }
+#endif
                                 CDecl_ExtractClassExportFlags(&bde.declinfo2, tclass->eflags);
                                 bde.declinfo2.storageclass = 0;
                                 CDecl_DataDeclarator(&bde.declinfo2, access, TRUE);
@@ -4780,6 +4814,19 @@ after_various_things:
                     ivar->offset = scanivar->offset | 0x80000000;
                 }
             }
+#if VERSION == VERSION_WII_1_0RC1
+        } else if (bde.declinfo.hasElaboratedTypeSpecifier) {
+            CError_QualifierCheck(bde.declinfo.qual);
+            if (bde.declinfo.storageclass) {
+                CError_Error(ERR_ILLEGAL_STORAGE_CLASS);
+            }
+            if (IS_TYPE_CLASS(bde.declinfo.thetype) &&
+                IsTempName(TYPE_CLASS(bde.declinfo.thetype)->classname)) {
+                CError_Error(ERR_ILLEGAL_EMPTY_DECLARATION);
+            }
+        } else if (!copts.cpp_extensions) {
+            CError_Error(ERR_ILLEGAL_EMPTY_DECLARATION);
+#endif
         }
 
         if (tk != ';') {
