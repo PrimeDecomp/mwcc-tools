@@ -131,10 +131,16 @@ restart:
         case EMEMBER:
         case EINSTRUCTION:
         case EVECTOR128CONST:
+            return;
+
 #if VERSION == VERSION_WII_1_0RC1
         case ESCOPE:
-#endif
+            if (cexpr_ipa_reference && expr->data.scope.object) {
+                expr = expr->data.scope.object;
+                goto restart;
+            }
             return;
+#endif
         case EFUNCCALL:
         case EFUNCCALLP:
 #if VERSION == VERSION_WII_1_0RC1

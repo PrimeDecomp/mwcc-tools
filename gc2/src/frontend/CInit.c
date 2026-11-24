@@ -3605,6 +3605,21 @@ void CInit_InitializeStaticData(Object* obj, InitExprRegisterCB cb) {
     CInit_CleanupInitInfo(&initinfo);
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+void CInit_InitializeCStaticData(Object* obj) {
+    if (tk == '=') {
+        CInit_InitializeData(obj);
+    } else if (IsCompleteType(obj->type)) {
+        // A block-scope static is a definition as soon as it is declared.
+        if (CParser_IsReadOnly(obj->type, obj->qual)) {
+            CInit_DeclareReadOnlyData(obj, NULL, NULL, obj->type->size);
+        } else {
+            CInit_DeclareData(obj, NULL, NULL, obj->type->size);
+        }
+    }
+}
+#endif
+
 void CInit_InitializeData(Object* obj) {
     Object* dtor;
     ObjectList* list;

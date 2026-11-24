@@ -3492,10 +3492,16 @@ static void CInline_ExportCheck(ENode* expr) {
             case EPRECOMP:
             case EINSTRUCTION:
             case EVECTOR128CONST:
+                return;
+
 #if VERSION == VERSION_WII_1_0RC1
             case ESCOPE:
-#endif
+                if (expr->data.scope.object) {
+                    expr = expr->data.scope.object;
+                    continue;
+                }
                 return;
+#endif
 
             case ELABEL:
                 if (expr->data.label->stmt) {

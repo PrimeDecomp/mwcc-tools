@@ -49,6 +49,9 @@ extern void CInit_InitializeAutoData(
 #endif
 );
 extern void CInit_InitializeStaticData(Object* obj, InitExprRegisterCB cb);
+#if VERSION == VERSION_WII_1_0RC1
+extern void CInit_InitializeCStaticData(Object* obj);
+#endif
 extern void CInit_InitializeData(Object* obj);
 extern Object* CInit_DeclareString(char* data, SInt32 size, Boolean ispascal, Boolean iswide);
 #if VERSION == VERSION_WII_1_0RC1

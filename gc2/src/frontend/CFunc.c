@@ -1494,7 +1494,11 @@ static void CFunc_LocalDataDeclarator(
                         sinit_label->stmt = stmt;
                     }
                 } else {
+#if VERSION == VERSION_WII_1_0RC1
+                    CInit_InitializeCStaticData(object);
+#else
                     CInit_InitializeData(object);
+#endif
                 }
             }
             break;
