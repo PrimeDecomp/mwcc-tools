@@ -588,6 +588,11 @@ append_array_lengths:
             sprintf(buf, "bitfield:%ld", (SInt32)TYPE_BITFIELD(ty)->bitlength);
             CError_BufferAppendString(eb, buf);
             return;
+#if VERSION == VERSION_WII_1_0RC1
+        case TYPEILLEGAL:
+            CError_BufferAppendString(eb, "<unknown-type>");
+            return;
+#endif
         default:
             CError_FATAL(752);
     }

@@ -1543,7 +1543,7 @@ static ENode* CExpr_ParseNameResultExpr(
 
         result = CExpr_NewENode(EMEMBER);
         result->data.emember = member;
-        result->rtype = &stvoid;
+        result->rtype = VERSION == VERSION_WII_1_0RC1 ? &stillegal : &stvoid;
         return result;
     }
 
@@ -1565,7 +1565,7 @@ static ENode* CExpr_ParseNameResultExpr(
 
                     result = CExpr_NewENode(EMEMBER);
                     result->data.emember = member;
-                    result->rtype = &stvoid;
+                    result->rtype = VERSION == VERSION_WII_1_0RC1 ? &stillegal : &stvoid;
                     return result;
                 }
             }
@@ -1586,7 +1586,7 @@ static ENode* CExpr_ParseNameResultExpr(
 
                 result = CExpr_NewENode(EMEMBER);
                 result->data.emember = member;
-                result->rtype = &stvoid;
+                result->rtype = VERSION == VERSION_WII_1_0RC1 ? &stillegal : &stvoid;
                 return result;
             }
         }
@@ -2983,18 +2983,32 @@ ENode* getpointertomemberfunc(ENode* expr, Type* type, Boolean buildData) {
     CError_ASSERT(3444, ENODE_IS(expr, EMEMBER));
 
     if (expr->data.emember->expr && !copts.cpp_extensions) {
+#if VERSION == VERSION_WII_1_0RC1
+        CError_Error(ERR_ILLEGAL_IMPLICIT_MEMBER_POINTER_CONVERSION);
+#else
         CError_Error(ERR_EXPRESSION_SYNTAX_ERROR);
+#endif
     }
 
     if (!copts.cpp_extensions) {
         if (!(expr->data.emember->addressTaken && expr->data.emember->is_qualified)) {
             if (type && IS_TYPE_MEMBERPOINTER(type)) {
+#if VERSION == VERSION_WII_1_0RC1
+                CError_ANSIErrorWarning(ERR_ILLEGAL_IMPLICIT_MEMBER_POINTER_CONVERSION, NULL);
+#else
                 CError_Warning(ERR_ILLEGAL_IMPLICIT_MEMBER_POINTER_CONVERSION);
+#endif
             }
         }
     }
 
     if (expr->data.emember->list->next) {
+#if VERSION == VERSION_WII_1_0RC1
+        if (!type) {
+            CError_Error(ERR_AMBIGUOUS_ACCESS_OVERLOADED_FUNCTION);
+            return nullnode();
+        }
+#endif
         if (type) {
             if (IS_TYPE_MEMBERPOINTER(type)) {
                 type = TYPE_MEMBER_POINTER(type)->ty1;
@@ -4597,6 +4611,15 @@ ENode* memberpointercompare(ENodeType nt, ENode* left, ENode* right) {
     return left;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static ENode* CExpr_ConvertComparisonMember(ENode* expr) {
+    if (ENODE_IS(expr, EMEMBER)) {
+        return getpointertomemberfunc(expr, NULL, TRUE);
+    }
+    return expr;
+}
+#endif
+
 #if VERSION == VERSION_GC_1_3_2
 #undef CError_LINE_DELTA
 #define CError_LINE_DELTA -7
@@ -4621,6 +4644,10 @@ ENode* CExpr_New_EEQU_Node(ENode* left, ENode* right) {
     if (IS_TYPE_POINTER(left->rtype) || IS_TYPE_POINTER(right->rtype)) {
         return pointercompare(EEQU, left, right);
     }
+#if VERSION == VERSION_WII_1_0RC1
+    left = CExpr_ConvertComparisonMember(left);
+    right = CExpr_ConvertComparisonMember(right);
+#endif
     if (IS_TYPE_MEMBERPOINTER(left->rtype) || IS_TYPE_MEMBERPOINTER(right->rtype)) {
         return memberpointercompare(EEQU, left, right);
     }
@@ -4677,6 +4704,10 @@ ENode* CExpr_New_ENOTEQU_Node(ENode* left, ENode* right) {
     if (IS_TYPE_POINTER(left->rtype) || IS_TYPE_POINTER(right->rtype)) {
         return pointercompare(ENOTEQU, left, right);
     }
+#if VERSION == VERSION_WII_1_0RC1
+    left = CExpr_ConvertComparisonMember(left);
+    right = CExpr_ConvertComparisonMember(right);
+#endif
     if (IS_TYPE_MEMBERPOINTER(left->rtype) || IS_TYPE_MEMBERPOINTER(right->rtype)) {
         return memberpointercompare(ENOTEQU, left, right);
     }

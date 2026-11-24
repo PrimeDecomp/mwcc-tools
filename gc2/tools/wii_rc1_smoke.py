@@ -2079,6 +2079,47 @@ def check_anonymous_declarations(compiler, objcopy, work):
     return results
 
 
+def check_member_pointer_comparisons(compiler, objcopy, work):
+    cases = (
+        ("bare", "int f();", "p == f", 0),
+        ("reversed", "int f();", "f == p", 0),
+        ("unequal", "int f();", "p != f", 0),
+        ("qualified", "int f();", "p == A::f", 0),
+        ("address", "int f();", "p == &A::f", 0),
+        ("virtual", "virtual int f();", "p == f", 0),
+        ("null", "int f();", "f == 0", 0),
+        ("object", "int f();", "a.f == p", 1),
+        ("overload", "static int f(int); int f();", "p == f", 1),
+        ("overloaded_address", "int f(); int f(long);", "p == &A::f", 1),
+        ("ordinary", "int f(); int (*callback)();", "callback == f", 1),
+    )
+    results = {}
+    for name, members, expression, status in cases:
+        source = work / f"member_pointer_{name}.cpp"
+        source.write_text(
+            f"struct A {{\n typedef int (A::*P)();\n P p;\n {members}\n"
+            f" bool test(A& a) {{ return {expression}; }}\n}};\n"
+            "int compare(A& a) { return a.test(a); }\n",
+            encoding="ascii",
+        )
+        obj = source.with_suffix(".o")
+        normalized = source.with_suffix(".normalized")
+        for flags in ((), ("-pragma", "ANSI_strict on")):
+            obj.unlink(missing_ok=True)
+            process = subprocess.run(
+                (compiler, *FLAGS, "-O0", "-msgstyle", "parseable", *flags, "-c", source.name, "-o", obj),
+                cwd=work, capture_output=True, text=True, timeout=30,
+            )
+            if process.returncode != status:
+                raise ValueError(f"{compiler}: unexpected status for {name} {flags}\n{process.stdout}{process.stderr}")
+            contents = None
+            if status == 0:
+                run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
+                contents = normalized.read_bytes()
+            results[f"member pointer {name} {flags}"] = (process.stdout, process.stderr, contents)
+    return results
+
+
 def check_reference_cast_diagnostics(compiler, objcopy, work):
     source = work / "reference_cast.cpp"
     source.write_text(
@@ -5231,6 +5272,7 @@ void member_call(V* v) { Guard guard; v->g(); }
     results.update(check_template_actions(compiler, objcopy, nm, work))
     results.update(check_inline_and_aggregate_ids(compiler, objcopy, work))
     results.update(check_anonymous_declarations(compiler, objcopy, work))
+    results.update(check_member_pointer_comparisons(compiler, objcopy, work))
     results.update(check_reference_cast_diagnostics(compiler, objcopy, work))
     results.update(check_return_diagnostics(compiler, work))
     results.update(check_preprocess_output(compiler, work))
