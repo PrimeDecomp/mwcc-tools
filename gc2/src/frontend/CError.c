@@ -9,6 +9,7 @@
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
 #include "compiler/CPrepTokenizer.h"
+#include "compiler/CScope.h"
 #include "compiler/CTemplateNew.h"
 #include "compiler/enode.h"
 #include "compiler/InlineAsm.h"
@@ -811,6 +812,7 @@ void CError_ErrorMessage(int errTable, char* str, Boolean isTerminal, Boolean is
 #endif
         ) {
             ref = NULL;
+            buf[0] = 0;
         } else {
             CPrep_GetTokenContext(
                 token,
@@ -1278,9 +1280,36 @@ void CError_BreakPoint(const char* a, const char* b) {
 
 void CError_Internal(char* filename, int line) {
     char format[128];
+#if VERSION == VERSION_WII_1_0RC1
+    Str255 sourceFile;
+    char message[512];
+    HashNameNode* name = NULL;
+    char* slash = strrchr(filename, '/');
+    if (slash) {
+        filename = slash + 1;
+    }
+    slash = strrchr(filename, '\\');
+    if (slash) {
+        filename = slash + 1;
+    }
+    if (cscope_currentfunc) {
+        name = cscope_currentfunc->u.func.linkname;
+        if (!name) {
+            name = cscope_currentfunc->name;
+        }
+    }
+    COS_FileGetFSSpecInfo(&cparamblkptr->sourcefile, NULL, NULL, sourceFile);
+    CompilerGetCString(5, format);
+    snprintf(
+        message, sizeof(message), format, filename, (long)line, name ? name->name : "",
+        (int)sourceFile[0], sourceFile + 1
+    );
+    CError_ErrorMessage(10424, message, TRUE, FALSE);
+#else
     CompilerGetCString(5, format);
     sprintf(string, format, filename, line);
     CError_ErrorMessage(10001, string, TRUE, FALSE);
+#endif
     longjmp(errorreturn, 1);
     CError_BreakPoint(NULL, NULL);
 }

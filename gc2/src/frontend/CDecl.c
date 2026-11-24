@@ -632,6 +632,7 @@ static void scandirectdecl1(DeclInfo* declinfo) {
 #if VERSION == VERSION_WII_1_0RC1
         if (variableLength || (!unsized && CDecl_FindVLAInfo(declinfo->thetype))) {
             declinfo->thetype = CDecl_NewArrayType(declinfo->thetype, 0);
+            declinfo->hasVariableLengthArray = TRUE;
             CDecl_RegisterVLAInfo(
                 declinfo->thetype,
                 variableLength ? bound : intconstnode(CABI_GetSizeTType(), CInt64_GetULong(&len))

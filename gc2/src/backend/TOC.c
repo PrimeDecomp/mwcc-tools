@@ -2570,6 +2570,12 @@ static void checkexceptionreferences(ExceptionAction* action) {
                 break;
             case EAT_DELETEPOINTER:
             case EAT_DELETELOCALPOINTER:
+#if VERSION == VERSION_WII_1_0RC1
+                if (action->data.delete_pointer.deletefunc == vla_free_func) {
+                    // RC1 encounters these operands at calls, after assigning virtual registers.
+                    break;
+                }
+#endif
                 referenceexception(action->data.delete_pointer.pointerobject);
                 break;
             case EAT_DELETEPOINTERCOND:

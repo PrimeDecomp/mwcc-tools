@@ -522,6 +522,15 @@ void CleanupElfSections(void) {
     }
 }
 
+static Boolean section_is_used(ObjGenSection* section) {
+#if VERSION == VERSION_WII_1_0RC1
+    if (section->hasObject) {
+        return TRUE;
+    }
+#endif
+    return section->buffer.size != 0;
+}
+
 static void build_ordered_section_index(void) {
     int count;
     ObjGenSection* section;
@@ -530,7 +539,7 @@ static void build_ordered_section_index(void) {
     count = 1;
     for (section = ELFfile.section_list; section != NULL; section = section->next) {
         section->index = 0;
-        if (section->kind < SectionKind_Symtab && section->buffer.size != 0) {
+        if (section->kind < SectionKind_Symtab && section_is_used(section)) {
             ++count;
         }
         if (section->kind >= SectionKind_Symtab && section->kind < SectionKind_Common) {
@@ -543,7 +552,7 @@ static void build_ordered_section_index(void) {
     if (ELFfile.debug_sections_inited) {
         section = GetSectionByName(".text", 0, 0);
         sym = elf_declare_symbol(section);
-        if (section->buffer.size == 0) {
+        if (!section_is_used(section)) {
             ordered_section_index[1] = section;
             section->index = 1;
             ++count;
@@ -554,7 +563,7 @@ static void build_ordered_section_index(void) {
         }
     }
     for (section = ELFfile.section_list->next; section != NULL; section = section->next) {
-        if (section->kind < SectionKind_Rel && section->buffer.size != 0) {
+        if (section->kind < SectionKind_Rel && section_is_used(section)) {
             ordered_section_index[count] = section;
             section->index = count;
             ++count;

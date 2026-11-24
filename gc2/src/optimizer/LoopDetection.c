@@ -2,6 +2,7 @@
 #include "compiler/BitVectors.h"
 #include "compiler/CError.h"
 #include "compiler/CFunc.h"
+#include "compiler/CParser.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/enode.h"
 #include "compiler/objects.h"
@@ -1011,9 +1012,11 @@ void analyzeloop(Loop* loop) {
 
     for (list = loop->blocks; list; list = list->next) {
         block = list->block;
+#if VERSION != VERSION_WII_1_0RC1
         if (!loop->children) {
             block->flags |= fInnerLoop;
         }
+#endif
         loop->bodySize += block->pcodeCount;
 
         if (block != loop->body) {
@@ -1065,11 +1068,17 @@ void analyzeloop(Loop* loop) {
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (!copts.optimizesize && !loop->has_call && loop->preheader && loop->preheader->nextBlock) {
+        loop->preheader->nextBlock->flags |= fInnerLoop;
+    }
+#else
     if (!loop->children && !loop->has_call && loop->bodySize < 32) {
         for (list = loop->blocks; list; list = list->next) {
             list->block->flags |= fInnerLoop;
         }
     }
+#endif
 }
 
 static void analyzeloops(Loop* loop) {

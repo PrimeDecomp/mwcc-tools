@@ -65,6 +65,7 @@ struct DeclInfo {
 #if VERSION == VERSION_WII_1_0RC1
     UInt16 interruptflags;
     Boolean allowVariableLengthArray;
+    Boolean hasVariableLengthArray;
 #else
     UInt8 interruptflags;
 #endif

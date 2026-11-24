@@ -773,11 +773,29 @@ ENode* checkreference(ENode* expr) {
     return expr;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Object* CExpr_VLAAddress(ENode* expr) {
+    ENode* ref = expr->data.monadic;
+    if (!ENODE_IS(ref, EOBJREF) || ref->data.objref->datatype != DLOCAL ||
+        ref->data.objref->type != expr->rtype) {
+        return NULL;
+    }
+    VLAInfo* info = CDecl_FindVLAInfo(expr->rtype);
+    return info ? info->addressObject : NULL;
+}
+#endif
+
 static ENode* pointer_generation2(ENode* expr) {
     switch (expr->type) {
         case EINDIRECT:
             switch (expr->rtype->type) {
-                case TYPEARRAY:
+                case TYPEARRAY: {
+#if VERSION == VERSION_WII_1_0RC1
+                    Object* address = CExpr_VLAAddress(expr);
+                    if (address) {
+                        return create_objectnode2(address);
+                    }
+#endif
                     switch (expr->data.monadic->type) {
                         case EPOSTINC:
                         case EPOSTDEC:
@@ -792,6 +810,7 @@ static ENode* pointer_generation2(ENode* expr) {
                             expr->data.monadic->flags = expr->flags;
                             return expr->data.monadic;
                     }
+                }
                 case TYPEFUNC:
                     expr = expr->data.monadic;
                     if (ENODE_IS(expr, EOBJREF) && expr->data.objref->datatype == DINLINEFUNC) {
@@ -816,9 +835,16 @@ ENode* CExpr_PointerGeneration(ENode* expr) {
     switch (expr->type) {
         case EINDIRECT:
             switch (expr->rtype->type) {
-                case TYPEARRAY:
+                case TYPEARRAY: {
+#if VERSION == VERSION_WII_1_0RC1
+                    Object* address = CExpr_VLAAddress(expr);
+                    if (address) {
+                        return create_objectnode2(address);
+                    }
+#endif
                     expr->data.monadic->rtype = CDecl_NewPointerType(TPTR_TARGET(expr->rtype));
                     return expr->data.monadic;
+                }
                 case TYPEFUNC:
                     return expr->data.monadic;
                 default:
@@ -2768,6 +2794,16 @@ ENode* getnodeaddress(ENode* expr, Boolean isAddressOf) {
         }
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (IS_TYPE_ARRAY(expr->rtype)) {
+        Object* address = CExpr_VLAAddress(expr);
+        if (address) {
+            result = create_objectnode2(address);
+            result->rtype = CDecl_NewPointerType(expr->rtype);
+            return result;
+        }
+    }
+#endif
     result = lalloc(sizeof(ENode));
     *result = *expr;
 restart:

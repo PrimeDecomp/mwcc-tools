@@ -121,6 +121,9 @@ BE_SymNode* AddObject(Object* obj, SInt32 size, ObjGenSection* section) {
     if (obj->type->type == TYPEFUNC) {
         return AddFunction(obj, size, section);
     }
+#if VERSION == VERSION_WII_1_0RC1
+    section->hasObject = TRUE;
+#endif
     node = MakeSymbolTableEntry(obj);
     if (CParser_HasInternalLinkage(obj)) {
         sclass = TK_STATIC;

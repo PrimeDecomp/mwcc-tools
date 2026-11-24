@@ -299,7 +299,12 @@ static const char *STR10100[] = {
     "Save precompiled header as...",
     "### Error while creating precompiled headerfile (OSErr %ld) ###",
     "### Error while writing precompiled headerfile (OSErr %ld) ### ",
+#if VERSION == VERSION_WII_1_0RC1
+    "internal compiler error (report to <cw_bug@freescale.com>)\n"
+    "while executing in file '%s' line: %ld\n(compiling '%s' in '%.*s')",
+#else
     "internal compiler error: File: '%s' Line: %ld",
+#endif
     "ran out of registers--turn on Global Optimization for this function",
     "### Error: Out of memory ###",
     "### User break detected ###",

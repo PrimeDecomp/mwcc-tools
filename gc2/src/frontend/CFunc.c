@@ -1368,7 +1368,10 @@ static void CFunc_DefineVLASizeObjects(Type* type) {
     }
 
     VLAInfo* info = CDecl_FindVLAInfo(type);
-    if (info && info->bound && !info->sizeObject) {
+    if (info && !info->sizeObject) {
+        if (!info->bound) {
+            CError_Internal("CTemplateTools.c", 1726);
+        }
         ENode* size = CExpr_ComputeTypeExprFunc(type);
         Object* object = create_temp_object(CABI_GetSizeTType());
         CFunc_AppendLocalDeclarationInfo(object);
@@ -1416,12 +1419,6 @@ static void CFunc_LocalDataDeclarator(
     }
 
     CDecl_CompleteType(di->thetype);
-#if VERSION == VERSION_WII_1_0RC1
-    if (!isParameterList && !CDecl_FindVLAInfo(di->thetype)) {
-        CFunc_DefineVLASizeObjects(di->thetype);
-    }
-#endif
-
     object = NULL;
 
     if ((nsol = CScope_FindName(cscope_current, di->name))) {
@@ -1446,6 +1443,17 @@ static void CFunc_LocalDataDeclarator(
     if (object) {
         CError_Error(ERR_OBJECT_REDEFINED, object);
     }
+
+#if VERSION == VERSION_WII_1_0RC1
+    if (di->hasVariableLengthArray &&
+        (di->storageclass == TK_STATIC || di->storageclass == TK_EXTERN)) {
+        CError_Error(ERR_VARIABLE_LENGTH_ARRAY_CONTEXT);
+        di->thetype = TYPE(&stsignedint);
+    }
+    if (!isParameterList && !CDecl_FindVLAInfo(di->thetype)) {
+        CFunc_DefineVLASizeObjects(di->thetype);
+    }
+#endif
 
     if ((int)di->storageclass == TK_EXTERN) {
         object = NULL;
@@ -1649,7 +1657,7 @@ static ENode* CFunc_ParseLocalDeclarationList(
         di.is_extern_c = cfunc_is_extern_c;
         CParser_GetDeclSpecs(&di, FALSE);
 #if VERSION == VERSION_WII_1_0RC1
-        di.allowVariableLengthArray = di.storageclass != TK_STATIC && di.storageclass != TK_EXTERN;
+        di.allowVariableLengthArray = TRUE;
 #endif
 
         if (IS_TYPE_TEMPLATE(di.thetype)) {
@@ -1664,6 +1672,9 @@ static ENode* CFunc_ParseLocalDeclarationList(
             while (1) {
                 deftoken = *CPrep_CurStreamElement();
                 di.name = NULL;
+#if VERSION == VERSION_WII_1_0RC1
+                di.hasVariableLengthArray = FALSE;
+#endif
                 scandeclarator(&di);
 
                 if (di.name) {

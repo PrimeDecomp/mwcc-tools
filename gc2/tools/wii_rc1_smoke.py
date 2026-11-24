@@ -2599,7 +2599,7 @@ def check_c99_declarations(compiler, work):
             "int f(int cols, void* p) { typedef int Row[cols]; return ((Row*)p)[1][cols-1]; }",
         ),
         "c99_vla_automatic": (
-            "-O0",
+            "-O4,p",
             "extern void fill(int*,int); int f(int n, int m) { "
             "int row[n][m]; fill(row[0], m); return row[n-1][m-1]; }",
         ),
@@ -2609,10 +2609,23 @@ def check_c99_declarations(compiler, work):
             "Row a, b; fill(a, n); fill(b, n); return a[0] + b[0]; }",
         ),
         "c99_vla_in_loop": (
-            "-O0",
+            "-O2",
             "extern void fill(int*,int); int f(int n) { int out = 0; "
             "for (int j = 1; j < n; ++j) { int row[j]; fill(row, j); out += row[j-1]; } "
             "return out; }",
+        ),
+        "c99_vla_qualifiers": (
+            "-O2",
+            "int f(int n) { volatile int row[n]; int (*p)[n] = &row; "
+            "(*p)[0] = n; return row[0]; }",
+        ),
+        "c99_vla_const_decay": (
+            "-O2",
+            "int f(int n) { const int row[n]; row[0] = n; return row[0]; }",
+        ),
+        "c99_vla_static_typedef": (
+            "-O2",
+            "int f(int n) { typedef int Row[n]; static Row row; return sizeof row; }",
         ),
     }
     results = {}
@@ -2622,6 +2635,28 @@ def check_c99_declarations(compiler, work):
         obj = source.with_suffix(".o")
         run(compiler, *FLAGS, "-lang", "c99", mode, "-c", source.name, "-o", obj, cwd=work)
         results[source.name] = obj.read_bytes()
+
+    invalid = {
+        "c99_vla_retained_star": (
+            "int f(int a[1][*])\n{\n  return 0;\n}\n",
+            "(10424) internal compiler error",
+        ),
+        "c99_vla_static_bound": (
+            "int f(int n) { static int a[n][n]; return 0; }\n",
+            "(10471) variable length array types",
+        ),
+    }
+    for name, (code, diagnostic) in invalid.items():
+        source = work / f"{name}.c"
+        source.write_text(code, encoding="ascii")
+        obj = source.with_suffix(".o")
+        proc = subprocess.run(
+            (compiler, *FLAGS, "-lang", "c99", "-c", source.name, "-o", obj),
+            cwd=work, text=True, capture_output=True, timeout=30,
+        )
+        if proc.returncode != 1 or diagnostic not in proc.stdout or obj.exists():
+            raise ValueError(f"{compiler}: unexpected VLA diagnostic\n{proc.stdout}{proc.stderr}")
+        results[source.name] = (proc.stdout, proc.stderr)
     return results
 
 

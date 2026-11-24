@@ -120,6 +120,9 @@ struct ObjGenSection {
     struct ObjGenSection* nextInGroup;
     UInt8 kind;
     UInt8 flags;
+#if VERSION == VERSION_WII_1_0RC1
+    Boolean hasObject;
+#endif
     UInt32 permissions;
     SInt16 index;
     SInt32 relocationCount;
