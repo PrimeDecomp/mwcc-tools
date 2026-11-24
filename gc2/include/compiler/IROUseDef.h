@@ -38,6 +38,9 @@ extern ENodeType IRO_NonAssignmentOp[MAXEXPR];
 extern IROUse* IRO_FirstVarUse;
 extern IROUse* IRO_LastVarUse;
 
+#if VERSION == VERSION_WII_1_0RC1
+extern IROLinear* IRO_AddTypeConversion(IROLinear* node, Type* type, IROList* list);
+#endif
 extern CInt64 IRO_GetSelfAssignmentVal(IROLinear* linear);
 extern void IRO_InitializeNonAssignmentOpArray(void);
 extern void IRO_InitializeAssignmentFoldingFunctionArray(void);

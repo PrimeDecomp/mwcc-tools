@@ -6,6 +6,7 @@
 #include "compiler/IroLinearForm.h"
 #include "compiler/IroPropagate.h"
 #include "compiler/IroSubable.h"
+#include "compiler/IROUseDef.h"
 #include "compiler/IroUtil.h"
 #include "compiler/IroVars.h"
 #include "compiler/BitVector.h"
@@ -1466,6 +1467,112 @@ static void UnmarkSubexpressionsOfInvariantExpressions(void) {
 }
 
 #if VERSION == VERSION_WII_1_0RC1
+static void DistributeInvariantAddressAddends(
+    IROLinear* product, IROLinear* factor, IROLinear* term
+) {
+    IROLinear* parent;
+    IROLinear* sibling;
+    IROLinear* scaled;
+    IROLinear* sum;
+    IROList list;
+
+    if (IS_LINEAR_DIADIC(term, EADD)) {
+        IROLinear* left = term->u.diadic.left;
+        IROLinear* right = term->u.diadic.right;
+        DistributeInvariantAddressAddends(product, factor, left);
+        DistributeInvariantAddressAddends(product, factor, right);
+        return;
+    }
+    if (!(term->flags & IROLF_LoopInvariant)) {
+        return;
+    }
+    parent = IRO_LocateFather(term);
+    if (!parent || !IS_LINEAR_DIADIC(parent, EADD)) {
+        return;
+    }
+    sibling = parent->u.diadic.left == term ? parent->u.diadic.right : parent->u.diadic.left;
+
+    IRO_InitList(&list);
+    scaled = IRO_NewLinear(IROLinearOp2Arg);
+    *scaled = *product;
+    scaled->index = IRO_NumLinear++;
+    scaled->u.diadic.left = IRO_DuplicateExpr(term, &list);
+    if (!IRO_TypesEqual(term->rtype, product->rtype)) {
+        scaled->u.diadic.left = IRO_AddTypeConversion(scaled->u.diadic.left, product->rtype, &list);
+    }
+    IRO_NopOut(term);
+    IRO_LocateFather_Cut_And_Paste_Without_Nopping(parent, sibling);
+    parent->type = IROLinearNop;
+    scaled->u.diadic.right = IRO_DuplicateExpr(factor, &list);
+    scaled->next = NULL;
+    scaled->expr = NULL;
+    IRO_AddToList(scaled, &list);
+
+    sum = IRO_NewLinear(IROLinearOp2Arg);
+    *sum = *parent;
+    sum->type = IROLinearOp2Arg;
+    sum->index = IRO_NumLinear++;
+    sum->rtype = product->rtype;
+    sum->u.diadic.left = scaled;
+    sum->u.diadic.right = product;
+    sum->next = NULL;
+    sum->expr = NULL;
+    IRO_AddToList(sum, &list);
+    IRO_LocateFather_Cut_And_Paste_Without_Nopping(product, sum);
+    IRO_PasteAfter(list.head, list.tail, product);
+}
+
+static void DistributePartiallyInvariantAddressMultiply(IROLinear* term) {
+    IROLinear* factor;
+    IROLinear* variant;
+
+    if (IS_LINEAR_DIADIC(term, EADD)) {
+        DistributePartiallyInvariantAddressMultiply(term->u.diadic.left);
+        DistributePartiallyInvariantAddressMultiply(term->u.diadic.right);
+    } else if (IS_LINEAR_DIADIC_2(term, EMUL, ESHL)) {
+        variant = term->u.diadic.left;
+        factor = term->u.diadic.right;
+        if (term->nodetype == EMUL && (variant->flags & IROLF_LoopInvariant)) {
+            variant = factor;
+            factor = term->u.diadic.left;
+        }
+        if (!(factor->flags & IROLF_LoopInvariant) || (variant->flags & IROLF_LoopInvariant) ||
+            !IS_TYPE_INT(term->rtype)) {
+            return;
+        }
+        while (IS_LINEAR_MONADIC(variant, ETYPCON) && IRO_IsValuePreservingTypcon(variant)) {
+            variant = variant->u.monadic;
+        }
+        if (IS_LINEAR_DIADIC(variant, EADD)) {
+            DistributeInvariantAddressAddends(term, factor, variant);
+        }
+    }
+}
+
+static void IRO_DistributePartiallyInvariantMultiplies(void) {
+    IRONode* block;
+
+    for (block = IRO_FirstNode; block; block = block->nextnode) {
+        IROLinear* nd;
+        if (!Bv_IsBitSet(block->index, InLoop)) {
+            continue;
+        }
+        for (nd = block->first; nd; nd = nd->next) {
+            if (IS_LINEAR_MONADIC(nd, EINDIRECT) && IS_LINEAR_DIADIC(nd->u.monadic, EADD) &&
+                !IRO_HasSideEffect(nd)) {
+                DistributePartiallyInvariantAddressMultiply(nd->u.monadic);
+            }
+            if (nd == block->last) {
+                break;
+            }
+        }
+    }
+
+    IRO_ConstantFolding();
+    IRO_UpdateFlagsOnInts();
+    ComputeLoopInvariance();
+}
+
 typedef struct RISProductSplit {
     IROList original;
     IROLinear* sum;
@@ -1681,6 +1788,9 @@ static void MyHandleLoop_Vector(IRONode* fnode, IRONode* motionPreheader) {
     }
 
     if (copts.loopinvariants || copts.strengthreduction) {
+#if VERSION == VERSION_WII_1_0RC1
+        IRO_DistributePartiallyInvariantMultiplies();
+#endif
         MoveInvarianceInAddressExpr();
         IRO_DumpAfterPhase("MoveInvarianceInAddressExpr", FALSE);
         IRO_FindExpressions(InLoop, TRUE);

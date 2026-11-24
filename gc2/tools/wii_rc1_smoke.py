@@ -2553,7 +2553,10 @@ def check_pointer_arithmetic(compiler, work):
         "int reversed_index(int n, const short* p) { return (n - 1)[p]; }\n"
         "void* byte_add(void* p, int n) { return p + n; }\n"
         "long byte_difference(void* p, void* q) { return p - q; }\n"
-        "Callback* function_add(Callback* p, int n) { return p + n; }\n",
+        "Callback* function_add(Callback* p, int n) { return p + n; }\n"
+        "int trim_trailing_zeroes(const int* p, int n) { while (p[n - 1] == 0) --n; return n; }\n"
+        "#pragma opt_strength_reduction off\n"
+        "int trim_without_reduction(const int* p, int n) { while (p[n - 1] == 0) --n; return n; }\n",
         encoding="ascii",
     )
     obj = source.with_suffix(".o")

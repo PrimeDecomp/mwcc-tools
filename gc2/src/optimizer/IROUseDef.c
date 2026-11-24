@@ -295,7 +295,10 @@ CInt64 IRO_GetSelfAssignmentVal(IROLinear* linear) {
 }
 
 #if VERSION >= VERSION_GC_2_5
-static IROLinear* IRO_AddTypeConversion(IROLinear* node, Type* type, IROList* list) {
+#if VERSION != VERSION_WII_1_0RC1
+static
+#endif
+IROLinear* IRO_AddTypeConversion(IROLinear* node, Type* type, IROList* list) {
     IROLinear* first;
     IROLinear* last;
     int isBool;
