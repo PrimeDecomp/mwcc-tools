@@ -2603,6 +2603,14 @@ def check_c99_declarations(compiler, work):
             "extern void fill(int*,int); int f(int n, int m) { "
             "int row[n][m]; fill(row[0], m); return row[n-1][m-1]; }",
         ),
+        "c99_vla_size_only": (
+            "-O4,p",
+            "int f(int n) { int row[n]; return sizeof row; }",
+        ),
+        "c99_vla_bound_side_effect": (
+            "-O4,s",
+            "int f(int n) { int row[n++][n]; return n + sizeof row; }",
+        ),
         "c99_vla_shared_typedef": (
             "-O0",
             "extern void fill(int*,int); int f(int n) { typedef int Row[n]; "

@@ -438,6 +438,42 @@ def check_live_program(codec, compiler, reference, work, compiler_flags):
         ) == linked_program_text(reference, work, "assembly_replay", ["assembly_replay.o"], no_exceptions, ipa="off")
 
 
+def check_program_vla(compiler, reference, work):
+    compile_flags = ("-lang", "c99", "-O2", "-Cpp_exceptions", "off", "-use_lmw_stmw", "on")
+    fixtures = {
+        "stack": "int __start(int n) { int a[n]; fill(a, n); return a[n-1]; }\n",
+        "heap": (
+            "int __start(int n) { int sum = 0;\n"
+            "    for (int j = 1; j < n; ++j) { int a[j]; fill(a, j); sum += a[j-1]; }\n"
+            "    return sum; }\n"
+        ),
+    }
+    (work / "vla_runtime.c").write_text(
+        "void fill(int* p, int n) { p[n-1] = 7; }\n"
+        "static int storage[64];\n"
+        "void* __vla_alloc(unsigned long n) { return storage; }\n"
+        "void __vla_free(void* p) {}\n",
+        "ascii",
+    )
+    run(reference, *FLAGS, *compile_flags, "-c", "vla_runtime.c", "-o", "vla_runtime.o", cwd=work)
+    linker_path = os.pathsep.join((str(reference.parent), os.environ.get("PATH", "")))
+    with patch.dict(os.environ, PATH=linker_path):
+        for name, source in fixtures.items():
+            filename = f"vla_{name}.c"
+            (work / filename).write_text("extern void fill(int*, int);\n" + source, "ascii")
+            for producer, tool in (("stock", reference), ("source", compiler)):
+                run(tool, *FLAGS, *compile_flags, "-ipa", "program", "-c", filename,
+                    "-o", f"vla_{name}_{producer}.o", cwd=work)
+            expected = linked_program_text(reference, work, f"vla_{name}_baseline",
+                                           [f"vla_{name}_stock.irobj", "vla_runtime.o"],
+                                           (*compile_flags, "-nostdlib"))
+            for producer, tool in (("stock", compiler), ("source", reference), ("source", compiler)):
+                reader = "stock" if tool == reference else "source"
+                stem = f"vla_{name}_{producer}_to_{reader}"
+                inputs = [f"vla_{name}_{producer}.irobj", "vla_runtime.o"]
+                assert linked_program_text(tool, work, stem, inputs, (*compile_flags, "-nostdlib")) == expected, stem
+
+
 def check_program_inline_strings(compiler, reference, work):
     fixtures = {
         "alpha": (
@@ -742,6 +778,7 @@ def main():
                 if args.compiler:
                     compiler = args.compiler.resolve(strict=True)
                     check_live_program(codec, compiler, reference, work, compiler_flags)
+                    check_program_vla(compiler, reference, work)
                     check_program_inline_strings(compiler, reference, work)
                     check_program_branch_ranges(codec, compiler, reference, work)
                     check_program_peephole(compiler, reference, work)

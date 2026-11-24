@@ -46,7 +46,7 @@ Boolean CClass_IsTrivialCopyClass(TypeClass* tclass) {
     return tclass->irCopyKind == ClassCopyTrivial;
 }
 
-static Object runtimeObjects[25];
+static Object runtimeObjects[29];
 Object* newh_func = &runtimeObjects[1];
 Object* delh_func = &runtimeObjects[2];
 Object* copy_func = &runtimeObjects[3];
@@ -71,6 +71,10 @@ Object* Xthrw_func = &runtimeObjects[21];
 Object* Xicth_func = &runtimeObjects[22];
 Object* Xecth_func = &runtimeObjects[23];
 Object* Xunex_func = &runtimeObjects[24];
+Object* rt_reg_class = &runtimeObjects[25];
+Object* rt_unreg_class = &runtimeObjects[26];
+Object* vla_alloc_func = &runtimeObjects[27];
+Object* vla_free_func = &runtimeObjects[28];
 
 static union {
     UInt8 bytes[0x400000];

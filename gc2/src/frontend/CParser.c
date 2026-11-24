@@ -58,6 +58,8 @@ Object* clear_func;
 #if VERSION == VERSION_WII_1_0RC1
 Object* vla_alloc_func;
 Object* vla_free_func;
+Object* rt_reg_class;
+Object* rt_unreg_class;
 #endif
 Object* Rgtid_func;
 Object* Rdync_func;
@@ -358,6 +360,10 @@ Boolean CParser_ReInitRuntimeObjects(Boolean is_precompiler) {
     Xicth_func->name = GetHashNameNodeExport("__init__catch");
     Xecth_func->name = GetHashNameNodeExport("__end__catch");
     Xunex_func->name = GetHashNameNodeExport("__unexpected");
+#if VERSION == VERSION_WII_1_0RC1
+    rt_reg_class->name = GetHashNameNodeExport("__register_classobj");
+    rt_unreg_class->name = GetHashNameNodeExport("__unregister_classobj");
+#endif
 
     CMangler_Setup();
 
@@ -457,6 +463,12 @@ static void CParser_SetupRuntimeObjects(void) {
     Xicth_func = CParser_NewRTFunc(TYPE(&stvoid), NULL, 0, 1, &void_ptr);
     Xecth_func = CParser_NewRTFunc(TYPE(&stvoid), NULL, 0, 1, &void_ptr);
     Xunex_func = CParser_NewRTFunc(TYPE(&stvoid), NULL, 0, 1, &void_ptr);
+#if VERSION == VERSION_WII_1_0RC1
+    rt_reg_class = CParser_NewRTFunc(TYPE(&void_ptr), NULL, 0, 2, &void_ptr, &void_ptr);
+    rt_unreg_class = CParser_NewRTFunc(TYPE(&void_ptr), NULL, 0, 1, &void_ptr);
+    TYPE_FUNC(rt_reg_class->type)->flags |= FUNC_NOTHROW;
+    TYPE_FUNC(rt_unreg_class->type)->flags |= FUNC_NOTHROW;
+#endif
 
     CodeGen_SetupRuntimeObjects();
     CError_ASSERT(534, CParser_ReInitRuntimeObjects(FALSE));

@@ -560,6 +560,7 @@ typedef struct SPEOpcodeInfo {
 #define IS_SPE_OPCODE(op) ((op) >= PC_EVOR && (op) < PC_GETCRBIT)
 extern const SPEOpcodeInfo spe_opcodeinfo[PC_GETCRBIT - PC_EVOR];
 extern Opcode find_spe_opcode(UInt32 nativeOpcode);
+extern PCodeArg* branch_target_of(PCode* instr);
 #endif
 
 extern void pcode_get_hi_lo(int bits, char typechar, SInt32* hi, SInt32* lo);

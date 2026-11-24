@@ -202,6 +202,10 @@ extern PCodeBlock* makepcblock(void);
 extern void pclabel(PCodeBlock* block, PCodeLabel* label);
 extern void pcbranch(PCodeBlock* block, PCodeLabel* label);
 extern void pccomputepredecessors(void);
+#if VERSION == VERSION_WII_1_0RC1
+extern Boolean canmergeblocks(PCodeBlock* block, PCodeBlock* next);
+extern void mergeblocks(PCodeBlock* block, PCodeBlock* next);
+#endif
 extern void deleteunreachableblocks(void);
 extern void appendpcode(PCodeBlock* block, PCode* pcode);
 extern void deletepcode(PCode* pcode);

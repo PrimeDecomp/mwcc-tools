@@ -23,6 +23,21 @@
 
 #pragma pool_strings on
 
+#if VERSION == VERSION_WII_1_0RC1
+PCodeArg* branch_target_of(PCode* instr) {
+    int i;
+
+    if (instr->flags & (fIsBranch | fIsCall)) {
+        for (i = 0; i < instr->argCount; ++i) {
+            if (instr->args[i].kind == PCOp_LABEL) {
+                return &instr->args[i];
+            }
+        }
+    }
+    return NULL;
+}
+#endif
+
 void pcode_get_hi_lo(int bits, char typechar, SInt32* hi, SInt32* lo) {
     if (bits == 0) {
         *hi = 0;

@@ -1,5 +1,8 @@
 #include "compiler/PCode.h"
 #include "compiler/Alias.h"
+#if VERSION == VERSION_WII_1_0RC1
+#include "compiler/CError.h"
+#endif
 #include "compiler/CFunc.h"
 #include "compiler/CodeGen.h"
 #include "compiler/CompilerTools.h"
@@ -154,6 +157,102 @@ void deleteblock(PCodeBlock* block) {
     }
     block->flags |= fDeleted;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static void deleteedge(PCodeBlock* from, PCodeBlock* to) {
+    PCLink** link;
+
+    for (link = &from->successors; *link && (*link)->block != to; link = &(*link)->nextLink) {}
+    CError_ASSERT(1119, *link);
+    *link = (*link)->nextLink;
+
+    for (link = &to->predecessors; *link && (*link)->block != from; link = &(*link)->nextLink) {}
+    CError_ASSERT(1119, *link);
+    *link = (*link)->nextLink;
+}
+
+static void insertedge(PCodeBlock* from, PCodeBlock* to) {
+    PCLink* link;
+
+    for (link = from->successors; link; link = link->nextLink) {
+        if (link->block == to) {
+            return;
+        }
+    }
+
+    link = lalloc(sizeof(PCLink));
+    link->block = to;
+    link->nextLink = from->successors;
+    from->successors = link;
+
+    link = lalloc(sizeof(PCLink));
+    link->block = from;
+    link->nextLink = to->predecessors;
+    to->predecessors = link;
+}
+
+Boolean canmergeblocks(PCodeBlock* block, PCodeBlock* next) {
+    PCode* last;
+    PCodeArg* target;
+
+    if (block->nextBlock != next || !block->successors || block->successors->nextLink ||
+        block->successors->block != next || !next->predecessors || next->predecessors->nextLink) {
+        return FALSE;
+    }
+    last = block->lastPCode;
+    if (!last) {
+        return TRUE;
+    }
+    if (last->flags & (fIsCall | fIsVolatile | fSideEffects)) {
+        return FALSE;
+    }
+    if (!(last->flags & fIsBranch)) {
+        return TRUE;
+    }
+    target = branch_target_of(last);
+    return target && target->data.label.label && target->data.label.label->block == next;
+}
+
+void mergeblocks(PCodeBlock* block, PCodeBlock* next) {
+    PCode* instr;
+    PCodeArg* target;
+    PCodeBlock* successor;
+
+    CError_ASSERT(990, canmergeblocks(block, next));
+    instr = block->lastPCode;
+    if (instr && (instr->flags & (fIsBranch | fIsVolatile | fSideEffects)) == fIsBranch) {
+        target = branch_target_of(instr);
+        if (target) {
+            CError_ASSERT(1001, target->data.label.label && target->data.label.label->block == next);
+            deletepcode(instr);
+        } else {
+            instr->flags |= fSideEffects;
+        }
+    }
+
+    while ((instr = next->firstPCode)) {
+        deletepcode(instr);
+        appendpcode(block, instr);
+        if (next == epilogue) {
+            instr->flags |= fIsVolatile;
+        }
+    }
+    if (next == epilogue) {
+        return;
+    }
+
+    while (next->successors) {
+        successor = next->successors->block;
+        insertedge(block, successor);
+        deleteedge(next, successor);
+    }
+    deleteedge(block, next);
+    if (pclastblock == next) {
+        pclastblock = block;
+    }
+    deleteblock(next);
+}
+#endif
 
 void deleteunreachableblocks(void) {
     PCodeBlock* block;

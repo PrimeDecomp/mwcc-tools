@@ -826,6 +826,7 @@ static Object* const* const runtime[] = {
     &rt_ptmf_scall, &rt_ptmf_call4, &rt_ptmf_scall4, &Rgtid_func,   &Rdync_func,
     &carr_func,     &darr_func,     &cnar_func,      &dnar_func,    &dnar3_func,
     &Xgreg_func,    &Xthrw_func,    &Xicth_func,     &Xecth_func,   &Xunex_func,
+    &rt_reg_class,  &rt_unreg_class, &vla_alloc_func, &vla_free_func,
 };
 
 static Object* implicit_runtime_object(UInt32 id) {

@@ -1326,6 +1326,9 @@ static void resetstackpointer(Object* obj) {
     appendpcode(pclastblock, pc);
 
     load_store_register(PC_STW, 0, 1, NULL, 0);
+#if VERSION == VERSION_WII_1_0RC1
+    setpcodeflags(fSideEffects);
+#endif
 
     branch_label(makepclabel());
 }

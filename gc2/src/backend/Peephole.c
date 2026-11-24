@@ -3839,14 +3839,46 @@ void peepholeoptimizeprecolor(Object* func) {
 #endif
 
 #if VERSION == VERSION_WII_1_0RC1
-static Boolean canmergeblocks(PCodeBlock* block, PCodeBlock* next) {
-    return next && block->successors && block->successors->block == next &&
-           !block->successors->nextLink && next->predecessors &&
-           next->predecessors->block == block && !next->predecessors->nextLink &&
-           (!block->lastPCode || !(block->lastPCode->flags & (fIsVolatile | fSideEffects | fIsCall)));
-}
-#endif
+void peepholemergeblocks(Object* func, Boolean mergePrologEpilog) {
+    PCodeBlock* block;
+    PCodeBlock* next;
+    PCode* instr;
 
+    for (block = pcbasicblocks; block; block = block->nextBlock) {
+        if (!mergePrologEpilog && (block->flags & fIsProlog)) {
+            continue;
+        }
+        next = block->nextBlock;
+        if (!next || (!mergePrologEpilog && (next->flags & fIsEpilogue))) {
+            return;
+        }
+        if (!block->pcodeCount) {
+            continue;
+        }
+        for (instr = block->lastPCode; instr; instr = instr->prevPCode) {
+            if ((instr->flags & fIsCall) ||
+                (instr->flags & (fIsBranch | fSideEffects)) == (fIsBranch | fSideEffects)) {
+                break;
+            }
+        }
+        if (instr) {
+            continue;
+        }
+
+        while (next && canmergeblocks(block, next) && next->predecessors->block == block &&
+               !(next->flags & fEntryPoint) && block->pcodeCount + next->pcodeCount <= 100) {
+            mergeblocks(block, next);
+            if (next->pcodeCount) {
+                break;
+            }
+            next = block->nextBlock;
+            if (next && (next->flags & fIsEpilogue) && (!mergePrologEpilog || !next->pcodeCount)) {
+                return;
+            }
+        }
+    }
+}
+#else
 void peepholemergeblocks(Object* func, Boolean mergePrologEpilog) {
     PCodeBlock* block;
     PCodeBlock* next;
@@ -3878,11 +3910,6 @@ void peepholemergeblocks(Object* func, Boolean mergePrologEpilog) {
                 continue;
             }
 
-#if VERSION == VERSION_WII_1_0RC1
-            if (block->lastPCode && (block->lastPCode->flags & fIsVolatile)) {
-                continue;
-            }
-#endif
             if (block->lastPCode && block->lastPCode->op == PC_B) {
                 if (block->lastPCode->args[0].kind == PCOp_LABEL &&
                     block->lastPCode->args[0].data.label.label->block == next) {
@@ -3897,30 +3924,20 @@ void peepholemergeblocks(Object* func, Boolean mergePrologEpilog) {
                 continue;
             }
 
-#if VERSION == VERSION_WII_1_0RC1
-            while (canmergeblocks(block, next) &&
-#else
             while (block->successors->block == next &&
                    block->successors->nextLink == NULL &&
                    next->predecessors->block == block &&
                    next->predecessors->nextLink == NULL &&
-#endif
                    !nextIsEpilogue &&
                    !(next->flags & fEntryPoint) &&
                    (block->pcodeCount + next->pcodeCount) <= 100) {
                 if (next->pcodeCount > 0) {
                     for (instr = next->firstPCode; instr; instr = nextinstr) {
                         nextinstr = instr->nextPCode;
-                        if ((VERSION != VERSION_WII_1_0RC1 || next != epilogue) &&
-                            (instr->flags & (fIsCall | fSideEffects))) {
+                        if (instr->flags & (fIsCall | fSideEffects)) {
                             break;
                         }
 
-#if VERSION == VERSION_WII_1_0RC1
-                        if (next == epilogue) {
-                            instr->flags |= fIsVolatile;
-                        }
-#endif
                         deletepcode(instr);
                         if (instr->op != PC_B) {
                             appendpcode(block, instr);
@@ -3967,6 +3984,7 @@ void peepholemergeblocks(Object* func, Boolean mergePrologEpilog) {
         }
     }
 }
+#endif
 
 void peepholeoptimizepcode(Object* func) {
     PCodeBlock* block;
