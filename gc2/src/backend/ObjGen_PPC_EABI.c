@@ -479,6 +479,7 @@ void CodeGen_WritePrecompilerData(GList* output) {
 static Boolean read_precompiled_files(const CIRStreamBackendHeader* backend, UInt32* contexts) {
     UInt32 count = backend->files.size / CIRStreamBackendFileSize;
     CNameNode* savedFile = CurFile;
+    CNameNode* primary = NULL;
     UInt32 i;
 
     for (i = 0; i < count; ++i) {
@@ -491,8 +492,19 @@ static Boolean read_precompiled_files(const CIRStreamBackendHeader* backend, UIn
         }
         ObjGen_SrcBreakName(GetHashNameNodeExport(name), 0, FALSE);
         contexts[id] = CurFile->uid + 1;
+        if (i == 0) {
+            primary = CurFile;
+        }
     }
-    CurFile = savedFile;
+    if (primary) {
+        BE_SymNode* sym =
+            AddSymbolTableEntry(GetHashNameNode(COS_PathGetFileName(primary->key->name)));
+        sym->elf.st_info = ELF32_ST_INFO(STB_LOCAL, STT_FILE);
+        sym->section = ELFfile.abs_section;
+        sym->alignment = 1;
+        sym->sclass = TK_STATIC;
+    }
+    CurFile = primary ? primary : savedFile;
     return TRUE;
 }
 

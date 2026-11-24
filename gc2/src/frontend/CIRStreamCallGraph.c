@@ -829,7 +829,7 @@ static Object* const* const runtime[] = {
     &rt_reg_class,  &rt_unreg_class, &vla_alloc_func, &vla_free_func,
 };
 
-static Object* implicit_runtime_object(UInt32 id) {
+Object* CIRStream_ImplicitObject(UInt32 id) {
     return id && id < sizeof(runtime) / sizeof(runtime[0]) ? *runtime[id] : NULL;
 }
 
@@ -851,7 +851,7 @@ static Object* materialize_object(const CIRStreamNode* node) {
     Object* object;
 
     if (node->kind == CIRStreamImplicitNode) {
-        return implicit_runtime_object(decl->node.implicitObject);
+        return CIRStream_ImplicitObject(decl->node.implicitObject);
     }
     object = galloc(sizeof(Object));
     memclrw(object, sizeof(Object));

@@ -359,6 +359,41 @@ def check_stock_pch_macros(compiler, reference, work):
         raise ValueError(f"{compiler}: stock PCH macro expansions changed the replayed object")
 
 
+def check_vla_pch(compiler, reference, work, *, timeout=30):
+    compiler = compiler if isinstance(compiler, tuple) else (compiler,)
+    directory = work / "vla-prefix"
+    directory.mkdir()
+    header = directory / "prefix.h"
+    prefix = directory / "prefix.mch"
+    obj = directory / "use.o"
+    (directory / "use.c").write_text("int g(int n) { return f(n); }\n", encoding="ascii")
+    flags = (*FLAGS, "-lang", "c99", "-O2", "-inline", "off")
+    precompile = (*flags, "-precompile", prefix.name, header.name)
+    compile_body = (*flags, "-prefix", prefix.name, "-c", "use.c", "-o", obj.name)
+    for case, body in (
+        ("stack", "int a[n]; fill(a, n); return a[n - 1];"),
+        ("loop", "int s = 0; for (int j = 1; j < n; j++) { "
+                 "int a[j]; fill(a, j); s += a[j - 1]; } return s;"),
+        ("fixed size", "int a[8]; fill(a, n); return a[n - 1];"),
+    ):
+        header.write_text(
+            f"extern void fill(int *, int);\nstatic inline int f(int n) {{ {body} }}\n",
+            encoding="ascii",
+        )
+        run(reference, *precompile, cwd=directory, timeout=timeout)
+        run(reference, *compile_body, cwd=directory, timeout=timeout)
+        expected = obj.read_bytes()
+        for producer in ("stock", "source"):
+            if producer == "source":
+                prefix.unlink()
+                run(*compiler, *precompile, cwd=directory, timeout=timeout)
+            obj.unlink()
+            run(*compiler, *compile_body, cwd=directory, timeout=timeout)
+            if obj.read_bytes() != expected:
+                raise ValueError(f"{compiler}: {case} object differs with {producer} PCH")
+        prefix.unlink()
+
+
 def check_pch_include_state(compiler, reference, objcopy, work, *, timeout=30):
     compiler = compiler if isinstance(compiler, tuple) else (compiler,)
     directory = work / "pch-include-state"
@@ -5130,6 +5165,7 @@ def main():
                     if results[name] != reference[name]:
                         raise ValueError(f"{name}: output differs from stock RC1")
                 check_stock_pch_macros(compiler, stock, work)
+                check_vla_pch(compiler, stock, work)
                 check_pch_include_state(compiler, stock, args.objcopy, work)
                 check_stock_pch_declarations(compiler, stock, args.objcopy, args.nm, work)
                 check_stock_pch_static_data(compiler, stock, args.objcopy, args.nm, args.objdump, work)

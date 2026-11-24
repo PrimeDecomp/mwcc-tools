@@ -55,9 +55,11 @@ typedef struct StaticData {
 #if VERSION == VERSION_WII_1_0RC1
 // Preserve the source PCH record layout by using the high bit of the byte count.
 #define CPREC_STATIC_READ_ONLY 0x80000000u
+#define CPREC_SOURCE_VERSION_WITH_RUNTIME_OBJECTS 5149
 #define CPREC_SOURCE_VERSION 5148
 #define CPREC_SOURCE_VERSION_WITHOUT_FILES 5147
 #define CPREC_SOURCE_VERSION_WITHOUT_SAVED_UIDS 5146
+enum { CPrec_AddedRuntimeBuiltinCount = 4 };
 #elif VERSION < VERSION_GC_2_0
 #define CPREC_SOURCE_VERSION 1047
 #else
@@ -452,6 +454,10 @@ static void CPrec_SetupBuiltInArray(void) {
         for (int spe = 0; spe < SPEBuiltinTypeCount; spe++) {
             REG_BUILTIN(&stspevector[spe]);
         }
+        REG_BUILTIN(rt_reg_class);
+        REG_BUILTIN(rt_unreg_class);
+        REG_BUILTIN(vla_alloc_func);
+        REG_BUILTIN(vla_free_func);
 #endif
 
         if (counting) {
@@ -3929,6 +3935,11 @@ static void CPrec_GenerateBuiltinPatches(void) {
         }
 
         if (y) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (x >= cprec_builtins - CPrec_AddedRuntimeBuiltinCount) {
+                cprec_header->version = CPREC_SOURCE_VERSION_WITH_RUNTIME_OBJECTS;
+            }
+#endif
             CPrec_AppendWord32(y);
             CPrec_AppendWord32(x);
             for (scan = cprec_builtin[x].patches; scan; scan = scan->next) {
@@ -6199,19 +6210,12 @@ static Boolean CPrec_ReadStockFriends(CPrecStockGraph* graph, UInt32 offset) {
 }
 
 static Object* CPrec_ReadStockObjectRef(CPrecStockGraph* graph, const UInt8* slot) {
-    // RC1's builtin reference table starts its object entries at index 54.
-    static Object** const runtime[] = {
-        &newh_func,     &delh_func,      &copy_func,    &clear_func,   &rt_ptmf_null,
-        &rt_ptmf_cmpr,  &rt_ptmf_cast,   &rt_ptmf_test, &rt_ptmf_call, &rt_ptmf_scall,
-        &rt_ptmf_call4, &rt_ptmf_scall4, &Rgtid_func,   &Rdync_func,   &carr_func,
-        &darr_func,     &cnar_func,      &dnar_func,    &dnar3_func,   &Xgreg_func,
-        &Xthrw_func,    &Xicth_func,     &Xecth_func,   &Xunex_func
-    };
+    enum { StockFirstRuntimeObject = 54 };
     int builtin = CPrec_StockBuiltin(graph, slot);
 
     if (builtin >= 0) {
-        unsigned int index = (unsigned int)(builtin - 54);
-        return index < sizeof(runtime) / sizeof(runtime[0]) ? *runtime[index] : NULL;
+        // PCH runtime objects use the same order as the one-based IPA IDs.
+        return CIRStream_ImplicitObject(builtin - StockFirstRuntimeObject + 1);
     }
     return CPrec_ReadStockSymbol(graph, CIRStream_ReadWord(slot), 0);
 }
@@ -7608,6 +7612,50 @@ static void CPrec_RelocateRawBuffer(void) {
 
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+static void CPrec_RelocateBuiltins(UInt32 imageSize) {
+    UInt32 size = cprec_header->builtinPatchSize;
+    UInt32 limit;
+    CIRStreamReader input;
+    CIRStreamReader word;
+    UInt32 count;
+    UInt32 index;
+    UInt32 offset;
+
+    if (!size) {
+        return;
+    }
+    CPrec_SetupBuiltInArray();
+    limit = cprec_builtins;
+    if (cprec_header->version != CPREC_SOURCE_VERSION_WITH_RUNTIME_OBJECTS) {
+        limit -= CPrec_AddedRuntimeBuiltinCount;
+    }
+    input.bytes = CPrec_ReadRawSection(imageSize, cprec_header->builtinPatchOffset, size);
+    input.size = size;
+    while (CIRStream_UnpackData(&input, sizeof(UInt32), &word)) {
+        count = CIRStream_ReadWord(word.bytes);
+        if (!count && !input.size) {
+            return;
+        }
+        if (!count ||
+            !CIRStream_UnpackData(&input, sizeof(UInt32), &word) ||
+            (index = CIRStream_ReadWord(word.bytes)) >= limit ||
+            count > input.size / sizeof(UInt32)) {
+            break;
+        }
+        do {
+            offset = CIRStream_ReadWord(input.bytes);
+            if ((offset & 1) || offset > cprec_header->rawsize ||
+                cprec_header->rawsize - offset < sizeof(void*)) {
+                CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+            }
+            memcpy((UInt8*)cprec_rawbuffer + offset, cprec_builtin_array + index, sizeof(void*));
+            CIRStream_UnpackData(&input, sizeof(UInt32), NULL);
+        } while (--count);
+    }
+    CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
+}
+#else
 static void CPrec_RelocateBuiltins(void) {
     UInt32 count;
     void* builtin;
@@ -7638,6 +7686,7 @@ static void CPrec_RelocateBuiltins(void) {
         }
     }
 }
+#endif
 
 static void CPrec_RelocateTokenStreams(void) {
     TStreamElement* tokens;
@@ -7772,6 +7821,7 @@ void PrecompilerRead(short refnum, void* buffer) {
 #endif
     if (cprec_header->version != CPREC_SOURCE_VERSION
 #if VERSION == VERSION_WII_1_0RC1
+        && cprec_header->version != CPREC_SOURCE_VERSION_WITH_RUNTIME_OBJECTS
         && cprec_header->version != CPREC_SOURCE_VERSION_WITHOUT_SAVED_UIDS
         && cprec_header->version != CPREC_SOURCE_VERSION_WITHOUT_FILES
 #endif
@@ -7785,7 +7835,7 @@ void PrecompilerRead(short refnum, void* buffer) {
     copts.checkprecompflags = cprec_header->check_header_flags;
 #if VERSION == VERSION_WII_1_0RC1
     CPrec_ReadRawBuffer(size);
-    if (cprec_header->version == CPREC_SOURCE_VERSION &&
+    if (cprec_header->version >= CPREC_SOURCE_VERSION &&
         !CPrec_VisitRawFiles(
             (const UInt8*)cprec_rawbuffer, cprec_header->rawsize, cprec_header->includedFiles,
             CPrep_RememberPrecompiledFile, NULL
@@ -7793,11 +7843,12 @@ void PrecompilerRead(short refnum, void* buffer) {
         CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
     }
     CPrec_RelocateRawBuffer(size);
+    CPrec_RelocateBuiltins(size);
 #else
     CPrec_ReadRawBuffer();
     CPrec_RelocateRawBuffer();
-#endif
     CPrec_RelocateBuiltins();
+#endif
 
     hashEntries = name_hash_nodes;
     offsets = (SInt32*)cprec_header->nametable;

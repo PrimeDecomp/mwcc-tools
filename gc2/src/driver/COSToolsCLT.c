@@ -9,6 +9,19 @@
 #include "driver/TextUtils.h"
 #include <string.h>
 
+#if VERSION == VERSION_WII_1_0RC1
+const char* COS_PathGetFileName(const char* path) {
+    const char* separator = strrchr(path, '\\');
+    if (!separator) {
+        separator = strrchr(path, '/');
+    }
+    if (!separator) {
+        separator = strrchr(path, ':');
+    }
+    return separator ? separator + 1 : path;
+}
+#endif
+
 static void COS_pstrcpy(StringPtr dst, ConstStringPtr src) {
     short cnt;
     for (cnt = src[0]; cnt >= 0; cnt--) {

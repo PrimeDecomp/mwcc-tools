@@ -32,6 +32,9 @@ extern void COS_FileGetFSSpecInfo(
     const FSSpec* spec, SInt16* vRefNum, SInt32* dirID, StringPtr fileName
 );
 extern void COS_FileGetPathName(char* buffer, const FSSpec* spec, SInt32* mdDat);
+#if VERSION == VERSION_WII_1_0RC1
+extern const char* COS_PathGetFileName(const char* path);
+#endif
 
 #ifdef __cplusplus
 }

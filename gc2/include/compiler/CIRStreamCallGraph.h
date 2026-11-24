@@ -224,5 +224,6 @@ Boolean CIRStream_ImportCallGraph(
 // source file records and packed function bodies supply their serialized bytes.
 Boolean CIRStream_ExportCallGraph(CIRStreamWriter* stream, const CIRStreamImportedGraph* graph);
 UInt32 CIRStream_ImplicitObjectID(const Object* object);
+Object* CIRStream_ImplicitObject(UInt32 id);
 
 #endif
