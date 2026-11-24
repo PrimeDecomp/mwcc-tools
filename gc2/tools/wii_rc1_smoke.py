@@ -2627,6 +2627,67 @@ def check_pointer_arithmetic(compiler, work):
     return results
 
 
+def check_postincrement_assignment(compiler, work):
+    source = work / "postincrement_assignment.c"
+    source.write_text(
+        "typedef struct Buffer {\n"
+        "    unsigned int length, position, slot : 8;\n"
+        "    unsigned char data[0x880];\n"
+        "} Buffer;\n"
+        "extern unsigned char load_byte(void);\n"
+        "int append(Buffer* buffer, unsigned char value) {\n"
+        "    if (buffer->position >= sizeof(buffer->data)) return 769;\n"
+        "    buffer->data[buffer->position++] = value;\n"
+        "    buffer->length++;\n"
+        "    return 0;\n"
+        "}\n"
+        "void decrement_index(Buffer* buffer, unsigned int* data, unsigned int value) {\n"
+        "    data[buffer->position--] = value;\n"
+        "}\n"
+        "void bitfield_index(Buffer* buffer, unsigned char value) {\n"
+        "    buffer->data[buffer->slot++] = value;\n"
+        "}\n"
+        "void append_call(Buffer* buffer) {\n"
+        "    buffer->data[buffer->position++] = load_byte();\n"
+        "}\n",
+        encoding="ascii",
+    )
+    results = {}
+    obj = source.with_suffix(".o")
+    for mode, peephole in (("-O0", "nopeep"), ("-O4,p", "peep")):
+        run(compiler, *FLAGS, mode, "-opt", peephole, "-func_align", "4",
+            "-c", source.name, "-o", obj, cwd=work)
+        results[f"{source.name} {mode}"] = obj.read_bytes()
+    return results
+
+
+def check_mixed_rank_comparisons(compiler, work):
+    source = work / "mixed_rank_comparisons.c"
+    source.write_text(
+        "extern void transfer(unsigned long count);\n"
+        "static inline int limit_long(unsigned long count, unsigned int available) {\n"
+        "    int error = 0;\n"
+        "    if (count > available) { count = available; error = 1; }\n"
+        "    transfer(count);\n"
+        "    return error;\n"
+        "}\n"
+        "static inline int limit_int(unsigned int count, unsigned long available) {\n"
+        "    int error = 0;\n"
+        "    if (count > available) { count = available; error = 1; }\n"
+        "    transfer(count);\n"
+        "    return error;\n"
+        "}\n"
+        "int read_long(unsigned int available) { return limit_long(4, available); }\n"
+        "int read_int(unsigned long available) { return limit_int(8, available); }\n"
+        "int match_signed(int i, long n) { return i == n; }\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    run(compiler, *FLAGS, "-O4,p", "-inline", "auto", "-func_align", "4",
+        "-c", source.name, "-o", obj, cwd=work)
+    return {source.name: obj.read_bytes()}
+
+
 def check_c99_declarations(compiler, work):
     fixtures = {
         "c99_for_declaration": (
@@ -5150,6 +5211,8 @@ bool same(const Values& a, const Values& b) {
     results.update(check_auto_aggregate_initialization(compiler, work))
     results.update(check_unrolled_loop_guard(compiler, work))
     results.update(check_pointer_arithmetic(compiler, work))
+    results.update(check_postincrement_assignment(compiler, work))
+    results.update(check_mixed_rank_comparisons(compiler, work))
     results.update(check_c99_declarations(compiler, work))
     return results
 

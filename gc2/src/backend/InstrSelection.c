@@ -24,6 +24,12 @@
 PrecomputedOperand* precomputedoperands;
 void (*cgdispatch[MAXEXPR + 1])(ENode*, short, short, Operand*);
 
+#if VERSION == VERSION_WII_1_0RC1
+static ENode* postincrement_expr;
+static PCode* postincrement_first;
+static PCode* postincrement_last;
+#endif
+
 typedef enum ShiftLeftMode {
     ShiftOnly,
     ShiftNegate,
@@ -267,12 +273,19 @@ void gen_POSTINCDEC(ENode* expr, short outputReg, short outputRegHi, Operand* ou
             finalReg = ALLOC_GPR();
             add_register_immediate(finalReg, value.reg, incval);
 
+#if VERSION == VERSION_WII_1_0RC1
+            postincrement_expr = expr;
+            postincrement_first = pclastblock->lastPCode;
+#endif
             if (tbitfield) {
                 insert_bitfield(finalReg, &word, tbitfield);
                 finalReg = word.reg;
             }
 
             store(finalReg, &addr, type);
+#if VERSION == VERSION_WII_1_0RC1
+            postincrement_last = pclastblock->lastPCode;
+#endif
         }
     }
 }
@@ -1519,6 +1532,37 @@ static inline int is_gpr_float_copy(Operand* op, ENode* left) {
     return FALSE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean blocks_postincrement_reordering(ENode* expr, ENode* postincrement) {
+    if (expr == postincrement) {
+        return FALSE;
+    }
+
+    switch (expr->type) {
+        ENODE_CASE_MONADIC:
+            return blocks_postincrement_reordering(expr->data.monadic, postincrement);
+        case EINTCONST:
+        case EFLOATCONST:
+        case ECOND:
+        case EOBJREF:
+        case EVECTOR128CONST:
+            return FALSE;
+        ENODE_CASE_DIADIC_ALL:
+            return ENODE_IS2(expr, ELAND, ELOR) ||
+                   blocks_postincrement_reordering(expr->data.diadic.left, postincrement) ||
+                   blocks_postincrement_reordering(expr->data.diadic.right, postincrement);
+        default:
+            return TRUE;
+    }
+}
+
+static Boolean can_reorder_postincrement(ENode* assignment, ENode* postincrement) {
+    return ENODE_IS(assignment, EASS) &&
+           !ENODE_IS(assignment->data.diadic.left, EOBJREF) &&
+           !blocks_postincrement_reordering(assignment, postincrement);
+}
+#endif
+
 void gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     Type* type;
     ENode* left;
@@ -1531,6 +1575,9 @@ void gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     short align;
     short align2;
 
+#if VERSION == VERSION_WII_1_0RC1
+    postincrement_expr = NULL;
+#endif
     type = expr->rtype;
     if (ENODE_IS(expr, ECONDASS)) {
         left = expr->data.cond.expr1;
@@ -1721,6 +1768,17 @@ void gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
             store(opright.reg, &opleft, type);
         }
 
+#if VERSION == VERSION_WII_1_0RC1
+        if (postincrement_expr && can_reorder_postincrement(expr, postincrement_expr)) {
+            PCode* instruction = postincrement_last->nextPCode;
+            while (instruction) {
+                PCode* next = instruction->nextPCode;
+                deletepcode(instruction);
+                insertpcodebefore(postincrement_first, instruction);
+                instruction = next;
+            }
+        }
+#endif
         output->optype = OpndType_GPR;
         output->reg = opright.reg;
     } else {

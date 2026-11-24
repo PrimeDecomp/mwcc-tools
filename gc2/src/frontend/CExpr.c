@@ -206,7 +206,16 @@ static void CExpr_CompareConvert(ENode** leftp, char* opname, ENode** rightp, Bo
 
     if (left->rtype->size == right->rtype->size) {
         if (is_unsigned(left->rtype) == is_unsigned(right->rtype)) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (IS_TYPE_INT(left->rtype) && IS_TYPE_INT(right->rtype) &&
+                TYPE_INTEGRAL(left->rtype)->integral > TYPE_INTEGRAL(right->rtype)->integral) {
+                right = promote(right, left->rtype);
+            } else {
+                left = promote(left, right->rtype);
+            }
+#else
             left->rtype = right->rtype;
+#endif
             *leftp = left;
             *rightp = right;
             return;
