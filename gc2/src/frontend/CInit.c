@@ -1169,6 +1169,7 @@ static ObjMemberVar* CInit_FindNextMember(ObjMemberVar* ivar) {
         if (!scan->anonunion) {
             return scan;
         }
+#if VERSION != VERSION_WII_1_0RC1
         if (scan->offset > ivar->offset) {
             return scan;
         }
@@ -1177,6 +1178,7 @@ static ObjMemberVar* CInit_FindNextMember(ObjMemberVar* ivar) {
             TYPE_BITFIELD(scan->type)->offset != TYPE_BITFIELD(ivar->type)->offset) {
             return scan;
         }
+#endif
     }
 }
 

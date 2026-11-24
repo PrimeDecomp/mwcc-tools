@@ -767,6 +767,13 @@ static ENode* CInline_CopyExpressionSave(ENode* expr) {
 static SInt32 CInline_TranslateID(SInt32 id) {
     IDTrans* trans;
 
+#if VERSION == VERSION_WII_1_0RC1
+    // Serializing an inline body preserves the IDs assigned when it was parsed.
+    if (enode_copymode == CopyModePack) {
+        return id;
+    }
+#endif
+
     for (trans = enode_idtrans; trans; trans = trans->next) {
         if (trans->from == id) {
             return trans->to;

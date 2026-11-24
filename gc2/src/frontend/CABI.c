@@ -180,7 +180,9 @@ static void CABI_AllocateMembers(ClassLayout* layout, TypeClass* tclass) {
     SInt32 maxSize;
     TypeClass* unionClass;
     SInt32 unionStart;
+#if VERSION != VERSION_WII_1_0RC1
     Boolean inAnonUnion;
+#endif
     Boolean removeNoNameIvars;
 
     removeNoNameIvars = FALSE;
@@ -213,10 +215,14 @@ static void CABI_AllocateMembers(ClassLayout* layout, TypeClass* tclass) {
             } else {
                 CError_ASSERT(412, unionClass);
                 ivar->offset = unionStart + CABI_GetMemberOffset(unionClass, ivar->name);
+#if VERSION == VERSION_WII_1_0RC1
+                ivar->anonunion = TRUE;
+#else
                 if (!inAnonUnion) {
                     ivar->anonunion = TRUE;
                 }
                 inAnonUnion = FALSE;
+#endif
             }
 
             if (ivar->name == no_name_node || ivar->name == NULL) {
@@ -231,7 +237,11 @@ static void CABI_AllocateMembers(ClassLayout* layout, TypeClass* tclass) {
 
             unionStart = CMach_StructLayoutGetOffset(ivar->type, ivar->qual);
             unionClass = TYPE_CLASS(ivar->type);
+#if VERSION == VERSION_WII_1_0RC1
+            ivar->offset = unionStart;
+#else
             inAnonUnion = TRUE;
+#endif
 
             if (tclass->mode == CLASS_MODE_UNION) {
                 SInt32 curSize = CMach_StructLayoutGetCurSize();
@@ -251,6 +261,13 @@ static void CABI_AllocateMembers(ClassLayout* layout, TypeClass* tclass) {
     if (removeNoNameIvars) {
         ObjMemberVar** ptr = &tclass->ivars;
         while (*ptr) {
+#if VERSION == VERSION_WII_1_0RC1
+            if (!(*ptr)->name && (*ptr)->anonunion) {
+                // Keep the storage member alongside its flattened aliases.
+                (*ptr)->name = CParser_AppendUniqueName("__anon");
+                (*ptr)->anonunion = FALSE;
+            }
+#endif
             if ((*ptr)->name == NULL || (*ptr)->name == no_name_node) {
                 *ptr = (*ptr)->next;
             } else {

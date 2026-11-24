@@ -1921,6 +1921,43 @@ def check_template_actions(compiler, objcopy, nm, work):
     return results
 
 
+def check_inline_and_aggregate_ids(compiler, objcopy, work):
+    cases = {
+        "inline_placement.cpp": (
+            "inline void* operator new(unsigned long, void* p) { return p; }\n"
+            "struct Value { int field; Value(const Value& src); };\n"
+            "inline void construct(void* p, const Value& src) { new (p) Value(src); }\n"
+        ),
+        "anonymous_struct.cpp": (
+            "#pragma cpp_extensions on\n"
+            "struct Value { int first; struct { int a; float b; }; int last; };\n"
+            "Value value = {13, {7, 5.0f}, 3};\n"
+            "int read(Value* p) { return p->first + p->a + p->last; }\n"
+        ),
+        "anonymous_union.cpp": (
+            "#pragma cpp_extensions on\n"
+            "struct Value { union { struct { unsigned char r, g, b, a; }; unsigned u; }; };\n"
+            "Value value = {{{1, 2, 3, 4}}};\n"
+            "unsigned read(Value* p) { return p->u + p->b; }\n"
+        ),
+    }
+    results = {}
+    for name, contents in cases.items():
+        source = work / name
+        source.write_text(
+            contents + "const int* get_data() { static const int data = 37; return &data; }\n",
+            encoding="ascii",
+        )
+        obj = source.with_suffix(".o")
+        normalized = source.with_suffix(".normalized")
+        for opt, ipa in product(("-O0", "-O4,p"), ("off", "file")):
+            output = run(compiler, *FLAGS, opt, "-inline", "noauto", "-ipa", ipa, "-Cpp_exceptions", "off",
+                         "-msgstyle", "parseable", "-c", source.name, "-o", obj, cwd=work)
+            run(objcopy, "--remove-section=.comment", obj, normalized, cwd=work)
+            results[f"{name} {opt} -ipa {ipa}"] = (output, normalized.read_bytes())
+    return results
+
+
 def check_reference_cast_diagnostics(compiler, objcopy, work):
     source = work / "reference_cast.cpp"
     source.write_text(
@@ -5071,6 +5108,7 @@ void member_call(V* v) { Guard guard; v->g(); }
     results[source.name] = (process.stdout, process.stderr)
     results.update(check_void_delete_diagnostics(compiler, work))
     results.update(check_template_actions(compiler, objcopy, nm, work))
+    results.update(check_inline_and_aggregate_ids(compiler, objcopy, work))
     results.update(check_reference_cast_diagnostics(compiler, objcopy, work))
     results.update(check_return_diagnostics(compiler, work))
     results.update(check_preprocess_output(compiler, work))
